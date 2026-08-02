@@ -1,0 +1,44 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Root .dockerignore — the Docker build context is the repo ROOT, so this file
+# is what keeps real secrets (.env files) and heavy artifacts out of the image.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ─── Secrets — NEVER ship these into an image ──────────────────────────
+**/.env
+**/.env.*
+**/.envrc
+
+# ─── Node ──────────────────────────────────────────────────────────────
+**/node_modules
+**/dist
+**/build
+**/*.tsbuildinfo
+**/.eslintcache
+
+# ─── Python ────────────────────────────────────────────────────────────
+**/.venv
+**/venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.coverage
+**/htmlcov
+
+# ─── Git / IDE / OS ────────────────────────────────────────────────────
+.git
+.gitignore
+**/.idea
+**/.vscode
+**/.DS_Store
+**/*.swp
+
+# ─── Data / artifacts (runtime-writable only) ──────────────────────────
+**/data
+**/*.db
+**/*.sqlite3
+
+# ─── Unneeded at runtime ───────────────────────────────────────────────
+*.pdf
+*.md

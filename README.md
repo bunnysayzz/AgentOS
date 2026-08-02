@@ -107,13 +107,15 @@ npm run dev                   # → http://localhost:5173
 
 | Variable | Required | Description |
 |---|---|---|
-| `VITE_API_URL` | ✅ | Backend base URL, e.g. `http://localhost:8000/api/v1` (dev) or `https://agentos-backend.onrender.com/api/v1` (prod) |
-| `VITE_FIREBASE_API_KEY` | ✅ | Firebase web API key |
-| `VITE_FIREBASE_AUTH_DOMAIN` | ✅ | e.g. `your-project.firebaseapp.com` |
-| `VITE_FIREBASE_PROJECT_ID` | ✅ | Firebase project ID |
-| `VITE_FIREBASE_STORAGE_BUCKET` | ✅ | e.g. `your-project.appspot.com` |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID` | ✅ | Firebase sender ID |
-| `VITE_FIREBASE_APP_ID` | ✅ | Firebase web app ID |
+| `VITE_API_URL` | ✅ | Backend base URL, e.g. `http://localhost:8000/api/v1` (dev) or `/api/v1` (prod — same-origin) |
+| `VITE_FIREBASE_API_KEY` | ⬜ | Firebase web API key — **optional**; only for Google Sign-In |
+| `VITE_FIREBASE_AUTH_DOMAIN` | ⬜ | e.g. `your-project.firebaseapp.com` |
+| `VITE_FIREBASE_PROJECT_ID` | ⬜ | Firebase project ID |
+| `VITE_FIREBASE_STORAGE_BUCKET` | ⬜ | e.g. `your-project.appspot.com` |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | ⬜ | Firebase sender ID |
+| `VITE_FIREBASE_APP_ID` | ⬜ | Firebase web app ID |
+
+> Firebase is **optional**. Email/password login & registration run through the backend API (`/auth/login`, `/auth/register`) and work with zero Firebase config. Google Sign-In only activates when the `VITE_FIREBASE_*` vars are present — otherwise the app degrades gracefully.
 
 ---
 
@@ -139,7 +141,7 @@ make test            # or: ./scripts/run_all_tests.sh
 
 ## ☁️ Deploy on Render
 
-The repo ships with a [**Render Blueprint**](render.yaml) — deployment is one click, and **everything lives on a single URL**:
+The repo ships with a [**Render Blueprint**](render.yaml) **and** a root [**Dockerfile**](Dockerfile) — either deploys in one click, and **everything lives on a single URL**:
 
 | Path | What it serves |
 |---|---|
@@ -148,20 +150,32 @@ The repo ships with a [**Render Blueprint**](render.yaml) — deployment is one 
 | `/api/v1/*` | The backend API |
 | `/health` | Health check |
 
+### Option A — Blueprint (recommended)
+
 1. Push this repo to GitHub (it already is: `bunnysayzz/AgentOS`).
 2. In [Render](https://render.com), click **New + → Blueprint** and select the repo.
-3. Render auto-detects `render.yaml` and creates **one web service** (`agentos`). The build command installs the backend deps **and** builds the frontend (`npm ci && npm run build`), and FastAPI serves the SPA at the root.
+3. Render auto-detects `render.yaml` and creates **one web service** (`agentos`) using the native Python runtime. The build command installs the backend deps **and** builds the frontend (`npm ci && npm run build`); FastAPI serves the SPA at the root.
 4. Fill in the secret env vars the blueprint asks for (`sync: false` fields):
    - `DATABASE_URL` → your Aiven Postgres URI
    - `SECRET_KEY`, `ENCRYPTION_KEY` → generate strong random values
-   - `FIREBASE_*` backend + `VITE_FIREBASE_*` frontend → your Firebase config
+   - `VITE_FIREBASE_*` → your Firebase web config (**optional** — only for Google Sign-In)
 5. Deploy. Migrations run automatically on start (`alembic upgrade head`).
+
+### Option B — Web Service (Docker)
+
+If you create a plain **New + → Web Service** instead of a Blueprint, Render auto-detects the root `Dockerfile` (no manual Docker config needed):
+
+1. **New + → Web Service** → select the repo (leave root directory as repo root).
+2. Render detects the `Dockerfile` and builds the single-service image (frontend + backend).
+3. In **Environment**, add: `DATABASE_URL`, `SECRET_KEY`, `ENCRYPTION_KEY` (and `VITE_FIREBASE_*` if you want Google Sign-In — for Docker deploys these are build-time args, see the `Dockerfile`).
+4. **Deploy** — done. One service, one URL.
 
 ### Notes for Render
 
 - **Free tier** spins down web services after 15 min of inactivity (first request after idle takes ~30–50 s).
 - Because the SPA is served same-origin with the API, `VITE_API_URL=/api/v1` needs no CORS configuration.
 - The backend needs no Redis to run — Redis/Celery are optional and only used when configured.
+- If you previously created a Web Service and it failed with `Dockerfile: no such file or directory`, just **redeploy** — the root `Dockerfile` (and `.dockerignore`) is now in the repo.
 
 ### Deploy with Docker instead
 
@@ -195,6 +209,8 @@ AgentOS/
 │   ├── e2e/                    # Playwright smoke tests
 │   └── src/**/*.test.*         # Vitest suites (38 tests)
 ├── .github/workflows/ci.yml    # CI pipeline
+├── Dockerfile                  # Single-service image (Render Web Service deploys)
+├── .dockerignore               # Keeps .env secrets out of Docker builds
 ├── render.yaml                 # Render Blueprint
 ├── docker-compose.yml
 ├── Makefile
