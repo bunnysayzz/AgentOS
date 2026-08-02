@@ -1,0 +1,43 @@
+# ─── Python ────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+
+# ─── Environment ──────────────────────────────────────
+.env
+.venv/
+venv/
+env/
+
+# ─── IDE & Editor ─────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ─── Testing / Coverage ───────────────────────────────
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ─── Docker ───────────────────────────────────────────
+Dockerfile
+.dockerignore
+
+# ─── Git ──────────────────────────────────────────────
+.git/
+.gitignore
+
+# ─── Data ─────────────────────────────────────────────
+*.db
+*.sqlite3
+/data/

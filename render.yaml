@@ -1,0 +1,81 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# AgentOS Studio — Render Blueprint (render.yaml)
+# ─────────────────────────────────────────────────────────────────────────────
+# Deploy both services automatically:
+#   1. In Render: "New +" → "Blueprint" → connect this GitHub repo
+#   2. Render reads render.yaml and creates the two services below
+#   3. Fill in the env vars marked `sync: false` (they are secrets) with the
+#      values from your local `backend/.env` / `frontend/.env` — the blueprint
+#      will prompt you for them during first deploy.
+#
+# Service URLs are predictable from the service names below:
+#   Backend  → https://agentos-backend.onrender.com   (health: /health)
+#   Frontend → https://agentos-frontend.onrender.com
+# If you rename a service, update VITE_API_URL and CORS_ORIGINS accordingly.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ─── Backend API (FastAPI + Uvicorn) ──────────────────────────────────────
+  - type: web
+    name: agentos-backend
+    runtime: python
+    rootDir: backend
+    plan: free
+    region: singapore # closest Render region to the Aiven Postgres (Bangalore)
+    buildCommand: pip install -r requirements.txt
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: DATABASE_URL
+        sync: false # e.g. postgresql+asyncpg://avnadmin:...@host:port/defaultdb?ssl=require
+      - key: SECRET_KEY
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        value: '["https://agentos-frontend.onrender.com"]'
+      - key: FIREBASE_PROJECT_ID
+        value: agentos-7f01e
+      - key: FIREBASE_USER_EMAIL
+        sync: false
+      - key: FIREBASE_CLIENT_ID
+        sync: false
+      - key: FIREBASE_REFRESH_TOKEN
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        sync: false
+      - key: FIRST_SUPERUSER_EMAIL
+        sync: false
+      - key: FIRST_SUPERUSER_PASSWORD
+        sync: false
+
+  # ─── Frontend Static Site (React + Vite) ─────────────────────────────────
+  - type: static
+    name: agentos-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: VITE_API_URL
+        value: https://agentos-backend.onrender.com/api/v1
+      - key: VITE_FIREBASE_API_KEY
+        sync: false
+      - key: VITE_FIREBASE_AUTH_DOMAIN
+        sync: false
+      - key: VITE_FIREBASE_PROJECT_ID
+        sync: false
+      - key: VITE_FIREBASE_STORAGE_BUCKET
+        sync: false
+      - key: VITE_FIREBASE_MESSAGING_SENDER_ID
+        sync: false
+      - key: VITE_FIREBASE_APP_ID
+        sync: false

@@ -1,0 +1,34 @@
+# ─── AgentOS Studio — Development Override ──────────────────
+# Start with: docker-compose up --build
+# This override enables hot-reload and exposes dev ports.
+
+version: "3.9"
+
+services:
+  backend:
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - agentos_data:/app/data
+
+  frontend:
+    build:
+      target: build
+      args:
+        - VITE_API_URL=http://localhost:8000/api/v1
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_URL=http://localhost:8000/api/v1
+
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"

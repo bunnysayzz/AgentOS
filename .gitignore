@@ -1,0 +1,78 @@
+# ─── Python ─────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+eggs/
+parts/
+bin/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+
+# ─── Virtual Environment ───────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ─── Node.js ───────────────────────────────────────────────
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.vite/
+*.tsbuildinfo
+.eslintcache
+
+# ─── Environment ───────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.env
+
+# ─── IDE ───────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ─── Data & DB ─────────────────────────────────────────────
+data/
+*.db
+*.sqlite3
+*.sqlite
+*.db-journal
+
+# ─── Docker ────────────────────────────────────────────────
+.docker/
+
+# ─── Logs ──────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── Testing & Coverage ────────────────────────────────────
+.coverage
+.coverage.*
+htmlcov/
+coverage/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+
+# ─── Build Artifacts ───────────────────────────────────────
+*.whl
+*.tar.gz
+*.egg
