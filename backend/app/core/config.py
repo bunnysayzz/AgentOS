@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     ARTIFACT_STORAGE_PATH: str = "./data/artifacts"
     WORKSPACE_STORAGE_PATH: str = "./data/workspaces"
 
+    # Frontend static build (served at / when present — single-service deploy)
+    FRONTEND_DIST: str = ""
+
     # Encryption
     ENCRYPTION_KEY: str = "change-me-in-production-32bytes-long-key!"
 

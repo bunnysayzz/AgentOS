@@ -1,13 +1,36 @@
 """AgentOS Studio - FastAPI Application Entry Point."""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.database import engine, Base, async_session_factory
 from app.api import router as api_router
+
+
+def _frontend_dist_dir() -> Path | None:
+    """Resolve the built frontend directory, if it exists.
+
+    Supports both a configured FRONTEND_DIST env var (absolute or relative to
+    the repo root) and the default ``frontend/dist`` inside the repo. When the
+    build is absent (e.g. API-only mode or tests), returns None so the app
+    simply doesn't serve the SPA.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    configured = (settings.FRONTEND_DIST or "").strip()
+    if configured:
+        candidate = Path(configured)
+        if not candidate.is_absolute():
+            candidate = repo_root / candidate
+        return candidate if candidate.is_dir() else None
+
+    default = repo_root / "frontend" / "dist"
+    return default if default.is_dir() else None
 
 
 @asynccontextmanager
@@ -80,3 +103,42 @@ async def health_check():
         "version": settings.VERSION,
         "service": settings.PROJECT_NAME,
     }
+
+
+# ─── Single-service frontend hosting ───────────────────────────────
+# When the frontend has been built (frontend/dist), the backend serves the
+# SPA at the site root so a single Render service hosts both the UI and the
+# API. The API console stays available at /admin (Swagger UI).
+
+frontend_dist = _frontend_dist_dir()
+
+if frontend_dist is not None:
+    assets_dir = frontend_dist / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+
+@app.get("/admin", include_in_schema=False)
+async def admin_console():
+    """Backend admin console — the interactive API docs (Swagger UI)."""
+    return RedirectResponse("/docs")
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def spa_fallback(full_path: str):
+    """Serve the SPA for client-side routes (only when the build exists)."""
+    if full_path.startswith(("api/", "docs", "redoc", "openapi.json")):
+        raise HTTPException(status_code=404, detail="Not found")
+    if frontend_dist is None:
+        raise HTTPException(status_code=404, detail="Frontend build not present")
+
+    # Serve real static files (favicon, manifest, etc.) if they exist
+    candidate = frontend_dist / full_path
+    if full_path and candidate.is_file():
+        return FileResponse(candidate)
+
+    # Otherwise fall back to index.html for client-side routing
+    index_html = frontend_dist / "index.html"
+    if index_html.is_file():
+        return FileResponse(index_html)
+    raise HTTPException(status_code=404, detail="Frontend build not present")

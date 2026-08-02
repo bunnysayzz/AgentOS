@@ -138,13 +138,18 @@ make test            # or: ./scripts/run_all_tests.sh
 
 ## ☁️ Deploy on Render
 
-The repo ships with a [**Render Blueprint**](render.yaml) — deployment is one click.
+The repo ships with a [**Render Blueprint**](render.yaml) — deployment is one click, and **everything lives on a single URL**:
+
+| Path | What it serves |
+|---|---|
+| `/` | The main React app (frontend) |
+| `/admin` | Backend admin console — interactive API docs (Swagger UI) |
+| `/api/v1/*` | The backend API |
+| `/health` | Health check |
 
 1. Push this repo to GitHub (it already is: `bunnysayzz/AgentOS`).
 2. In [Render](https://render.com), click **New + → Blueprint** and select the repo.
-3. Render auto-detects `render.yaml` and creates two services:
-   - **agentos-backend** — FastAPI web service (`https://agentos-backend.onrender.com`)
-   - **agentos-frontend** — static React site (`https://agentos-frontend.onrender.com`)
+3. Render auto-detects `render.yaml` and creates **one web service** (`agentos`). The build command installs the backend deps **and** builds the frontend (`npm ci && npm run build`), and FastAPI serves the SPA at the root.
 4. Fill in the secret env vars the blueprint asks for (`sync: false` fields):
    - `DATABASE_URL` → your Aiven Postgres URI
    - `SECRET_KEY`, `ENCRYPTION_KEY` → generate strong random values
@@ -154,7 +159,7 @@ The repo ships with a [**Render Blueprint**](render.yaml) — deployment is one 
 ### Notes for Render
 
 - **Free tier** spins down web services after 15 min of inactivity (first request after idle takes ~30–50 s).
-- If you **rename a service**, update `VITE_API_URL` (frontend → backend) and `CORS_ORIGINS` (backend → frontend) to match the new `.onrender.com` URLs.
+- Because the SPA is served same-origin with the API, `VITE_API_URL=/api/v1` needs no CORS configuration.
 - The backend needs no Redis to run — Redis/Celery are optional and only used when configured.
 
 ### Deploy with Docker instead

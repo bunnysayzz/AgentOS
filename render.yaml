@@ -1,41 +1,48 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # AgentOS Studio — Render Blueprint (render.yaml)
 # ─────────────────────────────────────────────────────────────────────────────
-# Deploy both services automatically:
-#   1. In Render: "New +" → "Blueprint" → connect this GitHub repo
-#   2. Render reads render.yaml and creates the two services below
-#   3. Fill in the env vars marked `sync: false` (they are secrets) with the
-#      values from your local `backend/.env` / `frontend/.env` — the blueprint
-#      will prompt you for them during first deploy.
+# Single-service deployment: one URL hosts everything.
 #
-# Service URLs are predictable from the service names below:
-#   Backend  → https://agentos-backend.onrender.com   (health: /health)
-#   Frontend → https://agentos-frontend.onrender.com
-# If you rename a service, update VITE_API_URL and CORS_ORIGINS accordingly.
+#   https://agentos.onrender.com          → main React app (frontend)
+#   https://agentos.onrender.com/admin    → backend admin console (Swagger UI)
+#   https://agentos.onrender.com/api/v1/* → backend API
+#   https://agentos.onrender.com/health   → health check
+#
+# To deploy:
+#   1. Render → "New +" → "Blueprint" → connect this GitHub repo
+#   2. Render creates ONE web service ("agentos")
+#   3. Fill in the env vars marked `sync: false` (secrets) — the blueprint
+#      prompts for them during first deploy.
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
-  # ─── Backend API (FastAPI + Uvicorn) ──────────────────────────────────────
   - type: web
-    name: agentos-backend
+    name: agentos
     runtime: python
     rootDir: backend
     plan: free
     region: singapore # closest Render region to the Aiven Postgres (Bangalore)
-    buildCommand: pip install -r requirements.txt
+    buildCommand: |
+      npm --prefix ../frontend ci
+      npm --prefix ../frontend run build
+      pip install -r requirements.txt
     startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.0
+      - key: NODE_VERSION
+        value: 22.18.0
+      # Same-origin: the SPA is served from the same host as the API, so a
+      # relative base URL works and no CORS config is required.
+      - key: VITE_API_URL
+        value: /api/v1
       - key: DATABASE_URL
         sync: false # e.g. postgresql+asyncpg://avnadmin:...@host:port/defaultdb?ssl=require
       - key: SECRET_KEY
         sync: false
       - key: ENCRYPTION_KEY
         sync: false
-      - key: CORS_ORIGINS
-        value: '["https://agentos-frontend.onrender.com"]'
       - key: FIREBASE_PROJECT_ID
         value: agentos-7f01e
       - key: FIREBASE_USER_EMAIL
@@ -53,29 +60,4 @@ services:
       - key: FIRST_SUPERUSER_EMAIL
         sync: false
       - key: FIRST_SUPERUSER_PASSWORD
-        sync: false
-
-  # ─── Frontend Static Site (React + Vite) ─────────────────────────────────
-  - type: static
-    name: agentos-frontend
-    runtime: static
-    rootDir: frontend
-    buildCommand: npm install && npm run build
-    staticPublishPath: dist
-    envVars:
-      - key: NODE_VERSION
-        value: 22.18.0
-      - key: VITE_API_URL
-        value: https://agentos-backend.onrender.com/api/v1
-      - key: VITE_FIREBASE_API_KEY
-        sync: false
-      - key: VITE_FIREBASE_AUTH_DOMAIN
-        sync: false
-      - key: VITE_FIREBASE_PROJECT_ID
-        sync: false
-      - key: VITE_FIREBASE_STORAGE_BUCKET
-        sync: false
-      - key: VITE_FIREBASE_MESSAGING_SENDER_ID
-        sync: false
-      - key: VITE_FIREBASE_APP_ID
         sync: false
