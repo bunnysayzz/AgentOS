@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" role="img" aria-label="AgentOS Studio — Production-grade IDE for Agentic AI Systems">
+  <defs>
+    <linearGradient id="bannerBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0c162e"/>
+      <stop offset="55%" stop-color="#101c3d"/>
+      <stop offset="100%" stop-color="#0a0f1f"/>
+    </linearGradient>
+    <linearGradient id="bannerGrid" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e3a8a" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#0e7490" stop-opacity="0.18"/>
+    </linearGradient>
+    <linearGradient id="bannerA" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#7dd3fc"/>
+      <stop offset="100%" stop-color="#38bdf8"/>
+    </linearGradient>
+    <linearGradient id="bannerText" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#93c5fd"/>
+      <stop offset="50%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#22d3ee"/>
+    </linearGradient>
+    <radialGradient id="bannerGlow" cx="8%" cy="50%" r="45%">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.30"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="300" fill="url(#bannerBg)"/>
+  <rect width="1200" height="300" fill="url(#bannerGlow)"/>
+
+  <!-- Subtle grid -->
+  <g stroke="url(#bannerGrid)" stroke-width="1">
+    <path d="M0 60 H1200 M0 120 H1200 M0 180 H1200 M0 240 H1200"/>
+    <path d="M150 0 V300 M300 0 V300 M450 0 V300 M600 0 V300 M750 0 V300 M900 0 V300 M1050 0 V300"/>
+  </g>
+
+  <!-- Orbital accents -->
+  <ellipse cx="128" cy="150" rx="86" ry="34" fill="none" stroke="#38bdf8" stroke-width="2.5" opacity="0.45" transform="rotate(-22 128 150)"/>
+  <circle cx="206" cy="112" r="6" fill="#22d3ee"/>
+  <circle cx="52" cy="188" r="4" fill="#60a5fa" opacity="0.8"/>
+
+  <!-- Badge -->
+  <rect x="24" y="58" width="208" height="184" rx="44" fill="#101a33" stroke="#3b82f6" stroke-width="3" opacity="0.98"/>
+  <!-- Neural A inside badge -->
+  <g stroke-linecap="round" stroke-linejoin="round">
+    <path d="M80 196 L128 108 L176 196" fill="none" stroke="url(#bannerA)" stroke-width="15"/>
+    <path d="M96 170 L160 170" fill="none" stroke="url(#bannerA)" stroke-width="11" opacity="0.9"/>
+  </g>
+  <circle cx="128" cy="104" r="11" fill="#22d3ee"/>
+  <circle cx="128" cy="104" r="17" fill="none" stroke="#22d3ee" stroke-width="2.5" opacity="0.5"/>
+
+  <!-- Wordmark -->
+  <text x="280" y="130" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="56" font-weight="800" fill="url(#bannerText)" letter-spacing="-1">AgentOS Studio</text>
+
+  <!-- Tagline -->
+  <text x="282" y="180" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="24" fill="#94a3b8" letter-spacing="0.2">Production-grade IDE for Agentic AI Systems</text>
+
+  <!-- Feature pills -->
+  <g font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" fill="#cbd5e1">
+    <rect x="282" y="206" width="120" height="34" rx="17" fill="#1e293b" stroke="#334155"/>
+    <text x="342" y="228" text-anchor="middle">Agents</text>
+
+    <rect x="414" y="206" width="136" height="34" rx="17" fill="#1e293b" stroke="#334155"/>
+    <text x="482" y="228" text-anchor="middle">Workflows</text>
+
+    <rect x="562" y="206" width="118" height="34" rx="17" fill="#1e293b" stroke="#334155"/>
+    <text x="621" y="228" text-anchor="middle">MCP Gateway</text>
+
+    <rect x="692" y="206" width="120" height="34" rx="17" fill="#1e293b" stroke="#334155"/>
+    <text x="752" y="228" text-anchor="middle">Telemetry</text>
+  </g>
+</svg>

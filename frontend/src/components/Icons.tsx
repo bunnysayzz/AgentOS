@@ -549,11 +549,21 @@ export const SaveIcon = ({ className, size = 18 }: IconProps) => (
   </svg>
 )
 
-// ─── Logo Icon ─────────────────────────────────────────────────────
+// ─── Logo Icon — neural "A" with orbital accents (brand mark) ──────
 
 export const LogoIcon = ({ className, size = 28 }: IconProps) => (
-  <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+  <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    {/* orbital ring */}
+    <ellipse cx="12" cy="12" rx="9" ry="3.4" opacity="0.5" transform="rotate(-22 12 12)" />
+    {/* neural A */}
+    <path d="M7 16.5 12 6.5l5 10" />
+    <path d="M9.2 13h5.6" opacity="0.9" />
+    {/* apex node */}
+    <circle cx="12" cy="6.2" r="1.5" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="6.2" r="3" opacity="0.4" />
+    {/* satellite nodes */}
+    <circle cx="20.2" cy="9" r="0.9" fill="currentColor" stroke="none" />
+    <circle cx="3.8" cy="15" r="0.9" fill="currentColor" stroke="none" />
   </svg>
 )
 

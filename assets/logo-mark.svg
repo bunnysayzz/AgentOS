@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="AgentOS logo">
+  <defs>
+    <linearGradient id="aosBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1c2a4a"/>
+      <stop offset="55%" stop-color="#101a33"/>
+      <stop offset="100%" stop-color="#0a1122"/>
+    </linearGradient>
+    <linearGradient id="aosRing" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="50%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#22d3ee"/>
+    </linearGradient>
+    <linearGradient id="aosA" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#7dd3fc"/>
+      <stop offset="100%" stop-color="#38bdf8"/>
+    </linearGradient>
+    <radialGradient id="aosGlow" cx="50%" cy="38%" r="60%">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="aosShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="10" stdDeviation="18" flood-color="#020617" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+
+  <!-- Soft ambient glow -->
+  <rect x="0" y="0" width="256" height="256" fill="url(#aosGlow)"/>
+
+  <!-- Badge -->
+  <g filter="url(#aosShadow)">
+    <rect x="28" y="28" width="200" height="200" rx="48" fill="url(#aosBg)"/>
+    <rect x="28.5" y="28.5" width="199" height="199" rx="47.5" fill="none"
+          stroke="url(#aosRing)" stroke-width="4" opacity="0.9"/>
+  </g>
+
+  <!-- Orbital ring -->
+  <ellipse cx="128" cy="128" rx="78" ry="30" fill="none" stroke="#38bdf8"
+           stroke-width="2.5" opacity="0.5" transform="rotate(-24 128 128)"/>
+  <circle cx="198" cy="92" r="6" fill="#22d3ee" opacity="0.95"/>
+  <circle cx="58" cy="164" r="4.5" fill="#60a5fa" opacity="0.7"/>
+
+  <!-- Neural "A" -->
+  <g stroke-linecap="round" stroke-linejoin="round">
+    <path d="M74 168 L128 66 L182 168" fill="none" stroke="url(#aosA)"
+          stroke-width="16"/>
+    <path d="M92 138 L164 138" fill="none" stroke="url(#aosA)"
+          stroke-width="12" opacity="0.9"/>
+  </g>
+
+  <!-- Apex node -->
+  <circle cx="128" cy="64" r="13" fill="#22d3ee"/>
+  <circle cx="128" cy="64" r="20" fill="none" stroke="#22d3ee" stroke-width="3" opacity="0.45"/>
+</svg>

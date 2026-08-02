@@ -1,8 +1,8 @@
 <div align="center">
 
-# 🤖 AgentOS Studio
+<img src="assets/banner.svg" alt="AgentOS Studio — Production-grade IDE for Agentic AI Systems" width="100%" />
 
-**Production-grade IDE for building, testing, deploying, and monitoring Agentic AI Systems**
+<br />
 
 [![CI](https://github.com/bunnysayzz/AgentOS/actions/workflows/ci.yml/badge.svg)](https://github.com/bunnysayzz/AgentOS/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -10,6 +10,7 @@
 [![React 18](https://img.shields.io/badge/React-18-61dafb.svg)](frontend/package.json)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688.svg)](backend/requirements.txt)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-336791.svg)](#database)
+[![Tests](https://img.shields.io/badge/tests-267%20passing-22c55e.svg)](#-testing)
 
 </div>
 

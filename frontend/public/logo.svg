@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="AgentOS">
+  <defs>
+    <linearGradient id="lgBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1d2c4d"/>
+      <stop offset="100%" stop-color="#0b1220"/>
+    </linearGradient>
+    <linearGradient id="lgA" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#7dd3fc"/>
+      <stop offset="100%" stop-color="#38bdf8"/>
+    </linearGradient>
+    <linearGradient id="lgRing" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#22d3ee"/>
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="108" height="108" rx="26" fill="url(#lgBg)"/>
+  <rect x="10.5" y="10.5" width="107" height="107" rx="25.5" fill="none" stroke="url(#lgRing)" stroke-width="3" opacity="0.85"/>
+  <ellipse cx="64" cy="64" rx="42" ry="16" fill="none" stroke="#38bdf8" stroke-width="2" opacity="0.5" transform="rotate(-22 64 64)"/>
+  <circle cx="99" cy="47" r="3.5" fill="#22d3ee"/>
+  <g stroke-linecap="round" stroke-linejoin="round">
+    <path d="M38 86 L64 36 L90 86" fill="none" stroke="url(#lgA)" stroke-width="11"/>
+    <path d="M47 72 L81 72" fill="none" stroke="url(#lgA)" stroke-width="8" opacity="0.9"/>
+  </g>
+  <circle cx="64" cy="34" r="8" fill="#22d3ee"/>
+  <circle cx="64" cy="34" r="13" fill="none" stroke="#22d3ee" stroke-width="2" opacity="0.5"/>
+</svg>

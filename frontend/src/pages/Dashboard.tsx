@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
   ActivityIcon, ArchiveIcon, ArrowRightIcon, BotIcon, BrainIcon, CpuIcon,
-  FileTextIcon, KeyIcon, PlusIcon, ServerIcon, UsersIcon, WorkflowIcon,
+  FileTextIcon, KeyIcon, LogoIcon, PlusIcon, ServerIcon, UsersIcon, WorkflowIcon,
   GlobeIcon, WrenchIcon, DollarSignIcon,
 } from '@/components/Icons'
 import api from '@/services/api'
@@ -174,11 +174,16 @@ export default function Dashboard() {
   return (
     <div className="space-y-8">
       {/* Welcome Header */}
-      <div>
-        <h1 className="text-2xl font-bold">
-          Welcome back{user?.fullName ? `, ${user.fullName.split(' ')[0]}` : ''}
-        </h1>
-        <p className="text-surface-400 mt-1">Here's everything happening in your AgentOS Studio</p>
+      <div className="flex items-center gap-4">
+        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center shadow-lg shadow-primary-500/25 flex-shrink-0">
+          <LogoIcon size={22} className="text-white" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold">
+            Welcome back{user?.fullName ? `, ${user.fullName.split(' ')[0]}` : ''}
+          </h1>
+          <p className="text-surface-400 mt-1">Here's everything happening in your AgentOS Studio</p>
+        </div>
       </div>
 
       {/* Workspace selector if multiple */}
