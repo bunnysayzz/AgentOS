@@ -37,12 +37,14 @@ export default defineConfig({
       timeout: 60_000,
     },
     {
-      // Frontend dev server (proxies /api → :8000)
-      command: 'npx vite --port 5173 --strictPort',
+      // Frontend dev server (proxies /api → :8000). Bind to IPv4 explicitly
+      // so Playwright's 127.0.0.1 health poll succeeds on CI runners (where
+      // vite's default `localhost` may resolve to ::1).
+      command: 'npx vite --port 5173 --strictPort --host 127.0.0.1',
       cwd: '.',
       url: 'http://127.0.0.1:5173',
       reuseExistingServer: !process.env.CI,
-      timeout: 60_000,
+      timeout: 120_000,
     },
   ],
 })

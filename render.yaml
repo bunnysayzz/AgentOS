@@ -64,7 +64,7 @@ services:
     staticPublishPath: dist
     envVars:
       - key: NODE_VERSION
-        value: 20.18.0
+        value: 22.18.0
       - key: VITE_API_URL
         value: https://agentos-backend.onrender.com/api/v1
       - key: VITE_FIREBASE_API_KEY
