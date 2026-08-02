@@ -3,7 +3,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -91,11 +91,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def cache_control_headers(request: Request, call_next):
+    """Cache-control hardening.
+
+    Prevents stale content (a pre-deploy 404, or an old SPA shell) from being
+    served from a browser or edge CDN cache after a redeploy:
+
+    - /assets/*  (content-hashed filenames)  → cache forever (immutable)
+    - /api/*, /health, /docs, /redoc         → never cache (dynamic JSON/UI)
+    - everything else (SPA shell, /admin)    → always revalidate
+    """
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/assets/"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif path.startswith(("/api/", "/docs", "/redoc")) or path in ("/health", "/openapi.json"):
+        response.headers["Cache-Control"] = "no-store"
+    else:
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 # API router
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
     """Health check endpoint."""
     return {
@@ -118,13 +141,13 @@ if frontend_dist is not None:
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
 
-@app.get("/admin", include_in_schema=False)
+@app.api_route("/admin", methods=["GET", "HEAD"], include_in_schema=False)
 async def admin_console():
     """Backend admin console — the interactive API docs (Swagger UI)."""
     return RedirectResponse("/docs")
 
 
-@app.get("/{full_path:path}", include_in_schema=False)
+@app.api_route("/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
 async def spa_fallback(full_path: str):
     """Serve the SPA for client-side routes (only when the build exists)."""
     if full_path.startswith(("api/", "docs", "redoc", "openapi.json")):
