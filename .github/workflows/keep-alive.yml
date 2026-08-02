@@ -1,0 +1,34 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Keep Alive — prevents Render free-tier cold starts
+# ─────────────────────────────────────────────────────────────────────────────
+# Render free-tier instances spin down after ~15 minutes without traffic, and
+# the first request after idle takes 30–60 s to boot (migrations + uvicorn).
+#
+# This workflow pings the service every 10 minutes so it never idles out.
+# The repo is public, so GitHub Actions runs for free. Cost: ~6 minutes of
+# runner time per day, well within free limits.
+#
+# Alternative (no GitHub minutes at all): add this URL to a free uptime
+# monitor like UptimeRobot (https://uptimerobot.com) with a 5-minute interval.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Keep Alive
+
+on:
+  schedule:
+    # Every 10 minutes, every day
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # allow manual trigger from the Actions tab
+
+jobs:
+  ping:
+    name: Ping Render service
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health
+        run: |
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -m 30 https://letsagentos.onrender.com/health)
+          echo "health check → HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "::warning::Service health check returned HTTP $code"
+          fi
