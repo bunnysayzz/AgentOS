@@ -98,8 +98,12 @@ def get_firestore_db() -> firestore.Client:
 
     # ─── 3. ENV Credentials: OAuth Refresh Token ─────────────────────────
     if settings.FIREBASE_REFRESH_TOKEN and settings.FIREBASE_CLIENT_ID:
+        # Normalize empty-string access token to None. An empty string makes
+        # google-auth think it has a valid token and send a blank Bearer
+        # header -> Firestore responds 403 (no refresh is ever attempted).
+        access_token = (settings.FIREBASE_ACCESS_TOKEN or "").strip() or None
         creds = Credentials(
-            token=getattr(settings, "FIREBASE_ACCESS_TOKEN", None),
+            token=access_token,
             refresh_token=settings.FIREBASE_REFRESH_TOKEN,
             token_uri="https://oauth2.googleapis.com/token",
             client_id=settings.FIREBASE_CLIENT_ID,
