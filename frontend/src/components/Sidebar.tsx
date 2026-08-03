@@ -1,7 +1,7 @@
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { cn } from '@/utils/cn'
-import { ActivityIcon, ArchiveIcon, BotIcon, BrainIcon, ChevronLeftIcon, ChevronRightIcon, CpuIcon, DashboardIcon, FileTextIcon, GitBranchIcon, KeyIcon, LogoIcon, LogOutIcon, SettingsIcon, UsersIcon, WorkflowIcon, WrenchIcon, XIcon } from '@/components/Icons'
+import { ActivityIcon, ArchiveIcon, BotIcon, BrainIcon, ChevronLeftIcon, ChevronRightIcon, CpuIcon, DashboardIcon, FileTextIcon, GitBranchIcon, KeyIcon, LogInIcon, LogoIcon, LogOutIcon, SettingsIcon, UserPlusIcon, UsersIcon, WorkflowIcon, WrenchIcon, XIcon } from '@/components/Icons'
 import { useAuthStore } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
 import { firebaseAuth, firebaseSignOut } from '@/services/firebase'
@@ -25,8 +25,17 @@ const navItems = [
 export default function Sidebar() {
   const { sidebarCollapsed: collapsed, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen } = useUIStore()
   const clearAuth = useAuthStore((s) => s.clearAuth)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const location = useLocation()
   const navigate = useNavigate()
+
+  const handleSignOut = async () => {
+    try { await firebaseSignOut(firebaseAuth) } catch { /* ignore */ }
+    clearAuth()
+    localStorage.removeItem('agentos-auth')
+    // Land back on the dashboard in guest mode — no login wall.
+    navigate('/')
+  }
 
   // Close mobile sidebar on navigation
   useEffect(() => {
@@ -103,18 +112,59 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div className={cn('border-t border-surface-700/30 py-3', collapsed ? 'px-2' : 'px-3')}>
-        {/* Profile link */}
-        <button
-          onClick={() => navigate('/profile')}
-          className={cn(
-            'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 mb-1',
-            'text-surface-400 hover:text-surface-200 hover:bg-surface-800/50',
-            collapsed && 'justify-center px-2',
-          )}
-        >
-          <SettingsIcon size={18} />
-          {!collapsed && <span>Settings</span>}
-        </button>
+        {isAuthenticated ? (
+          <>
+            {/* Profile link */}
+            <button
+              onClick={() => navigate('/profile')}
+              className={cn(
+                'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 mb-1',
+                'text-surface-400 hover:text-surface-200 hover:bg-surface-800/50',
+                collapsed && 'justify-center px-2',
+              )}
+            >
+              <SettingsIcon size={18} />
+              {!collapsed && <span>Settings</span>}
+            </button>
+
+            <button
+              onClick={handleSignOut}
+              className={cn(
+                'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
+                'text-surface-400 hover:text-red-400 hover:bg-red-500/10',
+                collapsed && 'justify-center px-2',
+              )}
+            >
+              <LogOutIcon size={18} />
+              {!collapsed && <span>Sign out</span>}
+            </button>
+          </>
+        ) : (
+          <div className={cn('space-y-1.5', collapsed && 'flex flex-col items-center')}>
+            {!collapsed && (
+              <div className="px-3 py-2.5 rounded-xl bg-primary-500/5 border border-primary-500/15">
+                <p className="text-xs font-semibold text-primary-400">Guest mode</p>
+                <p className="text-[11px] text-surface-500 mt-0.5 leading-snug">
+                  Sign in to save your workspaces, agents & data.
+                </p>
+              </div>
+            )}
+            <Link
+              to="/login"
+              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold bg-primary-500 hover:bg-primary-400 text-white shadow-lg shadow-primary-500/20 transition-all duration-200 hover:shadow-primary-500/30"
+            >
+              <LogInIcon size={16} />
+              {!collapsed && <span>Sign in</span>}
+            </Link>
+            <Link
+              to="/register"
+              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium bg-surface-800/60 hover:bg-surface-800 border border-surface-700/40 text-surface-200 transition-all duration-200"
+            >
+              <UserPlusIcon size={16} />
+              {!collapsed && <span>Create account</span>}
+            </Link>
+          </div>
+        )}
 
         {/* Desktop collapse button */}
         <button
@@ -129,22 +179,6 @@ export default function Sidebar() {
           className="flex md:hidden w-full items-center justify-center gap-2 px-3 py-2 rounded-xl text-surface-500 hover:text-surface-300 hover:bg-surface-800/50 transition-all duration-200 text-sm"
         >
           <XIcon size={16} /> Close
-        </button>
-        <button
-          onClick={async () => {
-            try { await firebaseSignOut(firebaseAuth) } catch { /* ignore */ }
-            clearAuth()
-            localStorage.clear()
-            navigate('/login')
-          }}
-          className={cn(
-            'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
-            'text-surface-400 hover:text-red-400 hover:bg-red-500/10',
-            collapsed && 'justify-center px-2',
-          )}
-        >
-          <LogOutIcon size={18} />
-          {!collapsed && <span>Sign out</span>}
         </button>
       </div>
     </aside>

@@ -33,6 +33,7 @@ const DOMAIN_LINKS = [
 
 export default function Dashboard() {
   const user = useAuthStore((s) => s.user)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const [selectedWsId, setSelectedWsId] = useState<string | null>(null)
 
   // ─── Global Stats (parallel fetch) ────────────────────────────────
@@ -173,17 +174,33 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
-      {/* Welcome Header */}
-      <div className="flex items-center gap-4">
-        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center shadow-lg shadow-primary-500/25 flex-shrink-0">
-          <LogoIcon size={22} className="text-white" />
+      {/* Welcome Header — guest-aware */}
+      <div className="flex items-center gap-4 justify-between flex-wrap">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center shadow-lg shadow-primary-500/25 flex-shrink-0">
+            <LogoIcon size={22} className="text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">
+              {isAuthenticated
+                ? `Welcome back${user?.fullName ? `, ${user.fullName.split(' ')[0]}` : ''}`
+                : 'Welcome to AgentOS Studio'}
+            </h1>
+            <p className="text-surface-400 mt-1">
+              {isAuthenticated
+                ? "Here's everything happening in your AgentOS Studio"
+                : 'Explore everything freely — sign in to save your work.'}
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-bold">
-            Welcome back{user?.fullName ? `, ${user.fullName.split(' ')[0]}` : ''}
-          </h1>
-          <p className="text-surface-400 mt-1">Here's everything happening in your AgentOS Studio</p>
-        </div>
+        {!isAuthenticated && (
+          <Link
+            to="/login"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary-500 hover:bg-primary-400 text-white text-sm font-semibold shadow-lg shadow-primary-500/20 transition-all duration-200 hover:shadow-primary-500/30"
+          >
+            Sign in to save your work <ArrowRightIcon size={14} />
+          </Link>
+        )}
       </div>
 
       {/* Workspace selector if multiple */}

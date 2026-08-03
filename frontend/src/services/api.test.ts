@@ -85,6 +85,24 @@ describe('api client interceptors', () => {
     expect(useAuthStore.getState().accessToken).toBeNull()
   })
 
+  it('passes 401s straight through for guests (no logout/redirect)', async () => {
+    // Guest browsing: no session token at all → the 401 must reject WITHOUT
+    // clearing auth or navigating away (pages render guest/empty states).
+    Object.defineProperty(window, 'location', {
+      value: { replace: vi.fn(), href: 'http://localhost/' },
+      configurable: true,
+      writable: true,
+    })
+
+    await expect(responseErrorInterceptor(make401Error('/workspaces/'))).rejects.toBeDefined()
+
+    // Give any (incorrectly scheduled) debounced logout time to run
+    await new Promise((r) => setTimeout(r, 150))
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
+    expect((window.location.replace as any).mock.calls.length).toBe(0)
+    expect(getCurrentIdToken).not.toHaveBeenCalled()
+  })
+
   it('passes non-401 errors straight through', async () => {
     const err: any = new MockAxiosError('Bad credentials', 'ERR_BAD_REQUEST', {
       url: '/auth/firebase',

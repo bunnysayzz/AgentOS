@@ -44,7 +44,8 @@ function debouncedLogout() {
     clearAuth()
     // Only clear our own persisted auth key — never nuke other app data.
     localStorage.removeItem('agentos-auth')
-    window.location.replace('/login')
+    // Land on the dashboard in guest mode — no login wall.
+    window.location.replace('/')
   }, 100)
 }
 
