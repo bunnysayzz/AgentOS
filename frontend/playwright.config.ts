@@ -1,9 +1,9 @@
 import { defineConfig, devices } from '@playwright/test'
 
 /**
- * E2E smoke tests — boot the real backend (FastAPI + SQLite) and the real
- * frontend (Vite dev server with /api proxy), then exercise the auth flow
- * in a headed browser.
+ * E2E smoke tests — boot the real backend (FastAPI, Firestore-backed) and
+ * the real frontend (Vite dev server with /api proxy), then exercise the
+ * auth flow in a headed browser.
  */
 export default defineConfig({
   testDir: './e2e',
