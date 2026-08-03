@@ -8,13 +8,19 @@ order:
 3. ENV OAuth refresh token (FIREBASE_REFRESH_TOKEN & FIREBASE_CLIENT_ID)
 4. GOOGLE_APPLICATION_CREDENTIALS / GCP ADC → GCP services / default
 
-Firebase Auth ID tokens are verified against Google's public certs via
-``google-auth`` — no credentials required.
+Firebase Auth ID tokens are verified against **Firebase's** public signing
+certs (``securetoken@system.gserviceaccount.com``). This is important:
+``google.oauth2.id_token.verify_token`` uses Google OAuth certs and rejects
+Firebase ID tokens with ``Certificate for key id ... not found``. We instead
+use ``google.auth.jwt.decode`` with the Firebase certs endpoint directly.
 """
 
+import json
 import logging
+import time
 from pathlib import Path
 
+from google.auth import jwt as gauth_jwt
 from google.oauth2.credentials import Credentials
 from google.oauth2 import service_account
 from google.cloud import firestore
@@ -30,8 +36,17 @@ CONFIGSTORE_PATH = Path.home() / ".config" / "configstore" / "firebase-tools.jso
 # Google — refreshes with it fail with `invalid_client`.
 FIREBASE_CLI_CLIENT_SECRET = "j9iVZfS8kkCEFUPaAeJV0sAi"
 
+# Firebase ID tokens are signed by Firebase's own certs, published here.
+FIREBASE_CERTS_URL = (
+    "https://www.googleapis.com/robot/v1/metadata/x509/"
+    "securetoken@system.gserviceaccount.com"
+)
+
 _firestore_db = None
 _verify_request = None
+_certs = None
+_certs_fetched_at = 0.0
+CERT_TTL_SECONDS = 3600  # re-fetch signing certs hourly
 
 
 def get_firestore_db() -> firestore.Client:
@@ -103,38 +118,61 @@ def get_firestore_db() -> firestore.Client:
     return _firestore_db
 
 
-def verify_firebase_token(token: str) -> dict:
-    """Verify a Firebase Auth ID token using Google's public certs.
-
-    Returns the decoded claims (``uid``, ``email``, ``name``, ``picture``, …)
-    or raises ValueError for invalid/expired tokens. Requires no credentials.
-
-    Audience note: Firebase ID tokens carry the project's *API key or project
-    number* in their ``aud`` claim — never the human-readable project ID
-    (e.g. ``agentos-7f01e``). Passing ``audience=settings.FIREBASE_PROJECT_ID``
-    to ``google-auth`` would therefore reject every legitimate token, so we
-    omit the strict audience match and instead pin the token to our project
-    via the issuer (``https://securetoken.google.com/<projectId>``), which is
-    unique per Firebase project.
-    """
+def _fetch_firebase_certs() -> dict:
+    """Fetch (and cache) Firebase's public signing certs for ID tokens."""
+    global _certs, _certs_fetched_at
     global _verify_request
-    from google.oauth2 import id_token
+
+    now = time.time()
+    if _certs is not None and now - _certs_fetched_at < CERT_TTL_SECONDS:
+        return _certs
+
     from google.auth.transport import requests as _transport
 
     if _verify_request is None:
         _verify_request = _transport.Request()
 
-    claims = id_token.verify_token(
+    response = _verify_request(FIREBASE_CERTS_URL, method="GET")
+    if response.status != 200:
+        raise ValueError("Failed to fetch Firebase signing certificates")
+    _certs = json.loads(response.data.decode("utf-8"))
+    _certs_fetched_at = now
+    return _certs
+
+
+def verify_firebase_token(token: str) -> dict:
+    """Verify a Firebase Auth ID token using Firebase's signing certs.
+
+    Returns the decoded claims (``user_id``/``sub``, ``email``, ``name``,
+    ``picture``, …) or raises ValueError for invalid/expired tokens.
+    Requires no credentials — only Google's public certs.
+
+    Security checks:
+    - Signature + expiry verified via ``google.auth.jwt.decode``.
+    - ``aud`` must equal the project ID (Firebase sets ``aud`` to the project
+      ID on ID tokens, e.g. ``agentos-7f01e``).
+    - ``iss`` must be ``https://securetoken.google.com/<projectId>`` — unique
+      per Firebase project, so tokens from other projects are rejected.
+    """
+    project_id = settings.FIREBASE_PROJECT_ID or "agentos-7f01e"
+    certs = _fetch_firebase_certs()
+
+    claims = gauth_jwt.decode(
         token,
-        request=_verify_request,
-        # audience deliberately omitted — see docstring
+        certs=certs,
+        audience=project_id,
+        clock_skew_in_seconds=30,
     )
 
-    # Firebase ID tokens are issued by https://securetoken.google.com/<projectId>
+    # Pinning: issuer must be this project's securetoken URL.
     issuer = str(claims.get("iss", ""))
-    expected_issuer = f"https://securetoken.google.com/{settings.FIREBASE_PROJECT_ID}"
-    if not issuer.startswith("https://securetoken.google.com/") or issuer != expected_issuer:
+    expected_issuer = f"https://securetoken.google.com/{project_id}"
+    if issuer != expected_issuer:
         raise ValueError(f"Invalid Firebase token issuer: {issuer}")
-    if not claims.get("uid"):
-        raise ValueError("Invalid Firebase token: missing uid")
+
+    # Firebase uses ``user_id``/``sub`` for the account id (no ``uid`` claim).
+    uid = claims.get("user_id") or claims.get("sub") or claims.get("uid")
+    if not uid:
+        raise ValueError("Invalid Firebase token: missing user id")
+    claims["uid"] = uid
     return claims
