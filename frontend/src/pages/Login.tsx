@@ -27,23 +27,38 @@ export default function Login() {
   const [googleLoading, setGoogleLoading] = useState(true)
   const [error, setError] = useState('')
 
-  // Complete authentication: exchange the Firebase ID token for the profile
-  const finishAuth = async (idToken: string, email?: string | null, displayName?: string | null, photoURL?: string | null) => {
+  // Complete authentication instantly from the Firebase ID token — no waiting
+  // on a backend round-trip. The full Firestore profile (id, username,
+  // superuser flag) refreshes in the background once it arrives.
+  const finishAuth = async (
+    idToken: string,
+    uid: string,
+    email?: string | null,
+    displayName?: string | null,
+    photoURL?: string | null,
+  ) => {
+    setAuth(idToken, '', {
+      id: uid, email: email || '', username: displayName || '',
+      fullName: displayName || 'User', avatarUrl: photoURL || undefined,
+    })
+    navigate('/dashboard', { replace: true })
+
+    // Background: fetch the full profile from the backend (auto-creates the
+    // Firestore user on first sign-in). Apply only if still signed in.
     try {
       const { data: u } = await axios.get(`${API_BASE}/auth/me`, {
         headers: { Authorization: `Bearer ${idToken}` },
       })
-      setAuth(idToken, '', {
-        id: u.id, email: u.email, username: u.username,
-        fullName: u.full_name, avatarUrl: u.avatar_url, isSuperuser: u.is_superuser,
-      })
+      const state = useAuthStore.getState()
+      if (state.accessToken === idToken) {
+        state.setUser({
+          id: u.id, email: u.email, username: u.username,
+          fullName: u.full_name, avatarUrl: u.avatar_url, isSuperuser: u.is_superuser,
+        })
+      }
     } catch {
-      setAuth(idToken, '', {
-        id: '', email: email || '', username: displayName || '',
-        fullName: displayName || 'User', avatarUrl: photoURL || undefined,
-      })
+      // Optimistic profile stays — backend calls still authenticate via token.
     }
-    navigate('/dashboard', { replace: true })
   }
 
   // On mount: check if we're returning from a Google redirect
@@ -51,7 +66,7 @@ export default function Login() {
     const cleanup = checkGoogleRedirect(
       // onSuccess: redirect completed → resolve profile via our backend
       async (user, idToken) => {
-        await finishAuth(idToken, user.email, user.displayName, user.photoURL)
+        await finishAuth(idToken, user.uid, user.email, user.displayName, user.photoURL)
       },
       // onNoRedirect: normal page load, just show the form
       () => { setGoogleLoading(false) }
@@ -68,7 +83,7 @@ export default function Login() {
       // Redirect path (result === null): page navigated away to Google; the
       // mount effect's checkGoogleRedirect finishes auth on return.
       if (result) {
-        await finishAuth(result.idToken, result.user.email, result.user.displayName, result.user.photoURL)
+        await finishAuth(result.idToken, result.user.uid, result.user.email, result.user.displayName, result.user.photoURL)
       }
     } catch (err: any) {
       // User closing the popup is not an error — just show the form again.
@@ -87,7 +102,7 @@ export default function Login() {
     setLoading(true)
     try {
       const { user, idToken } = await loginWithFirebaseEmail(form.email, form.password)
-      await finishAuth(idToken, user.email, user.displayName, user.photoURL)
+      await finishAuth(idToken, user.uid, user.email, user.displayName, user.photoURL)
     } catch (err: any) {
       setError(firebaseAuthErrorMessage(err))
     } finally {

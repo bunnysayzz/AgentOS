@@ -44,6 +44,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"⚠️  Model registry seed skipped: {e}")
 
+    # Warm the Firebase ID-token signing-cert cache so the first login after a
+    # cold start doesn't pay a certificate-fetch round-trip.
+    try:
+        from app.core.firebase import _fetch_firebase_certs
+        _fetch_firebase_certs()
+    except Exception as e:
+        print(f"⚠️  Firebase cert warmup skipped: {e}")
+
     yield
 
 
