@@ -1,6 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
-import { firebaseAuth, firebaseSignOut } from '@/services/firebase'
+import { firebaseAuth, firebaseSignOut, getCurrentIdToken } from '@/services/firebase'
 
 const API_BASE = import.meta.env.VITE_API_URL
 if (!API_BASE) throw new Error('[api] Missing env var: VITE_API_URL')
@@ -14,15 +14,7 @@ const api = axios.create({
   timeout: 30_000,
 })
 
-// ─── Auth endpoints that should NEVER trigger the 401 interceptor ────
-const AUTH_ENDPOINTS = ['/auth/login', '/auth/register', '/auth/refresh']
-
-function isAuthEndpoint(url: string | undefined): boolean {
-  if (!url) return false
-  return AUTH_ENDPOINTS.some((ep) => url.includes(ep))
-}
-
-// ─── Token refresh mutex ─────────────────────────────────────────────
+// ─── Token refresh mutex (Firebase ID token) ──────────────────────────
 let isRefreshing = false
 let pendingRequests: Array<{
   resolve: (token: string) => void
@@ -50,7 +42,8 @@ function debouncedLogout() {
     try { await firebaseSignOut(firebaseAuth) } catch { /* ignore */ }
     const { clearAuth } = useAuthStore.getState()
     clearAuth()
-    localStorage.clear()
+    // Only clear our own persisted auth key — never nuke other app data.
+    localStorage.removeItem('agentos-auth')
     window.location.replace('/login')
   }, 100)
 }
@@ -58,7 +51,7 @@ function debouncedLogout() {
 // ─── Interceptor handlers (exported for direct unit testing) ─────────
 
 /**
- * Attaches the current access token to every outgoing request.
+ * Attaches the current Firebase ID token to every outgoing request.
  * Exported so tests can invoke it without a live axios instance.
  */
 export function requestInterceptor(config: InternalAxiosRequestConfig): InternalAxiosRequestConfig {
@@ -70,16 +63,12 @@ export function requestInterceptor(config: InternalAxiosRequestConfig): Internal
 }
 
 /**
- * Handles 401 responses with token refresh + request queuing.
+ * Handles 401 responses by refreshing the Firebase ID token (Firebase SDK
+ * auto-rotates it) and retrying queued requests.
  * Exported so tests can invoke it with a plain error object.
  */
 export async function responseErrorInterceptor(error: AxiosError) {
   const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
-
-  // Don't intercept auth endpoints — let the caller handle errors directly
-  if (isAuthEndpoint(originalRequest?.url)) {
-    return Promise.reject(error)
-  }
 
   if (error.response?.status !== 401) {
     return Promise.reject(error)
@@ -105,11 +94,8 @@ export async function responseErrorInterceptor(error: AxiosError) {
     })
   }
 
-  // Start a refresh
   const currentState = useAuthStore.getState()
-  const refreshToken = currentState.refreshToken
-
-  if (!refreshToken) {
+  if (!currentState.accessToken) {
     debouncedLogout()
     return Promise.reject(error)
   }
@@ -117,25 +103,20 @@ export async function responseErrorInterceptor(error: AxiosError) {
   isRefreshing = true
 
   try {
-    // Refresh via the same api client (in tests this resolves to the stubbed
-    // instance, so no bare-module axios mocking is required). This is safe:
-    // the refresh URL is in AUTH_ENDPOINTS, so a 401 on the refresh itself
-    // short-circuits in the response interceptor (no recursion), and the
-    // stale access token attached by the request interceptor is harmless.
-    const { data } = await api.post('/auth/refresh', {
-      refresh_token: refreshToken,
-    })
+    // Force the Firebase SDK to mint a fresh ID token (it caches internally)
+    const newToken = await getCurrentIdToken(true)
+    if (!newToken) {
+      throw new Error('No active Firebase session')
+    }
 
-    const newAccessToken = data.access_token
-    // Update store with new tokens
-    currentState.setAuth(newAccessToken, data.refresh_token, currentState.user)
+    currentState.setAuth(newToken, '', currentState.user)
 
     // Retry all queued requests with the new token
-    processPendingRequests(newAccessToken)
+    processPendingRequests(newToken)
 
     // Retry the original request
     if (originalRequest.headers) {
-      originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
+      originalRequest.headers.Authorization = `Bearer ${newToken}`
     }
     return api(originalRequest)
   } catch (refreshError) {
@@ -150,9 +131,6 @@ export async function responseErrorInterceptor(error: AxiosError) {
 
 api.interceptors.request.use(requestInterceptor, (error) => Promise.reject(error))
 api.interceptors.response.use((response) => response, responseErrorInterceptor)
-
-// ─── Health ──────────────────────────────────────────────
-export const healthCheck = () => api.get('/health')
 
 // ─── API helpers ──────────────────────────────────────────
 export const getApi = <T>(url: string, params?: Record<string, unknown>) =>

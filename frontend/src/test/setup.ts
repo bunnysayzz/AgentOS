@@ -80,6 +80,10 @@ vi.mock('@/services/firebase', () => ({
   }),
   signupWithFirebaseEmail: vi.fn(),
   loginWithFirebaseEmail: vi.fn(),
+  getCurrentIdToken: vi.fn().mockResolvedValue('fresh-id-token'),
+  uploadAvatar: vi.fn().mockResolvedValue('https://storage.example/avatar.png'),
+  changeFirebasePassword: vi.fn().mockResolvedValue(undefined),
+  isFirebaseConfigured: true,
 }))
 
 // ─── jsdom polyfills ─────────────────────────────────────────────────────

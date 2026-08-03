@@ -1,6 +1,7 @@
 # ─── AgentOS Studio — Development Override ──────────────────
 # Start with: docker-compose up --build
 # This override enables hot-reload and exposes dev ports.
+# Data lives in Cloud Firestore — no local Postgres/Redis containers.
 
 version: "3.9"
 
@@ -25,10 +26,3 @@ services:
     environment:
       - VITE_API_URL=http://localhost:8000/api/v1
 
-  postgres:
-    ports:
-      - "5432:5432"
-
-  redis:
-    ports:
-      - "6379:6379"

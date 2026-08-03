@@ -58,6 +58,6 @@ async def get_execution_node(
 ):
     """Get a specific execution graph node."""
     node = await execution_graph_service.get_node_by_id(db, node_id)
-    if node is None or node.execution_id != execution_id:
+    if node is None or str(node.execution_id) != str(execution_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found")
     return ExecutionGraphNodeResponse.model_validate(node)

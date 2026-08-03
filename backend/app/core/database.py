@@ -1,46 +1,26 @@
-"""Database engine, session factory, and base model."""
+"""Data access — Firestore-backed, with a SQLAlchemy Base kept for compat.
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+Cloud Firestore is the only runtime data store. ``get_db`` yields a lazy
+:class:`FirestoreDB` wrapper (see ``app.core.db``); no credentials are needed
+at import time, so tests and API-only builds work without Firebase.
+
+``Base`` (a plain SQLAlchemy declarative base) is kept solely so the ORM
+model files — which define the enum types that ``app.schemas`` re-export —
+remain importable. No tables are ever created or queried at runtime.
+"""
+
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.pool import StaticPool
 
-from app.core.config import settings
-
-is_sqlite = settings.DATABASE_URL.startswith("sqlite")
-
-if is_sqlite:
-    engine = create_async_engine(
-        settings.DATABASE_URL,
-        echo=settings.DEBUG,
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-else:
-    engine = create_async_engine(
-        settings.DATABASE_URL,
-        echo=settings.DEBUG,
-        pool_size=settings.DATABASE_POOL_SIZE,
-        max_overflow=settings.DATABASE_MAX_OVERFLOW,
-    )
-
-async_session_factory = async_sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-)
+from app.core.db import FirestoreDB
 
 
 class Base(DeclarativeBase):
-    """Base model for all database entities."""
-    pass
+    """Compatibility base class for ORM model definitions (unused at runtime)."""
 
 
-async def get_db() -> AsyncSession:
-    """Dependency that yields a database session."""
-    async with async_session_factory() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
+_db = FirestoreDB()
+
+
+def get_db():
+    """FastAPI dependency that yields the Firestore-backed data layer."""
+    yield _db

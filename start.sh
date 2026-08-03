@@ -71,14 +71,16 @@ echo -e "\n${BLUE}🚀 Starting backend...${NC}"
 cd "$BACKEND_DIR"
 
 # Activate virtualenv
-if [ -f "$VENV_DIR/bin/activate" ]; then
-    source "$VENV_DIR/bin/activate"
-else
-    echo -e "  ${RED}❌ Virtualenv not found at $VENV_DIR${NC}"
-    echo -e "  ${YELLOW}Creating virtualenv...${NC}"
+if [ ! -f "$VENV_DIR/bin/activate" ]; then
+    echo -e "  ${YELLOW}Creating virtualenv at $VENV_DIR...${NC}"
     python3 -m venv "$VENV_DIR"
-    source "$VENV_DIR/bin/activate"
-    pip install -e . 2>/dev/null || true
+fi
+
+source "$VENV_DIR/bin/activate"
+
+if ! command -v uvicorn &> /dev/null || ! command -v alembic &> /dev/null; then
+    echo -e "  ${YELLOW}Installing backend dependencies...${NC}"
+    pip install -e .
 fi
 
 # Clear Python cache

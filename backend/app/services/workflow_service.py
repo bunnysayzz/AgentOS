@@ -1,14 +1,11 @@
-"""Workflow Engine service - DAG validation, execution lifecycle, scheduling."""
+"""Workflow Engine service - DAG validation, execution lifecycle (Firestore-backed)."""
 
-from datetime import datetime, timezone
-from uuid import UUID
-
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.models.workflow import Workflow, WorkflowExecution, WorkflowStatus, WorkflowExecutionStatus
+from app.core.db import FirestoreDB, now_iso, stamp
+from app.models.workflow import WorkflowStatus, WorkflowExecutionStatus
 from app.schemas.workflow import WorkflowCreate, WorkflowUpdate
-from app.core.timeutils import safe_duration_ms
+
+WORKFLOWS = "workflows"
+WORKFLOW_EXECUTIONS = "workflow_executions"
 
 
 # ─── Errors ──────────────────────────────────────────
@@ -46,7 +43,6 @@ def validate_dag(dag: dict | None) -> list[str]:
         errors.append("DAG must have at least one node")
         return errors
 
-    # Validate nodes
     node_ids = set()
     for i, node in enumerate(nodes):
         nid = node.get("id")
@@ -60,7 +56,6 @@ def validate_dag(dag: dict | None) -> list[str]:
         if not node.get("type"):
             errors.append(f"Node {nid or i} is missing a 'type' field")
 
-    # Validate edges
     for i, edge in enumerate(edges):
         source = edge.get("source")
         target = edge.get("target")
@@ -69,11 +64,9 @@ def validate_dag(dag: dict | None) -> list[str]:
         if target and target not in node_ids:
             errors.append(f"Edge {i}: target '{target}' not found in nodes")
 
-    # Check for cycles (simple DFS)
     if node_ids and _has_cycle(nodes, edges):
         errors.append("DAG contains a cycle — workflows must be acyclic")
 
-    # Check for disconnected nodes
     if edges:
         connected = set()
         for edge in edges:
@@ -82,9 +75,7 @@ def validate_dag(dag: dict | None) -> list[str]:
             if edge.get("target"):
                 connected.add(edge["target"])
         disconnected = node_ids - connected
-        if len(disconnected) == len(node_ids):
-            pass  # Single node with no edges is valid
-        elif disconnected:
+        if len(disconnected) != len(node_ids):
             for nid in disconnected:
                 errors.append(f"Node '{nid}' is disconnected (no incoming or outgoing edges)")
 
@@ -125,215 +116,207 @@ def _has_cycle(nodes: list[dict], edges: list[dict]) -> bool:
 # ─── Workflow CRUD ────────────────────────────────
 
 
-async def create_workflow(db: AsyncSession, workspace_id: UUID, wf_in: WorkflowCreate) -> Workflow:
+async def create_workflow(db: FirestoreDB, workspace_id: str, wf_in: WorkflowCreate) -> dict:
     """Create a new workflow with DAG validation."""
     if wf_in.dag_definition:
         errors = validate_dag(wf_in.dag_definition)
         if errors:
             raise InvalidDAGError("; ".join(errors))
 
-    workflow = Workflow(
-        workspace_id=workspace_id,
-        name=wf_in.name,
-        description=wf_in.description,
-        dag_definition=wf_in.dag_definition,
-        trigger_type=wf_in.trigger_type,
-        trigger_config=wf_in.trigger_config,
-        schedule_cron=wf_in.schedule_cron,
-        timeout_seconds=wf_in.timeout_seconds,
-        status=WorkflowStatus.DRAFT,
-    )
-    db.add(workflow)
-    await db.flush()
-    await db.refresh(workflow)
+    workflow = stamp({
+        "workspace_id": str(workspace_id),
+        "name": wf_in.name,
+        "description": wf_in.description,
+        "dag_definition": wf_in.dag_definition,
+        "trigger_type": wf_in.trigger_type,
+        "trigger_config": wf_in.trigger_config,
+        "schedule_cron": wf_in.schedule_cron,
+        "timeout_seconds": wf_in.timeout_seconds,
+        "status": WorkflowStatus.DRAFT.value,
+        "version": 1,
+    })
+    db.add(WORKFLOWS, workflow)
     return workflow
 
 
-async def get_workflow_by_id(db: AsyncSession, workflow_id: UUID) -> Workflow | None:
-    result = await db.execute(
-        select(Workflow).where(Workflow.id == workflow_id, Workflow.deleted_at.is_(None))
-    )
-    return result.scalar_one_or_none()
+async def get_workflow_by_id(db: FirestoreDB, workflow_id: str) -> dict | None:
+    workflow = db.get(WORKFLOWS, str(workflow_id))
+    if workflow is None or workflow.get("deleted_at"):
+        return None
+    return workflow
 
 
 async def list_workspace_workflows(
-    db: AsyncSession, workspace_id: UUID, page: int = 1, page_size: int = 50
-) -> tuple[list[Workflow], int]:
-    offset = (page - 1) * page_size
-
-    count_result = await db.execute(
-        select(func.count(Workflow.id)).where(
-            Workflow.workspace_id == workspace_id,
-            Workflow.deleted_at.is_(None),
-        )
-    )
-    total = count_result.scalar() or 0
-
-    result = await db.execute(
-        select(Workflow)
-        .where(Workflow.workspace_id == workspace_id, Workflow.deleted_at.is_(None))
-        .order_by(Workflow.updated_at.desc().nulls_last(), Workflow.created_at.desc())
-        .offset(offset).limit(page_size)
-    )
-    return list(result.scalars().all()), total
+    db: FirestoreDB, workspace_id: str, page: int = 1, page_size: int = 50
+) -> tuple[list[dict], int]:
+    rows = [
+        r for r in db.query(WORKFLOWS, "workspace_id", str(workspace_id))
+        if not r.get("deleted_at")
+    ]
+    rows.sort(key=lambda r: (r.get("updated_at") or "", r.get("created_at") or ""), reverse=True)
+    total = len(rows)
+    start = (page - 1) * page_size
+    return rows[start : start + page_size], total
 
 
-async def update_workflow(db: AsyncSession, workflow: Workflow, wf_in: WorkflowUpdate) -> Workflow:
+async def update_workflow(db: FirestoreDB, workflow: dict, wf_in: WorkflowUpdate) -> dict:
     update_data = wf_in.model_dump(exclude_unset=True)
 
-    # Re-validate DAG if changed
     if "dag_definition" in update_data and update_data["dag_definition"]:
         errors = validate_dag(update_data["dag_definition"])
         if errors:
             raise InvalidDAGError("; ".join(errors))
-        workflow.version += 1
+        workflow["version"] = (workflow.get("version") or 1) + 1
 
     for field, value in update_data.items():
-        setattr(workflow, field, value)
+        workflow[field] = value
 
-    await db.flush()
-    await db.refresh(workflow)
+    db.set(WORKFLOWS, workflow["id"], workflow)
     return workflow
 
 
-async def delete_workflow(db: AsyncSession, workflow: Workflow) -> None:
-    workflow.deleted_at = datetime.now(timezone.utc)
-    workflow.status = WorkflowStatus.ARCHIVED
-    await db.flush()
+async def delete_workflow(db: FirestoreDB, workflow: dict) -> None:
+    workflow["deleted_at"] = now_iso()
+    workflow["status"] = WorkflowStatus.ARCHIVED.value
+    db.set(WORKFLOWS, workflow["id"], workflow)
 
 
 # ─── Execution Lifecycle ──────────────────────────
 
 
 async def create_execution(
-    db: AsyncSession, workflow: Workflow, input_data: dict | None = None,
+    db: FirestoreDB, workflow: dict, input_data: dict | None = None,
     triggered_by: str | None = None,
-) -> WorkflowExecution:
-    if workflow.status != WorkflowStatus.ACTIVE:
-        raise WorkflowError(f"Cannot execute workflow in '{workflow.status.value}' status")
+) -> dict:
+    if workflow.get("status") != WorkflowStatus.ACTIVE.value:
+        raise WorkflowError(f"Cannot execute workflow in '{workflow.get('status')}' status")
 
-    execution = WorkflowExecution(
-        workflow_id=workflow.id,
-        status=WorkflowExecutionStatus.PENDING,
-        input_data=input_data,
-        triggered_by=triggered_by or "user",
-    )
-    db.add(execution)
-    await db.flush()
-    await db.refresh(execution)
+    execution = stamp({
+        "workflow_id": workflow["id"],
+        "status": WorkflowExecutionStatus.PENDING.value,
+        "input_data": input_data,
+        "triggered_by": triggered_by or "user",
+        "trigger_event": None,
+        "output_data": None,
+        "error_message": None,
+        "started_at": None,
+        "completed_at": None,
+        "duration_ms": None,
+        "checkpoint_path": None,
+        "snapshot": None,
+    })
+    db.add(WORKFLOW_EXECUTIONS, execution)
     return execution
 
 
-async def get_execution(db: AsyncSession, execution_id: UUID) -> WorkflowExecution | None:
-    result = await db.execute(select(WorkflowExecution).where(WorkflowExecution.id == execution_id))
-    return result.scalar_one_or_none()
+async def get_execution(db: FirestoreDB, execution_id: str) -> dict | None:
+    return db.get(WORKFLOW_EXECUTIONS, str(execution_id))
 
 
 async def list_executions(
-    db: AsyncSession, workflow_id: UUID, page: int = 1, page_size: int = 50
-) -> tuple[list[WorkflowExecution], int]:
-    offset = (page - 1) * page_size
-
-    count_result = await db.execute(
-        select(func.count(WorkflowExecution.id)).where(WorkflowExecution.workflow_id == workflow_id)
-    )
-    total = count_result.scalar() or 0
-
-    result = await db.execute(
-        select(WorkflowExecution)
-        .where(WorkflowExecution.workflow_id == workflow_id)
-        .order_by(WorkflowExecution.created_at.desc())
-        .offset(offset).limit(page_size)
-    )
-    return list(result.scalars().all()), total
+    db: FirestoreDB, workflow_id: str, page: int = 1, page_size: int = 50
+) -> tuple[list[dict], int]:
+    rows = db.query(WORKFLOW_EXECUTIONS, "workflow_id", str(workflow_id))
+    rows.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+    total = len(rows)
+    start = (page - 1) * page_size
+    return rows[start : start + page_size], total
 
 
-async def start_execution(db: AsyncSession, execution: WorkflowExecution) -> WorkflowExecution:
-    if execution.status != WorkflowExecutionStatus.PENDING:
-        raise WorkflowError(f"Cannot start execution in '{execution.status.value}' status")
-    execution.status = WorkflowExecutionStatus.RUNNING
-    execution.started_at = datetime.now(timezone.utc)
-    await db.flush()
-    await db.refresh(execution)
+async def start_execution(db: FirestoreDB, execution: dict) -> dict:
+    if execution.get("status") != WorkflowExecutionStatus.PENDING.value:
+        raise WorkflowError(f"Cannot start execution in '{execution.get('status')}' status")
+    execution["status"] = WorkflowExecutionStatus.RUNNING.value
+    execution["started_at"] = now_iso()
+    db.set(WORKFLOW_EXECUTIONS, execution["id"], execution)
     return execution
 
 
-async def complete_execution(
-    db: AsyncSession, execution: WorkflowExecution, output_data: dict | None = None
-) -> WorkflowExecution:
-    if execution.status != WorkflowExecutionStatus.RUNNING:
-        raise WorkflowError(f"Cannot complete execution in '{execution.status.value}' status")
-    now = datetime.now(timezone.utc)
-    execution.status = WorkflowExecutionStatus.COMPLETED
-    execution.completed_at = now
-    execution.output_data = output_data
-    if execution.started_at:
-        execution.duration_ms = safe_duration_ms(execution.started_at)
-    await db.flush()
-    await db.refresh(execution)
+async def complete_execution(db: FirestoreDB, execution: dict, output_data: dict | None = None) -> dict:
+    if execution.get("status") != WorkflowExecutionStatus.RUNNING.value:
+        raise WorkflowError(f"Cannot complete execution in '{execution.get('status')}' status")
+    execution["status"] = WorkflowExecutionStatus.COMPLETED.value
+    execution["completed_at"] = now_iso()
+    execution["output_data"] = output_data
+    if execution.get("started_at"):
+        from datetime import datetime, timezone
+        try:
+            start = datetime.fromisoformat(execution["started_at"].replace("Z", "+00:00"))
+            execution["duration_ms"] = int((datetime.now(timezone.utc) - start).total_seconds() * 1000)
+        except Exception:
+            pass
+    db.set(WORKFLOW_EXECUTIONS, execution["id"], execution)
     return execution
 
 
-async def fail_execution(db: AsyncSession, execution: WorkflowExecution, error: str) -> WorkflowExecution:
-    if execution.status not in (WorkflowExecutionStatus.RUNNING, WorkflowExecutionStatus.PENDING):
-        raise WorkflowError(f"Cannot fail execution in '{execution.status.value}' status")
-    now = datetime.now(timezone.utc)
-    execution.status = WorkflowExecutionStatus.FAILED
-    execution.completed_at = now
-    execution.error_message = error
-    if execution.started_at:
-        execution.duration_ms = safe_duration_ms(execution.started_at)
-    await db.flush()
-    await db.refresh(execution)
+async def fail_execution(db: FirestoreDB, execution: dict, error: str) -> dict:
+    if execution.get("status") not in (
+        WorkflowExecutionStatus.RUNNING.value,
+        WorkflowExecutionStatus.PENDING.value,
+    ):
+        raise WorkflowError(f"Cannot fail execution in '{execution.get('status')}' status")
+    execution["status"] = WorkflowExecutionStatus.FAILED.value
+    execution["completed_at"] = now_iso()
+    execution["error_message"] = error
+    if execution.get("started_at"):
+        from datetime import datetime, timezone
+        try:
+            start = datetime.fromisoformat(execution["started_at"].replace("Z", "+00:00"))
+            execution["duration_ms"] = int((datetime.now(timezone.utc) - start).total_seconds() * 1000)
+        except Exception:
+            pass
+    db.set(WORKFLOW_EXECUTIONS, execution["id"], execution)
     return execution
 
 
-async def pause_execution(db: AsyncSession, execution: WorkflowExecution) -> WorkflowExecution:
-    if execution.status != WorkflowExecutionStatus.RUNNING:
-        raise WorkflowError(f"Cannot pause execution in '{execution.status.value}' status")
-    execution.status = WorkflowExecutionStatus.PAUSED
-    await db.flush()
-    await db.refresh(execution)
+async def pause_execution(db: FirestoreDB, execution: dict) -> dict:
+    if execution.get("status") != WorkflowExecutionStatus.RUNNING.value:
+        raise WorkflowError(f"Cannot pause execution in '{execution.get('status')}' status")
+    execution["status"] = WorkflowExecutionStatus.PAUSED.value
+    db.set(WORKFLOW_EXECUTIONS, execution["id"], execution)
     return execution
 
 
-async def resume_execution(db: AsyncSession, execution: WorkflowExecution) -> WorkflowExecution:
-    if execution.status != WorkflowExecutionStatus.PAUSED:
-        raise WorkflowError(f"Cannot resume execution in '{execution.status.value}' status")
-    execution.status = WorkflowExecutionStatus.RUNNING
-    await db.flush()
-    await db.refresh(execution)
+async def resume_execution(db: FirestoreDB, execution: dict) -> dict:
+    if execution.get("status") != WorkflowExecutionStatus.PAUSED.value:
+        raise WorkflowError(f"Cannot resume execution in '{execution.get('status')}' status")
+    execution["status"] = WorkflowExecutionStatus.RUNNING.value
+    db.set(WORKFLOW_EXECUTIONS, execution["id"], execution)
     return execution
 
 
-async def cancel_execution(db: AsyncSession, execution: WorkflowExecution) -> WorkflowExecution:
-    if execution.status not in (WorkflowExecutionStatus.PENDING, WorkflowExecutionStatus.RUNNING, WorkflowExecutionStatus.AWAITING_APPROVAL):
-        raise WorkflowError(f"Cannot cancel execution in '{execution.status.value}' status")
-    now = datetime.now(timezone.utc)
-    execution.status = WorkflowExecutionStatus.CANCELLED
-    execution.completed_at = now
-    if execution.started_at:
-        execution.duration_ms = safe_duration_ms(execution.started_at)
-    await db.flush()
-    await db.refresh(execution)
+async def cancel_execution(db: FirestoreDB, execution: dict) -> dict:
+    if execution.get("status") not in (
+        WorkflowExecutionStatus.PENDING.value,
+        WorkflowExecutionStatus.RUNNING.value,
+        WorkflowExecutionStatus.AWAITING_APPROVAL.value,
+    ):
+        raise WorkflowError(f"Cannot cancel execution in '{execution.get('status')}' status")
+    execution["status"] = WorkflowExecutionStatus.CANCELLED.value
+    execution["completed_at"] = now_iso()
+    if execution.get("started_at"):
+        from datetime import datetime, timezone
+        try:
+            start = datetime.fromisoformat(execution["started_at"].replace("Z", "+00:00"))
+            execution["duration_ms"] = int((datetime.now(timezone.utc) - start).total_seconds() * 1000)
+        except Exception:
+            pass
+    db.set(WORKFLOW_EXECUTIONS, execution["id"], execution)
     return execution
 
 
-async def request_approval(db: AsyncSession, execution: WorkflowExecution) -> WorkflowExecution:
-    execution.status = WorkflowExecutionStatus.AWAITING_APPROVAL
-    await db.flush()
-    await db.refresh(execution)
+async def request_approval(db: FirestoreDB, execution: dict) -> dict:
+    execution["status"] = WorkflowExecutionStatus.AWAITING_APPROVAL.value
+    db.set(WORKFLOW_EXECUTIONS, execution["id"], execution)
     return execution
 
 
-async def approve_execution(db: AsyncSession, execution: WorkflowExecution) -> WorkflowExecution:
-    if execution.status != WorkflowExecutionStatus.AWAITING_APPROVAL:
-        raise WorkflowError(f"Cannot approve execution in '{execution.status.value}' status")
-    # Re-check parent workflow is still active
-    wf = await get_workflow_by_id(db, execution.workflow_id)
-    if wf and wf.status != WorkflowStatus.ACTIVE:
-        raise WorkflowError(f"Cannot approve — workflow is '{wf.status.value}', must be 'active'")
-    execution.status = WorkflowExecutionStatus.RUNNING
-    await db.flush()
-    await db.refresh(execution)
+async def approve_execution(db: FirestoreDB, execution: dict) -> dict:
+    if execution.get("status") != WorkflowExecutionStatus.AWAITING_APPROVAL.value:
+        raise WorkflowError(f"Cannot approve execution in '{execution.get('status')}' status")
+    wf = await get_workflow_by_id(db, execution["workflow_id"])
+    if wf and wf.get("status") != WorkflowStatus.ACTIVE.value:
+        raise WorkflowError(f"Cannot approve — workflow is '{wf.get('status')}', must be 'active'")
+    execution["status"] = WorkflowExecutionStatus.RUNNING.value
+    db.set(WORKFLOW_EXECUTIONS, execution["id"], execution)
     return execution

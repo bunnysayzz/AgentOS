@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
-from app.core.database import engine, Base, async_session_factory
+from app.core.db import FirestoreDB
 from app.api import router as api_router
 
 
@@ -36,43 +36,15 @@ def _frontend_dist_dir() -> Path | None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan with startup and shutdown events."""
-    # Startup: create tables (in production use Alembic migrations)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    # Auto-seed first superuser if configured
-    if settings.FIRST_SUPERUSER_EMAIL and settings.FIRST_SUPERUSER_PASSWORD:
-        try:
-            from sqlalchemy import select
-            from app.models.user import User
-            from app.core.security import hash_password
-
-            async with async_session_factory() as session:
-                result = await session.execute(
-                    select(User).where(User.email == settings.FIRST_SUPERUSER_EMAIL)
-                )
-                existing = result.scalar_one_or_none()
-                if existing is None:
-                    user = User(
-                        email=settings.FIRST_SUPERUSER_EMAIL,
-                        username=settings.FIRST_SUPERUSER_EMAIL.split("@")[0],
-                        full_name="Super Admin",
-                        hashed_password=hash_password(settings.FIRST_SUPERUSER_PASSWORD),
-                        is_active=True,
-                        is_verified=True,
-                        is_superuser=True,
-                    )
-                    session.add(user)
-                    await session.commit()
-                    print(f"✅ Created first superuser: {settings.FIRST_SUPERUSER_EMAIL}")
-                else:
-                    print(f"✅ First superuser already exists: {settings.FIRST_SUPERUSER_EMAIL}")
-        except Exception as e:
-            print(f"⚠️  Could not auto-create superuser: {e}")
+    # Best-effort seed of the LLM model registry (Firestore). The superuser is
+    # promoted automatically on first Firebase authentication (FIRST_SUPERUSER_EMAIL).
+    try:
+        from app.services.mcp_service import seed_default_models
+        await seed_default_models(FirestoreDB())
+    except Exception as e:
+        print(f"⚠️  Model registry seed skipped: {e}")
 
     yield
-    # Shutdown: dispose of engine
-    await engine.dispose()
 
 
 app = FastAPI(

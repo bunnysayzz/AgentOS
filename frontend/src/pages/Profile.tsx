@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { toast } from '@/components/Toast'
 import { SkeletonPage } from '@/components/Skeleton'
 import { KeyIcon, SaveIcon, EyeIcon, EyeOffIcon, CameraIcon } from '@/components/Icons'
+import { uploadAvatar, changeFirebasePassword } from '@/services/firebase'
 
 interface UserProfile {
   id: string
@@ -28,6 +29,11 @@ export default function Profile() {
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  // Note: email is intentionally NOT editable here. It's owned by Firebase
+  // Auth (single source of truth) — changing the Firestore doc without the
+  // ID token would desync them and auto-create a duplicate account on login.
 
   // Password form
   const [currentPassword, setCurrentPassword] = useState('')
@@ -49,18 +55,20 @@ export default function Profile() {
     }
   }, [profile])
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > 5 * 1024 * 1024) {
       toast.error('File too large', 'Please select an image smaller than 5MB.')
       return
     }
+    // Preview locally first, upload to Firebase Storage on save
     const reader = new FileReader()
     reader.onloadend = () => {
       if (typeof reader.result === 'string') {
         setAvatarUrl(reader.result)
-        toast.success('Image selected', 'Click Save Changes to update your profile picture.')
+        setSelectedFile(file)
+        toast.success('Image selected', 'Click Save Changes to upload your new profile picture.')
       }
     }
     reader.readAsDataURL(file)
@@ -68,31 +76,52 @@ export default function Profile() {
 
   // Update profile
   const updateMutation = useMutation({
-    mutationFn: (data: { full_name?: string; email?: string; avatar_url?: string }) =>
-      api.patch(`/users/${profile?.id}`, data),
+    mutationFn: async (data: { full_name?: string; email?: string; avatar_url?: string }) => {
+      // If a new avatar was picked, upload it to Firebase Storage first and
+      // persist the resulting download URL (not a base64 blob).
+      let payload = data
+      if (selectedFile) {
+        setAvatarUploading(true)
+        try {
+          const url = await uploadAvatar(selectedFile)
+          payload = { ...data, avatar_url: url }
+        } finally {
+          setAvatarUploading(false)
+        }
+      }
+      return api.patch(`/users/${profile?.id}`, payload)
+    },
     onSuccess: (res) => {
       const u = res.data
+      setSelectedFile(null)
       setUser({ id: u.id, email: u.email, username: u.username, fullName: u.full_name, avatarUrl: u.avatar_url })
       toast.success('Profile updated', 'Your profile has been saved.')
       qc.invalidateQueries({ queryKey: ['profile'] })
     },
     onError: (err: any) => {
-      toast.error('Update failed', err?.response?.data?.detail || 'Could not update profile')
+      toast.error('Update failed', err?.response?.data?.detail || err?.message || 'Could not update profile')
     },
   })
 
-  // Change password
+  // Change password — handled by Firebase Auth, not the backend
   const passwordMutation = useMutation({
     mutationFn: (data: { current_password: string; new_password: string }) =>
-      api.post(`/users/password`, data),
+      changeFirebasePassword(data.current_password, data.new_password),
     onSuccess: () => {
-      toast.success('Password changed', 'Your password has been updated.')
+      toast.success('Password changed', 'Your password has been updated. Use it next time you sign in.')
       setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
     },
     onError: (err: any) => {
-      toast.error('Password change failed', err?.response?.data?.detail || 'Could not change password')
+      const code: string = err?.code || ''
+      if (code.includes('wrong-password') || code.includes('invalid-credential')) {
+        toast.error('Password change failed', 'Current password is incorrect.')
+      } else if (code.includes('weak-password')) {
+        toast.error('Password change failed', 'New password is too weak. Use at least 6 characters.')
+      } else {
+        toast.error('Password change failed', err?.message || 'Could not change password')
+      }
     },
   })
 
@@ -111,8 +140,8 @@ export default function Profile() {
       toast.error('Passwords do not match', 'Please make sure both passwords match.')
       return
     }
-    if (newPassword.length < 8) {
-      toast.error('Password too short', 'Password must be at least 8 characters.')
+    if (newPassword.length < 6) {
+      toast.error('Password too short', 'Password must be at least 6 characters.')
       return
     }
     passwordMutation.mutate({ current_password: currentPassword, new_password: newPassword })
@@ -157,7 +186,7 @@ export default function Profile() {
             <p className="text-xs text-surface-400">Username: @{profile?.username}</p>
             <label className="inline-flex items-center gap-1 mt-1 text-xs text-primary-400 hover:text-primary-300 font-medium cursor-pointer">
               <CameraIcon size={12} />
-              <span>Upload new picture</span>
+              <span>{avatarUploading ? 'Uploading…' : 'Upload new picture'}</span>
               <input
                 type="file"
                 accept="image/*"
@@ -180,16 +209,21 @@ export default function Profile() {
           />
         </div>
 
-        {/* Email */}
+        {/* Email — managed by Firebase Auth; not editable here to keep the
+            Firestore doc in sync with the ID token (prevents duplicate accounts) */}
         <div>
           <label className="block text-sm font-medium text-surface-300 mb-1.5">Email</label>
           <input
             type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            readOnly
+            disabled
             placeholder="email@example.com"
-            className="input-field"
+            className="input-field opacity-70 cursor-not-allowed"
           />
+          <p className="text-xs text-surface-500 mt-1">
+            Your email is managed by your Firebase account. To change it, update it in Google/Firebase and sign in again.
+          </p>
         </div>
 
         {/* Verification status */}
@@ -214,11 +248,11 @@ export default function Profile() {
         <div className="pt-2">
           <button
             type="submit"
-            disabled={updateMutation.isPending}
+            disabled={updateMutation.isPending || avatarUploading}
             className="btn-primary flex items-center gap-2"
           >
             <SaveIcon size={16} />
-            {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+            {updateMutation.isPending || avatarUploading ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
       </form>
@@ -231,7 +265,7 @@ export default function Profile() {
           </div>
           <div>
             <h2 className="text-lg font-semibold text-surface-100">Password</h2>
-            <p className="text-xs text-surface-500">Update your account password</p>
+            <p className="text-xs text-surface-500">Update your account password (managed by Firebase)</p>
           </div>
         </div>
 
@@ -265,10 +299,10 @@ export default function Profile() {
               type={showNewPassword ? 'text' : 'password'}
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="At least 8 characters"
+              placeholder="At least 6 characters"
               className="input-field pr-10"
               required
-              minLength={8}
+              minLength={6}
             />
             <button
               type="button"

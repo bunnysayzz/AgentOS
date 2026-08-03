@@ -18,11 +18,6 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
-    # Database
-    DATABASE_URL: str = "sqlite+aiosqlite:///./agentos.db"
-    DATABASE_POOL_SIZE: int = 10
-    DATABASE_MAX_OVERFLOW: int = 20
-
     # Firebase & Google Cloud
     FIREBASE_PROJECT_ID: str = "agentos-7f01e"
     FIREBASE_USER_EMAIL: str = ""
@@ -60,9 +55,9 @@ class Settings(BaseSettings):
     # Encryption
     ENCRYPTION_KEY: str = "change-me-in-production-32bytes-long-key!"
 
-    # First superuser (auto-created on startup)
+    # First superuser — their Firestore user doc is flagged is_superuser on
+    # first Firebase authentication (no password stored server-side).
     FIRST_SUPERUSER_EMAIL: str = ""
-    FIRST_SUPERUSER_PASSWORD: str = ""
 
 
 settings = Settings()

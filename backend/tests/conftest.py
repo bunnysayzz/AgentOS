@@ -1,18 +1,21 @@
-"""Pytest fixtures for async integration tests."""
+"""Pytest fixtures for Firestore-backed integration tests (no Firebase needed).
+
+Uses an in-memory fake Firestore client and a monkeypatched Firebase token
+verifier, so the whole suite runs offline and deterministically.
+"""
 
 import asyncio
-from typing import AsyncGenerator, Generator
-from uuid import UUID
+import hashlib
+from typing import AsyncGenerator
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.pool import StaticPool
 
-from app.core.config import settings
-from app.core.database import Base, get_db
+from app.core.db import FirestoreDB
+from app.core.database import get_db
 from app.main import app
+from tests.fake_firestore import FakeFirestoreClient
 
 
 # ─── Async session scope ─────────────────────────────
@@ -26,60 +29,76 @@ def event_loop():
     loop.close()
 
 
-# ─── Test database ────────────────────────────────────
-
-TEST_DB_URL = "sqlite+aiosqlite://"
+# ─── Fake Firestore ──────────────────────────────────
 
 
-@pytest_asyncio.fixture(scope="session")
-async def engine():
-    """Create a test database engine."""
-    engine = create_async_engine(
-        TEST_DB_URL,
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    yield engine
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-    await engine.dispose()
+@pytest.fixture
+def firestore_client() -> FakeFirestoreClient:
+    """A fresh in-memory Firestore per test."""
+    return FakeFirestoreClient()
 
 
-@pytest_asyncio.fixture
-async def db_session(engine) -> AsyncGenerator[AsyncSession, None]:
-    """Create a fresh database session per test."""
-    connection = await engine.connect()
-    transaction = await connection.begin()
-    session = async_sessionmaker(
-        bind=connection, class_=AsyncSession, expire_on_commit=False
-    )()
+# ─── Fake Firebase token verification ────────────────
 
-    yield session
 
-    await session.close()
-    await transaction.rollback()
-    await connection.close()
+def fake_verify_firebase_token(token: str) -> dict:
+    """Stand-in for app.core.firebase.verify_firebase_token.
+
+    Token format: ``firebase.<email>`` (or ``firebase.<email>:<name>``).
+    Anything else raises ValueError, mirroring an invalid token.
+    """
+    if not token.startswith("firebase."):
+        raise ValueError("Invalid Firebase token")
+    body = token[len("firebase."):]
+    email = body.split(":")[0]
+    name = body.split(":")[1] if ":" in body else email.split("@")[0]
+    return {
+        "uid": hashlib.sha256(token.encode()).hexdigest()[:28],
+        "email": email,
+        "name": name,
+        "picture": None,
+    }
+
+
+@pytest.fixture(autouse=True)
+def fake_firebase_token_auth(monkeypatch, firestore_client):
+    """Wire the fake Firestore + fake token verifier into the app."""
+    from app.api import deps as deps_module
+    from app.api import auth as auth_module
+    from app.core import firebase as firebase_core
+    from app.core import database as database_module
+
+    monkeypatch.setattr(deps_module, "verify_firebase_token", fake_verify_firebase_token)
+    monkeypatch.setattr(auth_module, "verify_firebase_token", fake_verify_firebase_token)
+    monkeypatch.setattr(firebase_core, "verify_firebase_token", fake_verify_firebase_token)
+
+    def _override_get_db():
+        yield FirestoreDB(client=firestore_client)
+
+    monkeypatch.setattr(database_module, "_db", FirestoreDB(client=firestore_client))
+    app.dependency_overrides[get_db] = _override_get_db
+    yield
+    app.dependency_overrides.clear()
 
 
 # ─── Test client ──────────────────────────────────────
 
 
 @pytest_asyncio.fixture
-async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
-    """FastAPI test client with overridden DB dependency."""
-
-    async def _override_get_db() -> AsyncGenerator[AsyncSession, None]:
-        yield db_session
-
-    app.dependency_overrides[get_db] = _override_get_db
+async def client() -> AsyncGenerator[AsyncClient, None]:
+    """FastAPI test client with the fake Firestore wired in."""
     transport = ASGITransport(app=app)
-
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
 
-    app.dependency_overrides.clear()
+
+# ─── Service-level session (replaces the old SQLAlchemy db_session) ──
+
+
+@pytest.fixture
+async def db_session(firestore_client) -> FirestoreDB:
+    """A Firestore-backed DB handle for direct service-level tests."""
+    return FirestoreDB(client=firestore_client)
 
 
 # ─── Test user fixtures ───────────────────────────────
@@ -92,33 +111,23 @@ async def test_user_data():
         "email": "test@example.com",
         "username": "testuser",
         "full_name": "Test User",
-        "password": "testpass123",
     }
 
 
 @pytest_asyncio.fixture
 async def test_user(client: AsyncClient, test_user_data: dict) -> dict:
-    """Register and return a test user with auth tokens."""
-    # Register first
-    reg_resp = await client.post("/api/v1/auth/register", json=test_user_data)
-    assert reg_resp.status_code == 201
-    user_data = reg_resp.json()
-
-    # Login to get tokens (register doesn't return them)
-    login_resp = await client.post("/api/v1/auth/login", json={
-        "email": test_user_data["email"],
-        "password": test_user_data["password"],
-    })
-    assert login_resp.status_code == 200
-    token_data = login_resp.json()
-
+    """Create a Firebase-token user via auto-registration on first /auth/me."""
+    token = f"firebase.{test_user_data['email']}:{test_user_data['full_name']}"
+    resp = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+    data = resp.json()
     return {
-        "id": user_data["id"],
-        "email": user_data["email"],
-        "username": user_data["username"],
-        "full_name": user_data["full_name"],
-        "access_token": token_data["access_token"],
-        "refresh_token": token_data["refresh_token"],
+        "id": data["id"],
+        "email": data["email"],
+        "username": data["username"],
+        "full_name": data["full_name"],
+        "access_token": token,
+        "refresh_token": token,
     }
 
 
@@ -130,30 +139,16 @@ async def auth_headers(test_user: dict) -> dict:
 
 @pytest_asyncio.fixture
 async def second_user(client: AsyncClient) -> dict:
-    """Register and login a second user for multi-user tests."""
-    user_data = {
-        "email": "other@example.com",
-        "username": "otheruser",
-        "full_name": "Other User",
-        "password": "testpass123",
-    }
-    reg_resp = await client.post("/api/v1/auth/register", json=user_data)
-    assert reg_resp.status_code == 201
-    data = reg_resp.json()
-
-    # Login to get tokens
-    login_resp = await client.post("/api/v1/auth/login", json={
-        "email": user_data["email"],
-        "password": user_data["password"],
-    })
-    assert login_resp.status_code == 200
-    token_data = login_resp.json()
-
+    """Create and return a second user for multi-user tests."""
+    token = "firebase.other@example.com:Other User"
+    resp = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+    data = resp.json()
     return {
         "id": data["id"],
         "email": data["email"],
         "username": data["username"],
-        "auth_headers": {"Authorization": f"Bearer {token_data['access_token']}"},
+        "auth_headers": {"Authorization": f"Bearer {token}"},
     }
 
 

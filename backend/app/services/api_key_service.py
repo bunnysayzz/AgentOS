@@ -1,15 +1,12 @@
-"""API Key service - create, list, revoke, and validate API keys."""
+"""API Key service — create, list, revoke, and validate API keys (Firestore)."""
 
 import secrets
 import hashlib
-from datetime import datetime, timezone
-from uuid import UUID
 
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.models.api_key import ApiKey
+from app.core.db import FirestoreDB, stamp
 from app.schemas.user import ApiKeyCreate
+
+API_KEYS = "api_keys"
 
 
 # ─── Errors ──────────────────────────────────────────
@@ -32,7 +29,7 @@ class ApiKeyNotFoundError(ApiKeyError):
 
 def generate_api_key() -> tuple[str, str, str]:
     """Generate a new API key.
-    
+
     Returns: (full_key, key_prefix, key_hash)
     Format: agos_{prefix}_{secret}
     """
@@ -48,68 +45,52 @@ def generate_api_key() -> tuple[str, str, str]:
 
 
 async def create_api_key(
-    db: AsyncSession, user_id: UUID, key_in: ApiKeyCreate
-) -> tuple[ApiKey, str]:
+    db: FirestoreDB, user_id: str, key_in: ApiKeyCreate
+) -> tuple[dict, str]:
     """Create a new API key for a user. Returns (key_record, full_key)."""
     full_key, key_prefix, key_hash = generate_api_key()
 
-    api_key = ApiKey(
-        user_id=user_id,
-        name=key_in.name,
-        key_hash=key_hash,
-        key_prefix=key_prefix,
-        scopes=",".join(key_in.scopes) if key_in.scopes else None,
-        expires_at=key_in.expires_at,
-        is_active=True,
-    )
-    db.add(api_key)
-    await db.flush()
-    await db.refresh(api_key)
+    api_key = stamp({
+        "user_id": str(user_id),
+        "name": key_in.name,
+        "key_hash": key_hash,
+        "key_prefix": key_prefix,
+        "scopes": ",".join(key_in.scopes) if key_in.scopes else None,
+        "expires_at": key_in.expires_at.isoformat() if key_in.expires_at else None,
+        "is_active": True,
+        "last_used_at": None,
+    })
+    db.add(API_KEYS, api_key)
     return api_key, full_key
 
 
-async def list_user_api_keys(
-    db: AsyncSession, user_id: UUID
-) -> list[ApiKey]:
+async def list_user_api_keys(db: FirestoreDB, user_id: str) -> list[dict]:
     """List all API keys for a user."""
-    result = await db.execute(
-        select(ApiKey)
-        .where(ApiKey.user_id == user_id)
-        .order_by(ApiKey.created_at.desc())
-    )
-    return list(result.scalars().all())
+    rows = [r for r in db.query(API_KEYS, "user_id", str(user_id)) if not r.get("deleted_at")]
+    rows.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+    return rows
 
 
-async def get_api_key_by_id(
-    db: AsyncSession, key_id: UUID, user_id: UUID
-) -> ApiKey | None:
+async def get_api_key_by_id(db: FirestoreDB, key_id: str, user_id: str) -> dict | None:
     """Get a specific API key by ID (scoped to user)."""
-    result = await db.execute(
-        select(ApiKey).where(
-            ApiKey.id == key_id,
-            ApiKey.user_id == user_id,
-        )
-    )
-    return result.scalar_one_or_none()
+    api_key = db.get(API_KEYS, str(key_id))
+    if api_key is None or str(api_key.get("user_id") or "") != str(user_id):
+        return None
+    return api_key
 
 
-async def revoke_api_key(
-    db: AsyncSession, key_id: UUID, user_id: UUID
-) -> None:
+async def revoke_api_key(db: FirestoreDB, key_id: str, user_id: str) -> None:
     """Revoke (soft-delete) an API key."""
     api_key = await get_api_key_by_id(db, key_id, user_id)
     if api_key is None:
         raise ApiKeyNotFoundError()
-    api_key.is_active = False
-    await db.flush()
+    api_key["is_active"] = False
+    db.set(API_KEYS, api_key["id"], api_key)
 
 
-async def delete_api_key(
-    db: AsyncSession, key_id: UUID, user_id: UUID
-) -> None:
+async def delete_api_key(db: FirestoreDB, key_id: str, user_id: str) -> None:
     """Permanently delete an API key."""
     api_key = await get_api_key_by_id(db, key_id, user_id)
     if api_key is None:
         raise ApiKeyNotFoundError()
-    await db.delete(api_key)
-    await db.flush()
+    db.delete(API_KEYS, api_key["id"])

@@ -2,10 +2,21 @@ import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { EyeIcon, EyeOffIcon, LockIcon, LogInIcon, LogoIcon, MailIcon, GoogleIcon } from '@/components/Icons'
 import { useAuthStore } from '@/stores/authStore'
-import { loginWithGoogle, checkGoogleRedirect } from '@/services/firebase'
+import { loginWithGoogle, checkGoogleRedirect, loginWithFirebaseEmail } from '@/services/firebase'
 import axios from 'axios'
 
 const API_BASE = import.meta.env.VITE_API_URL
+
+function firebaseAuthErrorMessage(err: any): string {
+  const code: string = err?.code || ''
+  if (code.includes('user-not-found') || code.includes('wrong-password') || code.includes('invalid-credential')) {
+    return 'Invalid email or password.'
+  }
+  if (code.includes('too-many-requests')) return 'Too many attempts. Please try again later.'
+  if (code.includes('invalid-email')) return 'Please enter a valid email address.'
+  if (code.includes('user-disabled')) return 'This account has been disabled.'
+  return err?.message || 'Login failed. Please try again.'
+}
 
 export default function Login() {
   const navigate = useNavigate()
@@ -16,38 +27,31 @@ export default function Login() {
   const [googleLoading, setGoogleLoading] = useState(true)
   const [error, setError] = useState('')
 
+  // Complete authentication: exchange the Firebase ID token for the profile
+  const finishAuth = async (idToken: string, email?: string | null, displayName?: string | null, photoURL?: string | null) => {
+    try {
+      const { data: u } = await axios.get(`${API_BASE}/auth/me`, {
+        headers: { Authorization: `Bearer ${idToken}` },
+      })
+      setAuth(idToken, '', {
+        id: u.id, email: u.email, username: u.username,
+        fullName: u.full_name, avatarUrl: u.avatar_url, isSuperuser: u.is_superuser,
+      })
+    } catch {
+      setAuth(idToken, '', {
+        id: '', email: email || '', username: displayName || '',
+        fullName: displayName || 'User', avatarUrl: photoURL || undefined,
+      })
+    }
+    navigate('/dashboard', { replace: true })
+  }
+
   // On mount: check if we're returning from a Google redirect
   useEffect(() => {
     const cleanup = checkGoogleRedirect(
-      // onSuccess: redirect completed, authenticate with our backend
+      // onSuccess: redirect completed → resolve profile via our backend
       async (user, idToken) => {
-        try {
-          const { data: tokenData } = await axios.post(`${API_BASE}/auth/google`, {
-            id_token: idToken,
-            email: user.email,
-            full_name: user.displayName || user.email?.split('@')[0],
-            avatar_url: user.photoURL || undefined,
-          })
-          // Fetch full profile
-          try {
-            const { data: u } = await axios.get(`${API_BASE}/auth/me`, {
-              headers: { Authorization: `Bearer ${tokenData.access_token}` },
-            })
-            setAuth(tokenData.access_token, tokenData.refresh_token, {
-              id: u.id, email: u.email, username: u.username,
-              fullName: u.full_name, avatarUrl: u.avatar_url, isSuperuser: u.is_superuser,
-            })
-          } catch {
-            setAuth(tokenData.access_token, tokenData.refresh_token, {
-              id: user.uid, email: user.email || '', username: user.displayName || '',
-              fullName: user.displayName || 'Google User', avatarUrl: user.photoURL || undefined,
-            })
-          }
-          navigate('/dashboard', { replace: true })
-        } catch (err: any) {
-          setError(err.response?.data?.detail || err.message || 'Google Sign-In failed.')
-          setGoogleLoading(false)
-        }
+        await finishAuth(idToken, user.email, user.displayName, user.photoURL)
       },
       // onNoRedirect: normal page load, just show the form
       () => { setGoogleLoading(false) }
@@ -72,22 +76,10 @@ export default function Login() {
     setError('')
     setLoading(true)
     try {
-      const { data: tokenData } = await axios.post(`${API_BASE}/auth/login`, form)
-      try {
-        const { data: u } = await axios.get(`${API_BASE}/auth/me`, {
-          headers: { Authorization: `Bearer ${tokenData.access_token}` },
-        })
-        setAuth(tokenData.access_token, tokenData.refresh_token, {
-          id: u.id, email: u.email, username: u.username,
-          fullName: u.full_name, avatarUrl: u.avatar_url, isSuperuser: u.is_superuser,
-        })
-      } catch {
-        setAuth(tokenData.access_token, tokenData.refresh_token, null)
-      }
-      navigate('/dashboard', { replace: true })
+      const { user, idToken } = await loginWithFirebaseEmail(form.email, form.password)
+      await finishAuth(idToken, user.email, user.displayName, user.photoURL)
     } catch (err: any) {
-      const detail = err.response?.data?.detail
-      setError(typeof detail === 'string' ? detail : 'Login failed. Please try again.')
+      setError(firebaseAuthErrorMessage(err))
     } finally {
       setLoading(false)
     }

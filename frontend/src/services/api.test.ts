@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // created in api.ts (stubbed by the central mock in src/test/setup.ts).
 import api, { requestInterceptor, responseErrorInterceptor } from './api'
 import { useAuthStore } from '@/stores/authStore'
+import { getCurrentIdToken } from '@/services/firebase'
 
 // Plain error stand-in — the interceptor only reads `response.status`,
 // `config.url` and `config.headers`.
@@ -49,23 +50,17 @@ describe('api client interceptors', () => {
     expect(config.headers.Authorization).toBeUndefined()
   })
 
-  it('refreshes the token on 401 and retries the original request', async () => {
+  it('refreshes the Firebase token on 401 and retries the original request', async () => {
     useAuthStore.getState().setAuth('old-access', 'refresh-123', null)
-
-    ;(api as any).post.mockResolvedValue({
-      data: { access_token: 'new-access', refresh_token: 'refresh-456' },
-    })
+    ;(getCurrentIdToken as any).mockResolvedValueOnce('new-access')
     ;(api as any).mockResolvedValue({ data: 'retried-ok' })
 
     const result = await responseErrorInterceptor(make401Error('/workspaces/'))
 
     expect(result).toEqual({ data: 'retried-ok' })
     expect(useAuthStore.getState().accessToken).toBe('new-access')
-    expect(useAuthStore.getState().refreshToken).toBe('refresh-456')
-    // The refresh went through the api client
-    expect((api as any).post).toHaveBeenCalledWith('/auth/refresh', {
-      refresh_token: 'refresh-123',
-    })
+    // The Firebase SDK was asked for a fresh ID token
+    expect(getCurrentIdToken).toHaveBeenCalledWith(true)
     // The retried request carried the new token
     const retriedConfig = (api as any).mock.calls[0][0]
     expect(retriedConfig.headers.Authorization).toBe('Bearer new-access')
@@ -73,7 +68,7 @@ describe('api client interceptors', () => {
 
   it('rejects and logs out when the refresh fails', async () => {
     useAuthStore.getState().setAuth('old-access', 'refresh-123', null)
-    ;(api as any).post.mockRejectedValue(new Error('refresh failed'))
+    ;(getCurrentIdToken as any).mockResolvedValueOnce(null)
 
     // Stub location so jsdom doesn't throw on the navigation in debouncedLogout
     Object.defineProperty(window, 'location', {
@@ -90,12 +85,12 @@ describe('api client interceptors', () => {
     expect(useAuthStore.getState().accessToken).toBeNull()
   })
 
-  it('does not intercept auth endpoints (login errors pass through)', async () => {
+  it('passes non-401 errors straight through', async () => {
     const err: any = new MockAxiosError('Bad credentials', 'ERR_BAD_REQUEST', {
-      url: '/auth/login',
+      url: '/auth/firebase',
       headers: {},
     })
-    err.response = { status: 401, data: { detail: 'Invalid email or password' } }
+    err.response = { status: 400, data: { detail: 'Invalid token' } }
 
     await expect(responseErrorInterceptor(err)).rejects.toEqual(err)
   })

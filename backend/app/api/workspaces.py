@@ -197,7 +197,7 @@ async def add_member(
     try:
         membership = await workspace_service.add_member(db, workspace, member_in)
         # Get user details for response
-        user = await get_user_by_id(db, member_in.user_id)
+        user = get_user_by_id(db, member_in.user_id)
         return WorkspaceMemberResponse(
             id=membership.id,
             user_id=membership.user_id,
@@ -222,7 +222,7 @@ async def update_member_role(
         membership = await workspace_service.update_member_role(
             db, workspace, user_id, member_in.role
         )
-        user = await get_user_by_id(db, user_id)
+        user = get_user_by_id(db, user_id)
         return WorkspaceMemberResponse(
             id=membership.id,
             user_id=membership.user_id,

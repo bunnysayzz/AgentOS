@@ -10,44 +10,42 @@ const API_BASE = import.meta.env.VITE_API_URL
 export default function Register() {
   const navigate = useNavigate()
   const setAuth = useAuthStore((s) => s.setAuth)
-  const [form, setForm] = useState({ email: '', username: '', fullName: '', password: '' })
+  const [form, setForm] = useState({ email: '', fullName: '', password: '' })
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(true)
   const [error, setError] = useState('')
 
+  /**
+   * Exchange a Firebase ID token for the profile. The backend auto-creates
+   * the Firestore user on first sign-in, so no separate register step exists.
+   */
+  const finishAuth = async (idToken: string) => {
+    try {
+      const { data: u } = await axios.post(`${API_BASE}/auth/firebase`, { id_token: idToken })
+      setAuth(idToken, '', {
+        id: u.id, email: u.email, username: u.username,
+        fullName: u.full_name, avatarUrl: u.avatar_url, isSuperuser: u.is_superuser,
+      })
+    } catch (err: any) {
+      setError(err.response?.data?.detail || err.message || 'Account creation failed.')
+      setGoogleLoading(false)
+      throw err
+    }
+    navigate('/dashboard', { replace: true })
+  }
+
   // On mount: check if we're returning from a Google redirect
   useEffect(() => {
     const cleanup = checkGoogleRedirect(
-      async (user, idToken) => {
+      async (_user, idToken) => {
         try {
-          const { data: tokenData } = await axios.post(`${API_BASE}/auth/google`, {
-            id_token: idToken,
-            email: user.email,
-            full_name: user.displayName || user.email?.split('@')[0],
-            avatar_url: user.photoURL || undefined,
-          })
-          try {
-            const { data: u } = await axios.get(`${API_BASE}/auth/me`, {
-              headers: { Authorization: `Bearer ${tokenData.access_token}` },
-            })
-            setAuth(tokenData.access_token, tokenData.refresh_token, {
-              id: u.id, email: u.email, username: u.username,
-              fullName: u.full_name, avatarUrl: u.avatar_url, isSuperuser: u.is_superuser,
-            })
-          } catch {
-            setAuth(tokenData.access_token, tokenData.refresh_token, {
-              id: user.uid, email: user.email || '', username: user.displayName || '',
-              fullName: user.displayName || 'Google User', avatarUrl: user.photoURL || undefined,
-            })
-          }
-          navigate('/dashboard', { replace: true })
-        } catch (err: any) {
-          setError(err.response?.data?.detail || err.message || 'Google Sign-In failed.')
-          setGoogleLoading(false)
+          await finishAuth(idToken)
+        } catch {
+          // error already surfaced via setError
         }
       },
-      () => { setGoogleLoading(false) }
+      () => { setGoogleLoading(false) },
     )
     return cleanup
   }, [])
@@ -57,6 +55,7 @@ export default function Register() {
     setGoogleLoading(true)
     try {
       await loginWithGoogle()
+      // Page navigates away to Google — result handled by checkGoogleRedirect on return
     } catch (err: any) {
       setError(err.message || 'Google Sign-In failed. Please try again.')
       setGoogleLoading(false)
@@ -68,42 +67,19 @@ export default function Register() {
     setError('')
     setLoading(true)
     try {
-      // Step 1: Create Firebase account (for email verification)
-      try {
-        await signupWithFirebaseEmail(form.email, form.password)
-      } catch (fbErr) {
-        console.warn('[Firebase Auth] Email signup notice:', fbErr)
-      }
-
-      // Step 2: Register in backend
-      await axios.post(`${API_BASE}/auth/register`, {
-        email: form.email,
-        username: form.username,
-        full_name: form.fullName,
-        password: form.password,
-      })
-
-      // Step 3: Login to get tokens
-      const { data: tokenData } = await axios.post(`${API_BASE}/auth/login`, {
-        email: form.email,
-        password: form.password,
-      })
-
-      try {
-        const { data: u } = await axios.get(`${API_BASE}/auth/me`, {
-          headers: { Authorization: `Bearer ${tokenData.access_token}` },
-        })
-        setAuth(tokenData.access_token, tokenData.refresh_token, {
-          id: u.id, email: u.email, username: u.username, fullName: u.full_name,
-        })
-      } catch {
-        setAuth(tokenData.access_token, tokenData.refresh_token, null)
-      }
-
-      navigate('/dashboard', { replace: true })
+      // Create the account in Firebase Auth (email verification is sent).
+      const { idToken } = await signupWithFirebaseEmail(form.email, form.password)
+      // Backend auto-creates the Firestore user from the verified token.
+      await finishAuth(idToken)
     } catch (err: any) {
-      const detail = err.response?.data?.detail
-      setError(typeof detail === 'string' ? detail : 'Registration failed. Please try again.')
+      const code: string = err?.code || ''
+      if (code.includes('email-already-in-use')) {
+        setError('An account with this email already exists. Try signing in instead.')
+      } else if (code.includes('weak-password')) {
+        setError('Password is too weak. Use at least 6 characters.')
+      } else {
+        setError(err?.response?.data?.detail || err?.message || 'Registration failed. Please try again.')
+      }
     } finally {
       setLoading(false)
     }
@@ -166,16 +142,6 @@ export default function Register() {
                 <UserIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
                 <input type="text" placeholder="John Doe" value={form.fullName}
                   onChange={(e) => setForm({ ...form, fullName: e.target.value })}
-                  className="input-field pl-10" required />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-surface-300 mb-1.5">Username</label>
-              <div className="relative">
-                <UserIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
-                <input type="text" placeholder="johndoe" value={form.username}
-                  onChange={(e) => setForm({ ...form, username: e.target.value })}
                   className="input-field pl-10" required />
               </div>
             </div>

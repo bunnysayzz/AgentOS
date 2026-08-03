@@ -6,6 +6,7 @@ import { MemoryRouter } from 'react-router-dom'
 import Login from './Login'
 import axios from 'axios'
 import { useAuthStore } from '@/stores/authStore'
+import { loginWithFirebaseEmail } from '@/services/firebase'
 
 function renderLogin() {
   return render(
@@ -35,12 +36,13 @@ describe('Login', () => {
     expect(screen.getByRole('button', { name: /sign in$/i })).toBeInTheDocument()
   })
 
-  it('logs in with email and stores the tokens', async () => {
-    ;(axios.post as any).mockResolvedValueOnce({
-      data: { access_token: 'access-token', refresh_token: 'refresh-token' },
+  it('logs in with Firebase email and stores the profile', async () => {
+    ;(loginWithFirebaseEmail as any).mockResolvedValueOnce({
+      user: { email: 'a@b.com', displayName: 'A B', photoURL: 'https://x/p.png' },
+      idToken: 'firebase-id-token',
     })
     ;(axios.get as any).mockResolvedValueOnce({
-      data: { id: 'u1', email: 'a@b.com', username: 'ab', full_name: 'A B', is_superuser: false },
+      data: { id: 'u1', email: 'a@b.com', username: 'ab', full_name: 'A B', avatar_url: null, is_superuser: false },
     })
 
     const user = userEvent.setup()
@@ -51,18 +53,19 @@ describe('Login', () => {
     await user.click(screen.getByRole('button', { name: /sign in$/i }))
 
     await waitFor(() => expect(useAuthStore.getState().isAuthenticated).toBe(true))
-    expect(useAuthStore.getState().accessToken).toBe('access-token')
-    expect(useAuthStore.getState().refreshToken).toBe('refresh-token')
+    expect(useAuthStore.getState().accessToken).toBe('firebase-id-token')
     expect(useAuthStore.getState().user?.email).toBe('a@b.com')
-    expect(axios.post).toHaveBeenCalledWith(
-      `${import.meta.env.VITE_API_URL}/auth/login`,
-      { email: 'a@b.com', password: 'password123' },
+    expect(loginWithFirebaseEmail).toHaveBeenCalledWith('a@b.com', 'password123')
+    expect(axios.get).toHaveBeenCalledWith(
+      `${import.meta.env.VITE_API_URL}/auth/me`,
+      expect.objectContaining({ headers: { Authorization: 'Bearer firebase-id-token' } }),
     )
   })
 
-  it('shows the API error message on invalid credentials', async () => {
-    ;(axios.post as any).mockRejectedValueOnce({
-      response: { data: { detail: 'Invalid email or password' } },
+  it('shows a friendly error on invalid credentials', async () => {
+    ;(loginWithFirebaseEmail as any).mockRejectedValueOnce({
+      code: 'auth/invalid-credential',
+      message: 'Firebase: The supplied auth credential is incorrect.',
     })
 
     const user = userEvent.setup()
@@ -72,7 +75,7 @@ describe('Login', () => {
     await user.type(screen.getByPlaceholderText('••••••••'), 'wrong')
     await user.click(screen.getByRole('button', { name: /sign in$/i }))
 
-    expect(await screen.findByText('Invalid email or password')).toBeInTheDocument()
+    expect(await screen.findByText('Invalid email or password.')).toBeInTheDocument()
     expect(useAuthStore.getState().isAuthenticated).toBe(false)
   })
 

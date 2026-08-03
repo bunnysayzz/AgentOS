@@ -11,6 +11,12 @@ import {
   signOut,
   User as FirebaseUser,
 } from 'firebase/auth'
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage'
+import {
+  reauthenticateWithCredential,
+  EmailAuthProvider,
+  updatePassword,
+} from 'firebase/auth'
 
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
@@ -24,13 +30,10 @@ const firebaseConfig = {
 const requiredKeys = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId'] as const
 
 /**
- * Firebase is OPTIONAL. When the VITE_FIREBASE_* env vars aren't present
- * (CI, or a deploy that skips Firebase), the app still works fully:
- *
- *   • Email/password login & registration run through the backend API
- *     (POST /api/v1/auth/login, /api/v1/auth/register) — no Firebase needed.
- *   • Google Sign-In and Firebase-verified signup degrade gracefully with a
- *     clear error instead of crashing the whole SPA at module load.
+ * Firebase is the identity provider AND data layer for AgentOS Studio.
+ * When the VITE_FIREBASE_* env vars aren't present (CI builds), the module
+ * loads safely and every Firebase-dependent action raises a clear error
+ * instead of crashing the whole SPA at module load.
  */
 export const isFirebaseConfigured = requiredKeys.every((key) => Boolean(firebaseConfig[key]))
 
@@ -194,10 +197,51 @@ export async function firebaseSignOut(authArg?: ReturnType<typeof getAuth> | nul
   await signOut(authArg)
 }
 
+/**
+ * Get a fresh Firebase ID token for the currently signed-in user.
+ * Force-refreshes when `forceRefresh` is true (used on 401s). Returns null
+ * when Firebase isn't configured or no user is signed in.
+ */
+export async function getCurrentIdToken(forceRefresh = false): Promise<string | null> {
+  if (!auth?.currentUser) return null
+  return auth.currentUser.getIdToken(forceRefresh)
+}
+
+/**
+ * Upload an avatar image to Firebase Storage and return its download URL.
+ */
+export async function uploadAvatar(file: File): Promise<string> {
+  if (!app || !auth) {
+    throw notConfiguredError('Avatar upload')
+  }
+  const storage = getStorage(app)
+  const uid = auth.currentUser?.uid || 'anonymous'
+  const ext = (file.name.split('.').pop() || 'png').replace(/[^a-zA-Z0-9]/g, '')
+  const storageRef = ref(storage, `avatars/${uid}-${Date.now()}.${ext}`)
+  const snapshot = await uploadBytes(storageRef, file)
+  return getDownloadURL(snapshot.ref)
+}
+
+/**
+ * Change the user's password. Passwords are owned by Firebase Auth — the
+ * backend no longer stores them. Requires the current password to re-auth.
+ */
+export async function changeFirebasePassword(currentPassword: string, newPassword: string): Promise<void> {
+  if (!auth?.currentUser?.email) {
+    throw notConfiguredError('Password change')
+  }
+  const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPassword)
+  await reauthenticateWithCredential(auth.currentUser, credential)
+  await updatePassword(auth.currentUser, newPassword)
+}
+
 export {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendEmailVerification,
   googleProvider,
+  updatePassword,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
 }
 export type { FirebaseUser }

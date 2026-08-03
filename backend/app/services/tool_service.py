@@ -1,14 +1,10 @@
-"""Tool Registry service - tool CRUD, execution tracking, public tool discovery."""
+"""Tool Registry service - tool CRUD, execution tracking (Firestore-backed)."""
 
-from datetime import datetime, timezone
-from uuid import UUID
-
-from sqlalchemy import select, func, or_
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.models.tool import Tool, ToolExecution, ToolType, ToolAuthType
+from app.core.db import FirestoreDB, now_iso, stamp
 from app.schemas.tool import ToolCreate, ToolUpdate
-from app.core.timeutils import safe_duration_ms
+
+TOOLS = "tools"
+TOOL_EXECUTIONS = "tool_executions"
 
 
 # ─── Errors ──────────────────────────────────────────
@@ -31,14 +27,24 @@ class ToolSlugTakenError(ToolError):
         super().__init__("A tool with this slug already exists", status_code=409)
 
 
+def _duration_ms(started_iso: str | None) -> int | None:
+    if not started_iso:
+        return None
+    from datetime import datetime, timezone
+    try:
+        start = datetime.fromisoformat(started_iso.replace("Z", "+00:00"))
+        return int((datetime.now(timezone.utc) - start).total_seconds() * 1000)
+    except Exception:
+        return None
+
+
 # ─── Tool CRUD ──────────────────────────────────────
 
 
 async def create_tool(
-    db: AsyncSession, tool_in: ToolCreate, workspace_id: UUID | None = None
-) -> Tool:
+    db: FirestoreDB, tool_in: ToolCreate, workspace_id: str | None = None
+) -> dict:
     """Create a new tool."""
-    # Auto-generate slug from name if not provided
     slug = tool_in.slug
     if slug is None:
         slug = tool_in.name.lower().replace(" ", "-").replace("_", "-")
@@ -46,205 +52,163 @@ async def create_tool(
         if not slug:
             slug = "tool"
 
-    # Check slug uniqueness
-    result = await db.execute(select(Tool).where(Tool.slug == slug))
-    if result.scalar_one_or_none():
-        raise ToolSlugTakenError()
+    for row in db.query(TOOLS, "slug", slug):
+        if not row.get("deleted_at"):
+            raise ToolSlugTakenError()
 
-    tool = Tool(
-        workspace_id=workspace_id,
-        name=tool_in.name,
-        slug=slug,
-        description=tool_in.description,
-        tool_type=tool_in.tool_type,
-        source=tool_in.source,
-        schema_definition=tool_in.schema_definition,
-        parameters=tool_in.parameters,
-        auth_type=tool_in.auth_type,
-        auth_config=tool_in.auth_config,
-        is_public=tool_in.is_public,
-        tags=tool_in.tags,
-    )
-    db.add(tool)
-    await db.flush()
-    await db.refresh(tool)
+    tool = stamp({
+        "workspace_id": str(workspace_id) if workspace_id else None,
+        "name": tool_in.name,
+        "slug": slug,
+        "description": tool_in.description,
+        "tool_type": tool_in.tool_type.value,
+        "source": tool_in.source,
+        "schema_definition": tool_in.schema_definition,
+        "parameters": tool_in.parameters,
+        "auth_type": tool_in.auth_type.value,
+        "auth_config": tool_in.auth_config,
+        "is_public": tool_in.is_public,
+        "is_active": True,
+        "version": 1,
+        "tags": tool_in.tags,
+    })
+    db.add(TOOLS, tool)
     return tool
 
 
-async def get_tool_by_id(db: AsyncSession, tool_id: UUID) -> Tool | None:
+async def get_tool_by_id(db: FirestoreDB, tool_id: str) -> dict | None:
     """Get a tool by ID."""
-    result = await db.execute(select(Tool).where(Tool.id == tool_id, Tool.deleted_at.is_(None)))
-    return result.scalar_one_or_none()
+    tool = db.get(TOOLS, str(tool_id))
+    if tool is None or tool.get("deleted_at"):
+        return None
+    return tool
 
 
-async def get_tool_by_slug(db: AsyncSession, slug: str) -> Tool | None:
+async def get_tool_by_slug(db: FirestoreDB, slug: str) -> dict | None:
     """Get a tool by slug."""
-    result = await db.execute(select(Tool).where(Tool.slug == slug, Tool.deleted_at.is_(None)))
-    return result.scalar_one_or_none()
+    for row in db.query(TOOLS, "slug", slug):
+        if not row.get("deleted_at"):
+            return row
+    return None
 
 
 async def list_workspace_tools(
-    db: AsyncSession, workspace_id: UUID, page: int = 1, page_size: int = 50
-) -> tuple[list[Tool], int]:
+    db: FirestoreDB, workspace_id: str, page: int = 1, page_size: int = 50
+) -> tuple[list[dict], int]:
     """List tools available to a workspace (workspace tools + public tools)."""
-    offset = (page - 1) * page_size
-
-    # Workspace tools + public tools from other workspaces
-    base_conditions = [
-        Tool.is_active.is_(True),
-        Tool.deleted_at.is_(None),
-        or_(
-            Tool.workspace_id == workspace_id,
-            Tool.is_public.is_(True),
-        ),
+    rows = [
+        r for r in db.query(TOOLS)
+        if r.get("is_active") and not r.get("deleted_at")
+        and (str(r.get("workspace_id") or "") == str(workspace_id) or r.get("is_public"))
     ]
-
-    count_result = await db.execute(
-        select(func.count(Tool.id)).where(*base_conditions)
-    )
-    total = count_result.scalar() or 0
-
-    result = await db.execute(
-        select(Tool)
-        .where(*base_conditions)
-        .order_by(Tool.tool_type, Tool.name.asc())
-        .offset(offset)
-        .limit(page_size)
-    )
-    tools = result.scalars().all()
-    return list(tools), total
+    rows.sort(key=lambda r: (r.get("tool_type") or "", r.get("name") or ""))
+    total = len(rows)
+    start = (page - 1) * page_size
+    return rows[start : start + page_size], total
 
 
 async def list_public_tools(
-    db: AsyncSession, page: int = 1, page_size: int = 50
-) -> tuple[list[Tool], int]:
+    db: FirestoreDB, page: int = 1, page_size: int = 50
+) -> tuple[list[dict], int]:
     """List all public/builtin tools."""
-    offset = (page - 1) * page_size
-
-    count_result = await db.execute(
-        select(func.count(Tool.id)).where(
-            Tool.is_public.is_(True),
-            Tool.is_active.is_(True),
-            Tool.deleted_at.is_(None),
-        )
-    )
-    total = count_result.scalar() or 0
-
-    result = await db.execute(
-        select(Tool)
-        .where(
-            Tool.is_public.is_(True),
-            Tool.is_active.is_(True),
-            Tool.deleted_at.is_(None),
-        )
-        .order_by(Tool.name.asc())
-        .offset(offset)
-        .limit(page_size)
-    )
-    tools = result.scalars().all()
-    return list(tools), total
+    rows = [
+        r for r in db.query(TOOLS)
+        if r.get("is_public") and r.get("is_active") and not r.get("deleted_at")
+    ]
+    rows.sort(key=lambda r: r.get("name") or "")
+    total = len(rows)
+    start = (page - 1) * page_size
+    return rows[start : start + page_size], total
 
 
-async def update_tool(db: AsyncSession, tool: Tool, tool_in: ToolUpdate) -> Tool:
+async def update_tool(db: FirestoreDB, tool: dict, tool_in: ToolUpdate) -> dict:
     """Update a tool."""
     update_data = tool_in.model_dump(exclude_unset=True)
 
-    # Increment version on schema/config changes
     config_fields = {"schema_definition", "parameters", "auth_config"}
     if config_fields & set(update_data.keys()):
-        tool.version += 1
+        tool["version"] = (tool.get("version") or 1) + 1
 
     for field, value in update_data.items():
-        setattr(tool, field, value)
+        if field == "auth_type" and value is not None:
+            value = value.value if hasattr(value, "value") else value
+        tool[field] = value
 
-    await db.flush()
-    await db.refresh(tool)
+    db.set(TOOLS, tool["id"], tool)
     return tool
 
 
-async def delete_tool(db: AsyncSession, tool: Tool) -> None:
+async def delete_tool(db: FirestoreDB, tool: dict) -> None:
     """Soft-delete a tool."""
-    tool.deleted_at = datetime.now(timezone.utc)
-    tool.is_active = False
-    await db.flush()
+    tool["deleted_at"] = now_iso()
+    tool["is_active"] = False
+    db.set(TOOLS, tool["id"], tool)
 
 
 # ─── Tool Execution ─────────────────────────────────
 
 
 async def create_tool_execution(
-    db: AsyncSession,
-    tool_id: UUID,
+    db: FirestoreDB,
+    tool_id: str,
     input_params: dict | None = None,
-    execution_id: UUID | None = None,
-) -> ToolExecution:
+    execution_id: str | None = None,
+) -> dict:
     """Create a new tool execution record."""
-    tool_exec = ToolExecution(
-        tool_id=tool_id,
-        execution_id=execution_id,
-        status="pending",
-        input_params=input_params,
-    )
-    db.add(tool_exec)
-    await db.flush()
-    await db.refresh(tool_exec)
+    tool_exec = stamp({
+        "tool_id": str(tool_id),
+        "execution_id": str(execution_id) if execution_id else None,
+        "status": "pending",
+        "input_params": input_params,
+        "output_data": None,
+        "error_message": None,
+        "duration_ms": None,
+        "started_at": None,
+        "completed_at": None,
+    })
+    db.add(TOOL_EXECUTIONS, tool_exec)
     return tool_exec
 
 
 async def complete_tool_execution(
-    db: AsyncSession,
-    tool_exec: ToolExecution,
+    db: FirestoreDB,
+    tool_exec: dict,
     output_data: dict | None = None,
-) -> ToolExecution:
+) -> dict:
     """Mark a tool execution as successful."""
-    now = datetime.now(timezone.utc)
-    tool_exec.status = "success"
-    tool_exec.output_data = output_data
-    tool_exec.completed_at = now
-    if tool_exec.started_at:
-        tool_exec.duration_ms = safe_duration_ms(tool_exec.started_at)
+    tool_exec["status"] = "success"
+    tool_exec["output_data"] = output_data
+    tool_exec["completed_at"] = now_iso()
+    if tool_exec.get("started_at"):
+        tool_exec["duration_ms"] = _duration_ms(tool_exec["started_at"])
     else:
-        tool_exec.started_at = now
-        tool_exec.duration_ms = 0
-    await db.flush()
-    await db.refresh(tool_exec)
+        tool_exec["started_at"] = tool_exec["completed_at"]
+        tool_exec["duration_ms"] = 0
+    db.set(TOOL_EXECUTIONS, tool_exec["id"], tool_exec)
     return tool_exec
 
 
 async def fail_tool_execution(
-    db: AsyncSession,
-    tool_exec: ToolExecution,
+    db: FirestoreDB,
+    tool_exec: dict,
     error_message: str,
-) -> ToolExecution:
+) -> dict:
     """Mark a tool execution as failed."""
-    now = datetime.now(timezone.utc)
-    tool_exec.status = "failed"
-    tool_exec.error_message = error_message
-    tool_exec.completed_at = now
-    if tool_exec.started_at:
-        tool_exec.duration_ms = safe_duration_ms(tool_exec.started_at)
-    await db.flush()
-    await db.refresh(tool_exec)
+    tool_exec["status"] = "failed"
+    tool_exec["error_message"] = error_message
+    tool_exec["completed_at"] = now_iso()
+    if tool_exec.get("started_at"):
+        tool_exec["duration_ms"] = _duration_ms(tool_exec["started_at"])
+    db.set(TOOL_EXECUTIONS, tool_exec["id"], tool_exec)
     return tool_exec
 
 
 async def list_tool_executions(
-    db: AsyncSession, tool_id: UUID, page: int = 1, page_size: int = 50
-) -> tuple[list[ToolExecution], int]:
+    db: FirestoreDB, tool_id: str, page: int = 1, page_size: int = 50
+) -> tuple[list[dict], int]:
     """List executions for a tool."""
-    offset = (page - 1) * page_size
-
-    count_result = await db.execute(
-        select(func.count(ToolExecution.id)).where(ToolExecution.tool_id == tool_id)
-    )
-    total = count_result.scalar() or 0
-
-    result = await db.execute(
-        select(ToolExecution)
-        .where(ToolExecution.tool_id == tool_id)
-        .order_by(ToolExecution.created_at.desc())
-        .offset(offset)
-        .limit(page_size)
-    )
-    executions = result.scalars().all()
-    return list(executions), total
+    rows = db.query(TOOL_EXECUTIONS, "tool_id", str(tool_id))
+    rows.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+    total = len(rows)
+    start = (page - 1) * page_size
+    return rows[start : start + page_size], total

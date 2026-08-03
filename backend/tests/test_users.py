@@ -39,36 +39,16 @@ class TestProfile:
 
 
 class TestPasswordChange:
-    async def test_wrong_current_password_rejected(self, client, auth_headers, test_user):
-        resp = await client.post(
-            "/api/v1/users/password",
-            json={"current_password": "wrongpass", "new_password": "newpass123"},
-            headers=auth_headers,
-        )
-        assert resp.status_code == 400
-
-    async def test_successful_password_change(self, client, auth_headers, test_user):
+    async def test_password_change_handled_by_firebase(self, client, auth_headers, test_user):
+        """Password changes go through Firebase Auth — the backend endpoint
+        intentionally rejects them with a clear message."""
         resp = await client.post(
             "/api/v1/users/password",
             json={"current_password": "testpass123", "new_password": "brandnewpass1"},
             headers=auth_headers,
         )
-        assert resp.status_code == 200
-
-        # Old password no longer works
-        old_login = await client.post(
-            "/api/v1/auth/login",
-            json={"email": test_user["email"], "password": "testpass123"},
-        )
-        assert old_login.status_code == 401
-
-        # New password works
-        new_login = await client.post(
-            "/api/v1/auth/login",
-            json={"email": test_user["email"], "password": "brandnewpass1"},
-        )
-        assert new_login.status_code == 200
-        assert "access_token" in new_login.json()
+        assert resp.status_code == 400
+        assert "Firebase" in resp.json()["detail"]
 
     async def test_weak_new_password_rejected(self, client, auth_headers, test_user):
         resp = await client.post(

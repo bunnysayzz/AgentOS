@@ -91,5 +91,6 @@ RUN chmod +x entrypoint.sh
 
 EXPOSE 8000
 
-# Runs `alembic upgrade head` then uvicorn (see backend/entrypoint.sh)
+# Starts uvicorn (see backend/entrypoint.sh). Data lives in Cloud Firestore
+# — no SQL database, no migrations.
 ENTRYPOINT ["./entrypoint.sh"]

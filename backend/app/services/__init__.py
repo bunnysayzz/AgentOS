@@ -1,13 +1,13 @@
-"""Domain services - business logic layer."""
+"""Domain services - business logic layer (Firestore-backed)."""
 
 from app.services.auth_service import (
-    register_user,
-    authenticate_user,
-    login_user,
-    refresh_user_tokens,
     get_user_by_id,
     get_user_by_email,
     get_user_by_username,
+    get_or_create_user_from_firebase,
+    update_user,
+    list_users,
+    soft_delete_user,
     AuthError,
     UserAlreadyExistsError,
     InvalidCredentialsError,
@@ -180,13 +180,13 @@ from app.services.telemetry_service import (
 
 __all__ = [
     # Auth
-    "register_user",
-    "authenticate_user",
-    "login_user",
-    "refresh_user_tokens",
     "get_user_by_id",
     "get_user_by_email",
     "get_user_by_username",
+    "get_or_create_user_from_firebase",
+    "update_user",
+    "list_users",
+    "soft_delete_user",
     "AuthError",
     "UserAlreadyExistsError",
     "InvalidCredentialsError",

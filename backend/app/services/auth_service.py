@@ -1,21 +1,16 @@
-"""Authentication service - handles user registration, login, token management."""
+"""Auth service — Firebase-first user management over Firestore.
 
-from datetime import datetime, timezone
-from uuid import UUID
+Passwords are handled entirely by Firebase Auth (never stored server-side).
+Users are auto-created in Firestore on first authenticated request, and the
+configured FIRST_SUPERUSER_EMAIL is promoted to superuser automatically.
+"""
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any
 
-from app.core.security import (
-    verify_password,
-    hash_password,
-    create_access_token,
-    create_refresh_token,
-    decode_token,
-)
-from app.models.user import User
-from app.schemas.auth import TokenResponse
-from app.schemas.user import UserCreate
+from app.core.config import settings
+from app.core.db import AttrDict, FirestoreDB, now_iso
+
+USERS = "users"
 
 
 class AuthError(Exception):
@@ -46,182 +41,126 @@ class UserNotFoundError(AuthError):
         super().__init__("User not found", status_code=404)
 
 
-async def get_user_by_id(db: AsyncSession, user_id: UUID) -> User | None:
-    """Get a user by their UUID."""
-    result = await db.execute(select(User).where(User.id == user_id, User.deleted_at.is_(None)))
-    return result.scalar_one_or_none()
-
-
-async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
-    """Get a user by their email."""
-    result = await db.execute(
-        select(User).where(User.email == email, User.deleted_at.is_(None))
-    )
-    return result.scalar_one_or_none()
-
-
-async def get_user_by_username(db: AsyncSession, username: str) -> User | None:
-    """Get a user by their username."""
-    result = await db.execute(
-        select(User).where(User.username == username, User.deleted_at.is_(None))
-    )
-    return result.scalar_one_or_none()
-
-
-async def register_user(db: AsyncSession, user_in: UserCreate) -> User:
-    """Register a new user."""
-    # Check existing user (single query with OR)
-    from sqlalchemy import or_
-    result = await db.execute(
-        select(User).where(
-            or_(User.email == user_in.email, User.username == user_in.username),
-            User.deleted_at.is_(None),
-        )
-    )
-    existing = result.scalar_one_or_none()
-    if existing:
-        if existing.email == user_in.email:
-            raise UserAlreadyExistsError("A user with this email already exists")
-        raise UserAlreadyExistsError("A user with this username already exists")
-
-    # Create user
-    user = User(
-        email=user_in.email,
-        username=user_in.username,
-        full_name=user_in.full_name,
-        hashed_password=hash_password(user_in.password),
-        is_active=True,
-        is_verified=False,
-    )
-    db.add(user)
-    await db.flush()
-    await db.refresh(user)
-
-    try:
-        from app.services.firebase_db import firestore_db_service
-        firestore_db_service.save_user(str(user.id), {
-            "email": user.email,
-            "username": user.username,
-            "full_name": user.full_name,
-            "is_active": user.is_active,
-            "is_verified": user.is_verified,
-        })
-    except Exception:
-        pass
-
+def get_user_by_id(db: FirestoreDB, user_id: str) -> dict | None:
+    """Get a user by their UUID (as stored in Firestore)."""
+    user = db.get(USERS, str(user_id))
+    if user is None or user.get("deleted_at"):
+        return None
     return user
 
 
-async def authenticate_user(db: AsyncSession, username: str, password: str) -> User:
-    """Authenticate a user by username/email and password."""
-    # Try username first, then email
-    user = await get_user_by_username(db, username)
-    if user is None:
-        user = await get_user_by_email(db, username)
+def get_user_by_email(db: FirestoreDB, email: str) -> dict | None:
+    """Get a non-deleted user by email."""
+    for row in db.query(USERS, "email", email):
+        if not row.get("deleted_at"):
+            return row
+    return None
 
-    if user is None:
-        raise InvalidCredentialsError()
 
-    if not user.is_active:
-        raise AuthError("User account is deactivated", status_code=403)
+def get_user_by_username(db: FirestoreDB, username: str) -> dict | None:
+    """Get a non-deleted user by username."""
+    for row in db.query(USERS, "username", username):
+        if not row.get("deleted_at"):
+            return row
+    return None
 
-    if not verify_password(password, user.hashed_password):
-        # Increment failed attempts
-        user.failed_login_attempts += 1
-        await db.flush()
-        raise InvalidCredentialsError()
 
-    # Reset failed attempts on success
-    user.failed_login_attempts = 0
-    user.last_login_at = datetime.now(timezone.utc)
-    await db.flush()
+def _unique_username(db: FirestoreDB, base: str) -> str:
+    """Return a username that doesn't collide with an existing user."""
+    import re
 
+    # UserResponse.username only allows [a-zA-Z0-9_-] — emails often contain
+    # dots or other chars, so sanitize the base first.
+    base = re.sub(r"[^a-zA-Z0-9_-]", "_", base)
+    candidate = base[:64] or "user"
+    counter = 1
+    while get_user_by_username(db, candidate) is not None:
+        suffix = f"_{counter}"
+        candidate = f"{base[: 64 - len(suffix)]}{suffix}"
+        counter += 1
+    return candidate
+
+
+def get_or_create_user_from_firebase(db: FirestoreDB, fb: dict) -> dict:
+    """Find a user by Firebase email (or create them) and refresh login info.
+
+    ``fb`` is the decoded Firebase ID token payload: ``uid``, ``email``,
+    ``name``, ``picture``. Returns the Firestore user document dict.
+    """
+    email = fb.get("email") or f"{fb.get('uid', 'user')}@agentos.studio"
+    full_name = fb.get("name") or fb.get("email", "").split("@")[0]
+    avatar_url = fb.get("picture")
+
+    user = get_user_by_email(db, email)
+    if user is not None:
+        # Refresh profile details and login bookkeeping
+        updates: dict[str, Any] = {"last_login_at": now_iso()}
+        if avatar_url and not user.get("avatar_url"):
+            updates["avatar_url"] = avatar_url
+        if not user.get("full_name") and full_name:
+            updates["full_name"] = full_name
+        updates["is_verified"] = True
+        updates["firebase_uid"] = fb.get("uid")
+        user.update(updates)
+        db.set(USERS, user["id"], user)
+        return user
+
+    username = _unique_username(db, (fb.get("email") or "").split("@")[0] or "user")
+    user = AttrDict({
+        "id": _new_user_id(db),
+        "email": email,
+        "username": username,
+        "full_name": full_name,
+        "avatar_url": avatar_url,
+        "is_active": True,
+        "is_superuser": bool(
+            settings.FIRST_SUPERUSER_EMAIL
+            and email.lower() == settings.FIRST_SUPERUSER_EMAIL.lower()
+        ),
+        "is_verified": True,
+        "last_login_at": now_iso(),
+        "failed_login_attempts": 0,
+        "firebase_uid": fb.get("uid"),
+    })
+    db.add(USERS, user)
     return user
 
 
-async def login_user(db: AsyncSession, username: str, password: str) -> TokenResponse:
-    """Authenticate and return tokens."""
-    user = await authenticate_user(db, username, password)
-    return await _create_tokens_for_user(user)
+def _new_user_id(db: FirestoreDB) -> str:
+    """Generate an unused UUID string for a user document."""
+    import uuid
+
+    while True:
+        candidate = str(uuid.uuid4())
+        if db.get(USERS, candidate) is None:
+            return candidate
 
 
-async def refresh_user_tokens(db: AsyncSession, refresh_token: str) -> TokenResponse:
-    """Refresh tokens using a valid refresh token."""
-    payload = decode_token(refresh_token)
-    if not payload or payload.get("type") != "refresh":
-        raise TokenExpiredError()
-
-    subject = payload.get("sub")
-    if not subject:
-        raise TokenExpiredError()
-
-    try:
-        user_id = UUID(subject)
-    except ValueError:
-        raise TokenExpiredError()
-
-    user = await get_user_by_id(db, user_id)
-    if user is None or not user.is_active:
-        raise UserNotFoundError()
-
-    return await _create_tokens_for_user(user)
+def update_user(db: FirestoreDB, user_id: str, updates: dict) -> dict | None:
+    """Apply partial updates to a user document."""
+    user = get_user_by_id(db, user_id)
+    if user is None:
+        return None
+    user.update(updates)
+    db.set(USERS, user["id"], user)
+    return user
 
 
-async def _create_tokens_for_user(user: User) -> TokenResponse:
-    """Create access and refresh tokens for a user."""
-    return TokenResponse(
-        access_token=create_access_token(subject=str(user.id)),
-        refresh_token=create_refresh_token(subject=str(user.id)),
-    )
+def list_users(db: FirestoreDB, page: int = 1, page_size: int = 50) -> tuple[list[dict], int]:
+    """List non-deleted users (superuser only), newest first."""
+    rows = [r for r in db.query(USERS) if not r.get("deleted_at")]
+    rows.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+    total = len(rows)
+    start = (page - 1) * page_size
+    return rows[start : start + page_size], total
 
 
-async def authenticate_or_create_google_user(
-    db: AsyncSession, email: str, full_name: str, avatar_url: str | None = None
-) -> tuple[User, TokenResponse]:
-    """Get existing user or create a new user account automatically for Google OAuth."""
-    user = await get_user_by_email(db, email)
-    if not user:
-        base_username = email.split("@")[0]
-        username = base_username
-        count = 1
-        while await get_user_by_username(db, username):
-            username = f"{base_username}_{count}"
-            count += 1
-
-        user = User(
-            email=email,
-            username=username,
-            full_name=full_name or username,
-            avatar_url=avatar_url,
-            hashed_password=hash_password(f"google_oauth_{email}"),
-            is_active=True,
-            is_verified=True,
-        )
-        db.add(user)
-        await db.flush()
-        await db.refresh(user)
-    else:
-        if avatar_url and not user.avatar_url:
-            user.avatar_url = avatar_url
-        if full_name and not user.full_name:
-            user.full_name = full_name
-        user.is_verified = True
-
-    user.last_login_at = datetime.now(timezone.utc)
-    await db.flush()
-
-    try:
-        from app.services.firebase_db import firestore_db_service
-        firestore_db_service.save_user(str(user.id), {
-            "email": user.email,
-            "username": user.username,
-            "full_name": user.full_name,
-            "avatar_url": user.avatar_url,
-            "is_active": user.is_active,
-            "is_verified": user.is_verified,
-        })
-    except Exception:
-        pass
-
-    tokens = await _create_tokens_for_user(user)
-    return user, tokens
+def soft_delete_user(db: FirestoreDB, user_id: str) -> dict | None:
+    """Soft-delete a user (deleted_at + is_active=False)."""
+    user = get_user_by_id(db, user_id)
+    if user is None:
+        return None
+    user["deleted_at"] = now_iso()
+    user["is_active"] = False
+    db.set(USERS, user["id"], user)
+    return user

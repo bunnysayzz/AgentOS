@@ -113,7 +113,7 @@ async def execute_agent(
     if agent.status != AgentStatus.ACTIVE:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot execute agent in '{agent.status.value}' status. Set to 'active' first.",
+            detail=f"Cannot execute agent in '{agent.status}' status. Set to 'active' first.",
         )
 
     execution = await agent_service.create_execution(db, agent.id, exec_in)

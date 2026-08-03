@@ -76,7 +76,7 @@ async def list_models(
     models = await mcp_service.get_available_models(db, provider=provider)
     model_infos = [
         ModelInfo(
-            id=f"{m.provider.value}/{m.model_name}",
+            id=f"{m.provider}/{m.model_name}",
             provider=m.provider,
             model_name=m.model_name,
             capabilities=m.capabilities if m.capabilities else [],
@@ -159,13 +159,13 @@ async def list_recent_calls(
     return [
         {
             "id": str(c.id),
-            "provider": c.provider.value,
+            "provider": c.provider,
             "model": c.model_name,
             "tokens": c.total_tokens,
             "cost_usd": c.cost_usd,
             "duration_ms": c.duration_ms,
             "is_error": c.is_error,
-            "created_at": c.created_at.isoformat() if c.created_at else None,
+            "created_at": c.created_at,
         }
         for c in calls
     ]

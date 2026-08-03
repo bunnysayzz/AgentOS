@@ -1,13 +1,9 @@
-"""Memory Engine service - CRUD, semantic search, session management, consolidation."""
+"""Memory Engine service — CRUD, keyword search, session management (Firestore)."""
 
-from datetime import datetime, timezone
-from uuid import UUID
+from app.core.db import FirestoreDB, now_iso, stamp
+from app.schemas.memory import MemoryEntryCreate
 
-from sqlalchemy import select, func, or_, desc
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.models.memory import MemoryEntry
-from app.schemas.memory import MemoryEntryCreate, MemorySearchQuery
+MEMORY = "memory_entries"
 
 
 # ─── Errors ──────────────────────────────────────────
@@ -24,215 +20,164 @@ class MemoryError(Exception):
 
 
 async def create_entry(
-    db: AsyncSession,
+    db: FirestoreDB,
     entry_in: MemoryEntryCreate,
-    workspace_id: UUID | None = None,
-    agent_id: UUID | None = None,
-) -> MemoryEntry:
+    workspace_id: str | None = None,
+    agent_id: str | None = None,
+) -> dict:
     """Store a new memory entry."""
-    entry = MemoryEntry(
-        workspace_id=workspace_id,
-        agent_id=agent_id,
-        session_id=entry_in.session_id,
-        role=entry_in.role,
-        content=entry_in.content,
-        memory_type=entry_in.memory_type,
-        entry_metadata=entry_in.metadata,
-    )
-    db.add(entry)
-    await db.flush()
-    await db.refresh(entry)
+    entry = stamp({
+        "workspace_id": str(workspace_id) if workspace_id else None,
+        "agent_id": str(agent_id) if agent_id else None,
+        "session_id": entry_in.session_id,
+        "role": entry_in.role,
+        "content": entry_in.content,
+        "memory_type": entry_in.memory_type,
+        "entry_metadata": entry_in.metadata,
+        "importance_score": None,
+        "access_count": 0,
+    })
+    db.add(MEMORY, entry)
     return entry
 
 
-async def get_entry(db: AsyncSession, entry_id: UUID) -> MemoryEntry | None:
-    result = await db.execute(select(MemoryEntry).where(MemoryEntry.id == entry_id))
-    return result.scalar_one_or_none()
+async def get_entry(db: FirestoreDB, entry_id: str) -> dict | None:
+    return db.get(MEMORY, str(entry_id))
 
 
 async def list_session_memory(
-    db: AsyncSession,
+    db: FirestoreDB,
     session_id: str,
-    agent_id: UUID | None = None,
+    agent_id: str | None = None,
     limit: int = 100,
-) -> list[MemoryEntry]:
+) -> list[dict]:
     """Get all memory entries for a conversation session."""
-    conditions = [MemoryEntry.session_id == session_id]
+    rows = [r for r in db.query(MEMORY, "session_id", session_id) if not r.get("deleted_at")]
     if agent_id:
-        conditions.append(MemoryEntry.agent_id == agent_id)
-
-    result = await db.execute(
-        select(MemoryEntry)
-        .where(*conditions)
-        .order_by(MemoryEntry.created_at.asc())
-        .limit(limit)
-    )
-    return list(result.scalars().all())
+        rows = [r for r in rows if str(r.get("agent_id") or "") == str(agent_id)]
+    rows.sort(key=lambda r: r.get("created_at") or "")
+    return rows[:limit]
 
 
 async def list_agent_memory(
-    db: AsyncSession,
-    agent_id: UUID,
+    db: FirestoreDB,
+    agent_id: str,
     memory_type: str | None = None,
     page: int = 1,
     page_size: int = 50,
-) -> tuple[list[MemoryEntry], int]:
+) -> tuple[list[dict], int]:
     """List all memory for an agent."""
-    offset = (page - 1) * page_size
-    conditions = [MemoryEntry.agent_id == agent_id]
-    if memory_type:
-        conditions.append(MemoryEntry.memory_type == memory_type)
-
-    count_result = await db.execute(select(func.count(MemoryEntry.id)).where(*conditions))
-    total = count_result.scalar() or 0
-
-    result = await db.execute(
-        select(MemoryEntry)
-        .where(*conditions)
-        .order_by(MemoryEntry.created_at.desc())
-        .offset(offset)
-        .limit(page_size)
-    )
-    return list(result.scalars().all()), total
+    rows = [
+        r for r in db.query(MEMORY, "agent_id", str(agent_id))
+        if (memory_type is None or r.get("memory_type") == memory_type)
+    ]
+    rows.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+    total = len(rows)
+    start = (page - 1) * page_size
+    return rows[start : start + page_size], total
 
 
 async def list_workspace_memory(
-    db: AsyncSession,
-    workspace_id: UUID,
-    agent_id: UUID | None = None,
+    db: FirestoreDB,
+    workspace_id: str,
+    agent_id: str | None = None,
     memory_type: str | None = None,
     limit: int = 50,
-) -> list[MemoryEntry]:
+) -> list[dict]:
     """List memory entries for a workspace."""
-    conditions = [MemoryEntry.workspace_id == workspace_id]
-    if agent_id:
-        conditions.append(MemoryEntry.agent_id == agent_id)
-    if memory_type:
-        conditions.append(MemoryEntry.memory_type == memory_type)
-
-    result = await db.execute(
-        select(MemoryEntry)
-        .where(*conditions)
-        .order_by(MemoryEntry.created_at.desc())
-        .limit(limit)
-    )
-    return list(result.scalars().all())
+    rows = [
+        r for r in db.query(MEMORY, "workspace_id", str(workspace_id))
+        if (agent_id is None or str(r.get("agent_id") or "") == str(agent_id))
+        and (memory_type is None or r.get("memory_type") == memory_type)
+    ]
+    rows.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+    return rows[:limit]
 
 
-async def delete_entry(db: AsyncSession, entry: MemoryEntry) -> None:
-    await db.delete(entry)
-    await db.flush()
+async def delete_entry(db: FirestoreDB, entry: dict) -> None:
+    db.delete(MEMORY, entry["id"])
 
 
-async def clear_session(db: AsyncSession, session_id: str) -> int:
+async def clear_session(db: FirestoreDB, session_id: str) -> int:
     """Clear all memory for a session. Returns count of deleted entries."""
-    result = await db.execute(
-        select(MemoryEntry).where(MemoryEntry.session_id == session_id)
-    )
-    entries = result.scalars().all()
-    count = len(entries)
+    entries = [r for r in db.query(MEMORY, "session_id", session_id)]
     for entry in entries:
-        await db.delete(entry)
-    await db.flush()
-    return count
+        db.delete(MEMORY, entry["id"])
+    return len(entries)
 
 
 # ─── Search ─────────────────────────────────────────
 
 
 async def search_memory(
-    db: AsyncSession,
+    db: FirestoreDB,
     query: str,
-    workspace_id: UUID | None = None,
-    agent_id: UUID | None = None,
+    workspace_id: str | None = None,
+    agent_id: str | None = None,
     memory_type: str | None = None,
     limit: int = 10,
-) -> list[MemoryEntry]:
-    """Simple keyword-based memory search (no vector embeddings yet).
-    
-    In production, this would use a vector store (pgvector, Qdrant, etc.)
-    for semantic search. For now, we use LIKE-based text matching.
-    """
-    conditions = [MemoryEntry.deleted_at.is_(None)]
+) -> list[dict]:
+    """Simple keyword-based memory search (no vector embeddings yet)."""
+    rows = [r for r in db.query(MEMORY) if not r.get("deleted_at")]
 
-    # Keyword match on content
     search_terms = query.lower().split()
-    keyword_conditions = []
-    for term in search_terms:
-        keyword_conditions.append(MemoryEntry.content.ilike(f"%{term}%"))
-    if keyword_conditions:
-        conditions.append(or_(*keyword_conditions))
-
+    if search_terms:
+        rows = [
+            r for r in rows
+            if all(term in (r.get("content") or "").lower() for term in search_terms)
+        ]
     if workspace_id:
-        conditions.append(MemoryEntry.workspace_id == workspace_id)
+        rows = [r for r in rows if str(r.get("workspace_id") or "") == str(workspace_id)]
     if agent_id:
-        conditions.append(MemoryEntry.agent_id == agent_id)
+        rows = [r for r in rows if str(r.get("agent_id") or "") == str(agent_id)]
     if memory_type:
-        conditions.append(MemoryEntry.memory_type == memory_type)
+        rows = [r for r in rows if r.get("memory_type") == memory_type]
 
-    result = await db.execute(
-        select(MemoryEntry)
-        .where(*conditions)
-        .order_by(MemoryEntry.importance_score.desc().nulls_last(), MemoryEntry.created_at.desc())
-        .limit(limit)
+    # importance desc (None treated as lowest), then created desc
+    rows.sort(
+        key=lambda r: (
+            r.get("importance_score") is None,
+            r.get("importance_score") or 0,
+            r.get("created_at") or "",
+        ),
+        reverse=True,
     )
-    return list(result.scalars().all())
+    return rows[:limit]
 
 
 # ─── Memory Consolidation ──────────────────────────
 
 
 async def consolidate_session_memory(
-    db: AsyncSession,
+    db: FirestoreDB,
     session_id: str,
-    agent_id: UUID | None = None,
+    agent_id: str | None = None,
     max_entries: int = 50,
 ) -> int:
-    """Summarize old memory entries when a session exceeds max_entries.
-    
-    Deletes entries beyond max_entries (keeping most recent).
-    Returns count of consolidated (deleted) entries.
-    """
-    conditions = [MemoryEntry.session_id == session_id]
+    """Delete the oldest entries once a session exceeds max_entries."""
+    rows = [r for r in db.query(MEMORY, "session_id", session_id)]
     if agent_id:
-        conditions.append(MemoryEntry.agent_id == agent_id)
+        rows = [r for r in rows if str(r.get("agent_id") or "") == str(agent_id)]
 
-    # Count total
-    count_result = await db.execute(select(func.count(MemoryEntry.id)).where(*conditions))
-    total = count_result.scalar() or 0
-
-    if total <= max_entries:
+    if len(rows) <= max_entries:
         return 0
 
-    # Delete oldest entries beyond the limit
-    delete_count = total - max_entries
-    result = await db.execute(
-        select(MemoryEntry.id)
-        .where(*conditions)
-        .order_by(MemoryEntry.created_at.asc())
-        .limit(delete_count)
-    )
-    ids_to_delete = [row[0] for row in result.all()]
-
-    if ids_to_delete:
-        await db.execute(
-            MemoryEntry.__table__.delete().where(MemoryEntry.id.in_(ids_to_delete))
-        )
-        await db.flush()
-
-    return len(ids_to_delete)
+    rows.sort(key=lambda r: r.get("created_at") or "")
+    to_delete = rows[: len(rows) - max_entries]
+    for entry in to_delete:
+        db.delete(MEMORY, entry["id"])
+    return len(to_delete)
 
 
 async def update_importance(
-    db: AsyncSession,
-    entry_id: UUID,
+    db: FirestoreDB,
+    entry_id: str,
     score: float,
-) -> MemoryEntry | None:
+) -> dict | None:
     """Update the importance score of a memory entry."""
     entry = await get_entry(db, entry_id)
     if entry:
-        entry.importance_score = score
-        entry.access_count += 1
-        await db.flush()
-        await db.refresh(entry)
+        entry["importance_score"] = score
+        entry["access_count"] = (entry.get("access_count") or 0) + 1
+        db.set(MEMORY, entry["id"], entry)
     return entry

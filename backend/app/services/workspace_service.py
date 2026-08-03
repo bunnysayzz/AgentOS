@@ -1,17 +1,14 @@
-"""Workspace service - CRUD, membership management, slug generation."""
+"""Workspace service - CRUD, membership management, slug generation (Firestore)."""
 
 import re
-import uuid
-from datetime import datetime, timezone
-from uuid import UUID
 
-from sqlalchemy import select, or_, func
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-
-from app.models.workspace import Workspace, WorkspaceMember, MembershipRole
-from app.models.user import User
+from app.core.db import FirestoreDB, now_iso, stamp
+from app.models.workspace import MembershipRole
 from app.schemas.workspace import WorkspaceCreate, WorkspaceUpdate, WorkspaceMemberAdd
+from app.services import auth_service
+
+WORKSPACES = "workspaces"
+MEMBERS = "workspace_members"
 
 
 class WorkspaceError(Exception):
@@ -55,260 +52,198 @@ def generate_slug(name: str) -> str:
     return slug[:128] or "workspace"
 
 
-async def ensure_unique_slug(db: AsyncSession, slug: str, exclude_id: UUID | None = None) -> str:
+def ensure_unique_slug(db: FirestoreDB, slug: str, exclude_id: str | None = None) -> str:
     """Ensure a slug is unique by appending a suffix if needed."""
     original_slug = slug
     counter = 0
     while True:
-        result = await db.execute(
-            select(Workspace).where(Workspace.slug == slug, Workspace.deleted_at.is_(None))
-        )
-        existing = result.scalar_one_or_none()
+        existing = None
+        for row in db.query(WORKSPACES, "slug", slug):
+            if not row.get("deleted_at"):
+                existing = row
+                break
         if existing is None:
             return slug
-        if exclude_id and existing.id == exclude_id:
+        if exclude_id and existing["id"] == exclude_id:
             return slug
         counter += 1
         slug = f"{original_slug}-{counter}"
 
 
 async def get_workspace_membership(
-    db: AsyncSession, user_id: UUID, workspace_id: UUID
-) -> WorkspaceMember | None:
+    db: FirestoreDB, user_id: str, workspace_id: str
+) -> dict | None:
     """Get a user's membership in a workspace."""
-    result = await db.execute(
-        select(WorkspaceMember).where(
-            WorkspaceMember.user_id == user_id,
-            WorkspaceMember.workspace_id == workspace_id,
-        )
-    )
-    return result.scalar_one_or_none()
+    for row in db.query(MEMBERS, "workspace_id", str(workspace_id)):
+        if str(row.get("user_id") or "") == str(user_id):
+            return row
+    return None
 
 
 # ─── CRUD Operations ─────────────────────────────────
 
 
 async def create_workspace(
-    db: AsyncSession, workspace_in: WorkspaceCreate, owner: User
-) -> Workspace:
+    db: FirestoreDB, workspace_in: WorkspaceCreate, owner: dict
+) -> dict:
     """Create a new workspace and add the owner as an OWNER member."""
-    slug = await ensure_unique_slug(db, workspace_in.slug or generate_slug(workspace_in.name))
+    slug = ensure_unique_slug(db, workspace_in.slug or generate_slug(workspace_in.name))
 
-    workspace = Workspace(
-        name=workspace_in.name,
-        slug=slug,
-        description=workspace_in.description,
-        owner_id=owner.id,
-    )
-    db.add(workspace)
-    await db.flush()
-    await db.refresh(workspace)
+    workspace = stamp({
+        "name": workspace_in.name,
+        "slug": slug,
+        "description": workspace_in.description,
+        "owner_id": owner["id"],
+        "settings": None,
+        "member_count": 1,
+    })
+    db.add(WORKSPACES, workspace)
 
-    # Add owner as member with OWNER role
-    membership = WorkspaceMember(
-        workspace_id=workspace.id,
-        user_id=owner.id,
-        role=MembershipRole.OWNER,
-    )
-    db.add(membership)
-    await db.flush()
+    membership = stamp({
+        "workspace_id": workspace["id"],
+        "user_id": owner["id"],
+        "role": MembershipRole.OWNER.value,
+    })
+    db.add(MEMBERS, membership)
 
     return workspace
 
 
-async def get_workspace_by_id(db: AsyncSession, workspace_id: UUID) -> Workspace | None:
+async def get_workspace_by_id(db: FirestoreDB, workspace_id: str) -> dict | None:
     """Get a workspace by ID."""
-    result = await db.execute(
-        select(Workspace)
-        .where(Workspace.id == workspace_id, Workspace.deleted_at.is_(None))
-        .options(selectinload(Workspace.members))
-    )
-    return result.scalar_one_or_none()
+    workspace = db.get(WORKSPACES, str(workspace_id))
+    if workspace is None or workspace.get("deleted_at"):
+        return None
+    workspace["member_count"] = _member_count(db, workspace["id"])
+    return workspace
 
 
-async def get_workspace_by_slug(db: AsyncSession, slug: str) -> Workspace | None:
+async def get_workspace_by_slug(db: FirestoreDB, slug: str) -> dict | None:
     """Get a workspace by slug."""
-    result = await db.execute(
-        select(Workspace)
-        .where(Workspace.slug == slug, Workspace.deleted_at.is_(None))
-        .options(selectinload(Workspace.members))
-    )
-    return result.scalar_one_or_none()
+    for row in db.query(WORKSPACES, "slug", slug):
+        if not row.get("deleted_at"):
+            row["member_count"] = _member_count(db, row["id"])
+            return row
+    return None
+
+
+def _member_count(db: FirestoreDB, workspace_id: str) -> int:
+    return len(db.query(MEMBERS, "workspace_id", workspace_id))
 
 
 async def list_user_workspaces(
-    db: AsyncSession, user: User, page: int = 1, page_size: int = 50
-) -> tuple[list[Workspace], int]:
+    db: FirestoreDB, user: dict, page: int = 1, page_size: int = 50
+) -> tuple[list[dict], int]:
     """List all workspaces the user has access to."""
-    offset = (page - 1) * page_size
+    member_rows = db.query(MEMBERS, "user_id", user["id"])
+    ws_ids = {str(r["workspace_id"]) for r in member_rows}
 
-    # Subquery: workspace IDs where user is a member
-    member_subq = (
-        select(WorkspaceMember.workspace_id)
-        .where(WorkspaceMember.user_id == user.id)
-        .subquery()
-    )
+    rows = [r for r in db.query(WORKSPACES) if not r.get("deleted_at") and r["id"] in ws_ids]
+    rows.sort(key=lambda r: (r.get("updated_at") or "", r.get("created_at") or ""), reverse=True)
+    for r in rows:
+        r["member_count"] = _member_count(db, r["id"])
 
-    # Subquery: member count per workspace
-    count_subq = (
-        select(
-            WorkspaceMember.workspace_id.label("ws_id"),
-            func.count(WorkspaceMember.id).label("cnt"),
-        )
-        .group_by(WorkspaceMember.workspace_id)
-        .subquery()
-    )
-
-    # Count total
-    count_result = await db.execute(
-        select(func.count(Workspace.id)).where(
-            Workspace.id.in_(select(member_subq.c.workspace_id)),
-            Workspace.deleted_at.is_(None),
-        )
-    )
-    total = count_result.scalar() or 0
-
-    # Fetch workspaces with member count in one query
-    result = await db.execute(
-        select(Workspace, count_subq.c.cnt)
-        .outerjoin(count_subq, Workspace.id == count_subq.c.ws_id)
-        .where(
-            Workspace.id.in_(select(member_subq.c.workspace_id)),
-            Workspace.deleted_at.is_(None),
-        )
-        .order_by(Workspace.updated_at.desc().nulls_last(), Workspace.created_at.desc())
-        .offset(offset)
-        .limit(page_size)
-    )
-    rows = result.all()
-
-    workspaces = []
-    for ws, cnt in rows:
-        ws.member_count = cnt or 0
-        workspaces.append(ws)
-
-    return workspaces, total
+    total = len(rows)
+    start = (page - 1) * page_size
+    return rows[start : start + page_size], total
 
 
 async def update_workspace(
-    db: AsyncSession, workspace: Workspace, workspace_in: WorkspaceUpdate
-) -> Workspace:
+    db: FirestoreDB, workspace: dict, workspace_in: WorkspaceUpdate
+) -> dict:
     """Update a workspace."""
     update_data = workspace_in.model_dump(exclude_unset=True)
 
-    if "slug" in update_data and update_data["slug"] != workspace.slug:
-        update_data["slug"] = await ensure_unique_slug(
-            db, update_data["slug"], exclude_id=workspace.id
-        )
+    if "slug" in update_data and update_data["slug"] != workspace["slug"]:
+        update_data["slug"] = ensure_unique_slug(db, update_data["slug"], exclude_id=workspace["id"])
 
     for field, value in update_data.items():
-        setattr(workspace, field, value)
+        workspace[field] = value
 
-    await db.flush()
-    await db.refresh(workspace)
+    db.set(WORKSPACES, workspace["id"], workspace)
     return workspace
 
 
-async def delete_workspace(db: AsyncSession, workspace: Workspace) -> None:
+async def delete_workspace(db: FirestoreDB, workspace: dict) -> None:
     """Soft-delete a workspace."""
-    workspace.deleted_at = datetime.now(timezone.utc)
-    await db.flush()
+    workspace["deleted_at"] = now_iso()
+    db.set(WORKSPACES, workspace["id"], workspace)
 
 
 # ─── Membership Operations ───────────────────────────
 
 
 async def add_member(
-    db: AsyncSession, workspace: Workspace, member_in: WorkspaceMemberAdd
-) -> WorkspaceMember:
+    db: FirestoreDB, workspace: dict, member_in: WorkspaceMemberAdd
+) -> dict:
     """Add a member to a workspace."""
-    # Validate the target user exists (SQLite does not enforce FKs by default,
-    # so we check explicitly to keep behavior consistent across databases)
-    result = await db.execute(
-        select(User).where(User.id == member_in.user_id, User.deleted_at.is_(None))
-    )
-    if result.scalar_one_or_none() is None:
+    user = auth_service.get_user_by_id(db, member_in.user_id)
+    if user is None:
         raise WorkspaceError("User not found", status_code=404)
 
-    # Check if already a member
-    existing = await get_workspace_membership(db, member_in.user_id, workspace.id)
+    existing = await get_workspace_membership(db, member_in.user_id, workspace["id"])
     if existing:
         raise WorkspaceError("User is already a member of this workspace", status_code=409)
 
-    membership = WorkspaceMember(
-        workspace_id=workspace.id,
-        user_id=member_in.user_id,
-        role=member_in.role,
-    )
-    db.add(membership)
-    await db.flush()
-    await db.refresh(membership)
+    membership = stamp({
+        "workspace_id": workspace["id"],
+        "user_id": str(member_in.user_id),
+        "role": member_in.role.value,
+    })
+    db.add(MEMBERS, membership)
     return membership
 
 
 async def update_member_role(
-    db: AsyncSession,
-    workspace: Workspace,
-    user_id: UUID,
+    db: FirestoreDB,
+    workspace: dict,
+    user_id: str,
     new_role: MembershipRole,
-) -> WorkspaceMember:
+) -> dict:
     """Update a member's role in a workspace."""
-    membership = await get_workspace_membership(db, user_id, workspace.id)
+    membership = await get_workspace_membership(db, user_id, workspace["id"])
     if membership is None:
         raise MembershipNotFoundError()
 
-    if membership.role == MembershipRole.OWNER:
+    if membership.get("role") == MembershipRole.OWNER.value:
         raise WorkspaceError("Cannot change the owner's role", status_code=400)
 
-    membership.role = new_role
-    await db.flush()
-    await db.refresh(membership)
+    membership["role"] = new_role.value
+    db.set(MEMBERS, membership["id"], membership)
     return membership
 
 
-async def remove_member(db: AsyncSession, workspace: Workspace, user_id: UUID) -> None:
+async def remove_member(db: FirestoreDB, workspace: dict, user_id: str) -> None:
     """Remove a member from a workspace."""
-    membership = await get_workspace_membership(db, user_id, workspace.id)
+    membership = await get_workspace_membership(db, user_id, workspace["id"])
     if membership is None:
         raise MembershipNotFoundError()
 
-    if membership.role == MembershipRole.OWNER:
+    if membership.get("role") == MembershipRole.OWNER.value:
         raise WorkspaceError("Cannot remove the workspace owner", status_code=400)
 
-    await db.delete(membership)
-    await db.flush()
+    db.delete(MEMBERS, membership["id"])
 
 
-async def list_members(
-    db: AsyncSession, workspace: Workspace
-) -> list[dict]:
+async def list_members(db: FirestoreDB, workspace: dict) -> list[dict]:
     """List all members of a workspace with user details."""
-    result = await db.execute(
-        select(WorkspaceMember, User)
-        .join(User, WorkspaceMember.user_id == User.id)
-        .where(WorkspaceMember.workspace_id == workspace.id)
-        .order_by(WorkspaceMember.created_at.asc())
-    )
-    rows = result.all()
+    rows = db.query(MEMBERS, "workspace_id", workspace["id"])
+    rows.sort(key=lambda r: r.get("created_at") or "")
 
     members = []
-    for member, user in rows:
+    for member in rows:
+        user = auth_service.get_user_by_id(db, member["user_id"]) or {}
         members.append({
-            "id": member.id,
-            "user_id": member.user_id,
-            "role": member.role,
-            "username": user.username,
-            "email": user.email,
-            "created_at": member.created_at,
+            "id": member["id"],
+            "user_id": member["user_id"],
+            "role": member["role"],
+            "username": user.get("username", ""),
+            "email": user.get("email", ""),
+            "created_at": member["created_at"],
         })
     return members
 
 
-async def get_member_count(db: AsyncSession, workspace_id: UUID) -> int:
+async def get_member_count(db: FirestoreDB, workspace_id: str) -> int:
     """Get the number of members in a workspace."""
-    result = await db.execute(
-        select(func.count(WorkspaceMember.id)).where(
-            WorkspaceMember.workspace_id == workspace_id
-        )
-    )
-    return result.scalar() or 0
+    return len(db.query(MEMBERS, "workspace_id", str(workspace_id)))

@@ -1,5 +1,10 @@
 version: "3.9"
 
+# ─── AgentOS Studio — Local dev ─────────────────────────────
+# Data lives in Cloud Firestore (Firebase) — no database container needed.
+# The backend verifies Firebase ID tokens and reads/writes Firestore
+# directly. Firebase auth keys come from ./backend/.env.
+
 services:
   backend:
     build:
@@ -7,17 +12,10 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
+    env_file:
+      - ./backend/.env
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://agentos:agentos@postgres:5432/agentos}
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
     volumes:
       - ./backend:/app
       - agentos_data:/app/data
@@ -33,32 +31,5 @@ services:
       - backend
     restart: unless-stopped
 
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: agentos
-      POSTGRES_USER: agentos
-      POSTGRES_PASSWORD: agentos
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agentos"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
-
 volumes:
-  postgres_data:
-  redis_data:
   agentos_data:

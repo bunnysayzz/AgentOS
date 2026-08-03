@@ -1,17 +1,14 @@
-"""Agent service - CRUD, execution lifecycle, state machine transitions."""
+"""Agent service - CRUD, execution lifecycle, state machine (Firestore-backed)."""
 
 import uuid
 from datetime import datetime, timezone
-from uuid import UUID
 
-from sqlalchemy import select, func, or_
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-
-from app.models.agent import Agent, AgentExecution, AgentStatus, ExecutionStatus
-from app.models.workspace import Workspace
+from app.core.db import FirestoreDB, now_iso, stamp
+from app.models.agent import AgentStatus, ExecutionStatus
 from app.schemas.agent import AgentCreate, AgentUpdate, AgentExecutionCreate
-from app.core.timeutils import safe_duration_ms
+
+AGENTS = "agents"
+EXECUTIONS = "agent_executions"
 
 
 # ─── Errors ──────────────────────────────────────────
@@ -39,7 +36,6 @@ class InvalidTransitionError(AgentError):
 
 # ─── State Machine ──────────────────────────────────
 
-# Valid execution status transitions
 EXECUTION_TRANSITIONS: dict[ExecutionStatus, set[ExecutionStatus]] = {
     ExecutionStatus.PENDING: {ExecutionStatus.RUNNING, ExecutionStatus.CANCELLED},
     ExecutionStatus.RUNNING: {ExecutionStatus.COMPLETED, ExecutionStatus.FAILED, ExecutionStatus.PAUSED, ExecutionStatus.CANCELLED},
@@ -56,243 +52,211 @@ def validate_transition(current: ExecutionStatus, target: ExecutionStatus) -> No
         raise InvalidTransitionError(current, target)
 
 
+def _duration_ms(started_iso: str | None) -> int | None:
+    if not started_iso:
+        return None
+    try:
+        start = datetime.fromisoformat(started_iso.replace("Z", "+00:00"))
+        return int((datetime.now(timezone.utc) - start).total_seconds() * 1000)
+    except Exception:
+        return None
+
+
 # ─── Agent CRUD ─────────────────────────────────────
 
 
-async def create_agent(db: AsyncSession, workspace_id: UUID, agent_in: AgentCreate) -> Agent:
+async def create_agent(db: FirestoreDB, workspace_id: str, agent_in: AgentCreate) -> dict:
     """Create a new agent within a workspace."""
-    agent = Agent(
-        workspace_id=workspace_id,
-        name=agent_in.name,
-        description=agent_in.description,
-        system_prompt=agent_in.system_prompt,
-        model_provider=agent_in.model_provider,
-        model_name=agent_in.model_name,
-        temperature=agent_in.temperature,
-        max_tokens=agent_in.max_tokens,
-        config=agent_in.config,
-        tool_ids=agent_in.tool_ids,
-        status=AgentStatus.DRAFT,
-    )
-    db.add(agent)
-    await db.flush()
-    await db.refresh(agent)
+    agent = stamp({
+        "workspace_id": str(workspace_id),
+        "name": agent_in.name,
+        "description": agent_in.description,
+        "system_prompt": agent_in.system_prompt,
+        "model_provider": agent_in.model_provider,
+        "model_name": agent_in.model_name,
+        "temperature": agent_in.temperature,
+        "max_tokens": agent_in.max_tokens,
+        "config": agent_in.config,
+        "tool_ids": agent_in.tool_ids,
+        "status": AgentStatus.DRAFT.value,
+        "version": 1,
+    })
+    db.add(AGENTS, agent)
     return agent
 
 
-async def get_agent_by_id(db: AsyncSession, agent_id: UUID) -> Agent | None:
+async def get_agent_by_id(db: FirestoreDB, agent_id: str) -> dict | None:
     """Get an agent by ID."""
-    result = await db.execute(
-        select(Agent).where(Agent.id == agent_id, Agent.deleted_at.is_(None))
-    )
-    return result.scalar_one_or_none()
+    agent = db.get(AGENTS, str(agent_id))
+    if agent is None or agent.get("deleted_at"):
+        return None
+    return agent
 
 
 async def list_workspace_agents(
-    db: AsyncSession, workspace_id: UUID, page: int = 1, page_size: int = 50
-) -> tuple[list[Agent], int]:
+    db: FirestoreDB, workspace_id: str, page: int = 1, page_size: int = 50
+) -> tuple[list[dict], int]:
     """List all agents in a workspace with pagination."""
-    offset = (page - 1) * page_size
-
-    count_result = await db.execute(
-        select(func.count(Agent.id)).where(
-            Agent.workspace_id == workspace_id,
-            Agent.deleted_at.is_(None),
-        )
-    )
-    total = count_result.scalar() or 0
-
-    result = await db.execute(
-        select(Agent)
-        .where(
-            Agent.workspace_id == workspace_id,
-            Agent.deleted_at.is_(None),
-        )
-        .order_by(Agent.updated_at.desc().nulls_last(), Agent.created_at.desc())
-        .offset(offset)
-        .limit(page_size)
-    )
-    agents = result.scalars().all()
-    return list(agents), total
+    rows = [r for r in db.query(AGENTS, "workspace_id", str(workspace_id)) if not r.get("deleted_at")]
+    rows.sort(key=lambda r: (r.get("updated_at") or "", r.get("created_at") or ""), reverse=True)
+    total = len(rows)
+    start = (page - 1) * page_size
+    return rows[start : start + page_size], total
 
 
-async def update_agent(db: AsyncSession, agent: Agent, agent_in: AgentUpdate) -> Agent:
+async def update_agent(db: FirestoreDB, agent: dict, agent_in: AgentUpdate) -> dict:
     """Update an agent."""
     update_data = agent_in.model_dump(exclude_unset=True)
 
-    # Increment version on configuration changes
     config_fields = {"system_prompt", "model_provider", "model_name", "temperature", "max_tokens", "config", "tool_ids"}
     if config_fields & set(update_data.keys()):
-        agent.version += 1
+        agent["version"] = (agent.get("version") or 1) + 1
 
     for field, value in update_data.items():
-        setattr(agent, field, value)
+        if value is not None or field == "config" or field == "tool_ids":
+            agent[field] = value
+        else:
+            agent[field] = value
 
-    await db.flush()
-    await db.refresh(agent)
+    db.set(AGENTS, agent["id"], agent)
     return agent
 
 
-async def delete_agent(db: AsyncSession, agent: Agent) -> None:
+async def delete_agent(db: FirestoreDB, agent: dict) -> None:
     """Soft-delete an agent."""
-    agent.deleted_at = datetime.now(timezone.utc)
-    agent.status = AgentStatus.ARCHIVED
-    await db.flush()
+    agent["deleted_at"] = now_iso()
+    agent["status"] = AgentStatus.ARCHIVED.value
+    db.set(AGENTS, agent["id"], agent)
 
 
 # ─── Execution Lifecycle ────────────────────────────
 
 
 async def create_execution(
-    db: AsyncSession, agent_id: UUID, exec_in: AgentExecutionCreate | None = None
-) -> AgentExecution:
+    db: FirestoreDB, agent_id: str, exec_in: AgentExecutionCreate | None = None
+) -> dict:
     """Create a new execution for an agent."""
     agent = await get_agent_by_id(db, agent_id)
     if agent is None:
         raise AgentNotFoundError()
 
-    # Generate session_id if not provided
     session_id = exec_in.session_id if exec_in and exec_in.session_id else str(uuid.uuid4())
 
-    execution = AgentExecution(
-        agent_id=agent_id,
-        session_id=session_id,
-        status=ExecutionStatus.PENDING,
-        input_data=exec_in.input_data if exec_in else None,
-    )
-    db.add(execution)
-    await db.flush()
-    await db.refresh(execution)
+    execution = stamp({
+        "agent_id": str(agent_id),
+        "session_id": session_id,
+        "status": ExecutionStatus.PENDING.value,
+        "input_data": exec_in.input_data if exec_in else None,
+        "output_data": None,
+        "error_message": None,
+        "started_at": None,
+        "completed_at": None,
+        "duration_ms": None,
+        "prompt_tokens": None,
+        "completion_tokens": None,
+        "total_tokens": None,
+        "cost_usd": None,
+        "checkpoint_path": None,
+    })
+    db.add(EXECUTIONS, execution)
     return execution
 
 
-async def get_execution_by_id(db: AsyncSession, execution_id: UUID) -> AgentExecution | None:
+async def get_execution_by_id(db: FirestoreDB, execution_id: str) -> dict | None:
     """Get an execution by ID."""
-    result = await db.execute(
-        select(AgentExecution).where(AgentExecution.id == execution_id)
-    )
-    return result.scalar_one_or_none()
+    return db.get(EXECUTIONS, str(execution_id))
 
 
 async def list_agent_executions(
-    db: AsyncSession,
-    agent_id: UUID,
+    db: FirestoreDB,
+    agent_id: str,
     page: int = 1,
     page_size: int = 50,
     status_filter: ExecutionStatus | None = None,
-) -> tuple[list[AgentExecution], int]:
+) -> tuple[list[dict], int]:
     """List executions for an agent."""
-    offset = (page - 1) * page_size
-
-    conditions = [AgentExecution.agent_id == agent_id]
-    if status_filter:
-        conditions.append(AgentExecution.status == status_filter)
-
-    count_result = await db.execute(select(func.count(AgentExecution.id)).where(*conditions))
-    total = count_result.scalar() or 0
-
-    result = await db.execute(
-        select(AgentExecution)
-        .where(*conditions)
-        .order_by(AgentExecution.created_at.desc())
-        .offset(offset)
-        .limit(page_size)
-    )
-    executions = result.scalars().all()
-    return list(executions), total
+    rows = [
+        r for r in db.query(EXECUTIONS, "agent_id", str(agent_id))
+        if (status_filter is None or r.get("status") == status_filter.value)
+    ]
+    rows.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+    total = len(rows)
+    start = (page - 1) * page_size
+    return rows[start : start + page_size], total
 
 
-async def start_execution(db: AsyncSession, execution: AgentExecution) -> AgentExecution:
+async def start_execution(db: FirestoreDB, execution: dict) -> dict:
     """Start an execution (PENDING -> RUNNING)."""
-    validate_transition(execution.status, ExecutionStatus.RUNNING)
-    execution.status = ExecutionStatus.RUNNING
-    execution.started_at = datetime.now(timezone.utc)
-    await db.flush()
-    await db.refresh(execution)
+    validate_transition(ExecutionStatus(execution["status"]), ExecutionStatus.RUNNING)
+    execution["status"] = ExecutionStatus.RUNNING.value
+    execution["started_at"] = now_iso()
+    db.set(EXECUTIONS, execution["id"], execution)
     return execution
 
 
 async def complete_execution(
-    db: AsyncSession,
-    execution: AgentExecution,
+    db: FirestoreDB,
+    execution: dict,
     output_data: dict | None = None,
     prompt_tokens: int | None = None,
     completion_tokens: int | None = None,
     cost_usd: float | None = None,
-) -> AgentExecution:
+) -> dict:
     """Complete an execution (RUNNING -> COMPLETED)."""
-    validate_transition(execution.status, ExecutionStatus.COMPLETED)
+    validate_transition(ExecutionStatus(execution["status"]), ExecutionStatus.COMPLETED)
 
-    now = datetime.now(timezone.utc)
-    execution.status = ExecutionStatus.COMPLETED
-    execution.completed_at = now
-    execution.output_data = output_data
-    execution.prompt_tokens = prompt_tokens
-    execution.completion_tokens = completion_tokens
+    execution["status"] = ExecutionStatus.COMPLETED.value
+    execution["completed_at"] = now_iso()
+    execution["output_data"] = output_data
+    execution["prompt_tokens"] = prompt_tokens
+    execution["completion_tokens"] = completion_tokens
     if prompt_tokens is not None and completion_tokens is not None:
-        execution.total_tokens = prompt_tokens + completion_tokens
-    execution.cost_usd = cost_usd
+        execution["total_tokens"] = prompt_tokens + completion_tokens
+    execution["cost_usd"] = cost_usd
+    execution["duration_ms"] = _duration_ms(execution.get("started_at"))
 
-    if execution.started_at:
-        execution.duration_ms = safe_duration_ms(execution.started_at)
-
-    await db.flush()
-    await db.refresh(execution)
+    db.set(EXECUTIONS, execution["id"], execution)
     return execution
 
 
-async def fail_execution(
-    db: AsyncSession,
-    execution: AgentExecution,
-    error_message: str,
-) -> AgentExecution:
+async def fail_execution(db: FirestoreDB, execution: dict, error_message: str) -> dict:
     """Fail an execution (RUNNING -> FAILED)."""
-    validate_transition(execution.status, ExecutionStatus.FAILED)
+    validate_transition(ExecutionStatus(execution["status"]), ExecutionStatus.FAILED)
 
-    now = datetime.now(timezone.utc)
-    execution.status = ExecutionStatus.FAILED
-    execution.completed_at = now
-    execution.error_message = error_message
+    execution["status"] = ExecutionStatus.FAILED.value
+    execution["completed_at"] = now_iso()
+    execution["error_message"] = error_message
+    execution["duration_ms"] = _duration_ms(execution.get("started_at"))
 
-    if execution.started_at:
-        execution.duration_ms = safe_duration_ms(execution.started_at)
-
-    await db.flush()
-    await db.refresh(execution)
+    db.set(EXECUTIONS, execution["id"], execution)
     return execution
 
 
-async def cancel_execution(db: AsyncSession, execution: AgentExecution) -> AgentExecution:
+async def cancel_execution(db: FirestoreDB, execution: dict) -> dict:
     """Cancel an execution (any active state -> CANCELLED)."""
-    validate_transition(execution.status, ExecutionStatus.CANCELLED)
+    validate_transition(ExecutionStatus(execution["status"]), ExecutionStatus.CANCELLED)
 
-    now = datetime.now(timezone.utc)
-    execution.status = ExecutionStatus.CANCELLED
-    execution.completed_at = now
+    execution["status"] = ExecutionStatus.CANCELLED.value
+    execution["completed_at"] = now_iso()
+    execution["duration_ms"] = _duration_ms(execution.get("started_at"))
 
-    if execution.started_at:
-        execution.duration_ms = safe_duration_ms(execution.started_at)
-
-    await db.flush()
-    await db.refresh(execution)
+    db.set(EXECUTIONS, execution["id"], execution)
     return execution
 
 
-async def pause_execution(db: AsyncSession, execution: AgentExecution) -> AgentExecution:
+async def pause_execution(db: FirestoreDB, execution: dict) -> dict:
     """Pause an execution (RUNNING -> PAUSED)."""
-    validate_transition(execution.status, ExecutionStatus.PAUSED)
-    execution.status = ExecutionStatus.PAUSED
-    await db.flush()
-    await db.refresh(execution)
+    validate_transition(ExecutionStatus(execution["status"]), ExecutionStatus.PAUSED)
+    execution["status"] = ExecutionStatus.PAUSED.value
+    db.set(EXECUTIONS, execution["id"], execution)
     return execution
 
 
-async def resume_execution(db: AsyncSession, execution: AgentExecution) -> AgentExecution:
+async def resume_execution(db: FirestoreDB, execution: dict) -> dict:
     """Resume a paused execution (PAUSED -> RUNNING)."""
-    validate_transition(execution.status, ExecutionStatus.RUNNING)
-    execution.status = ExecutionStatus.RUNNING
-    await db.flush()
-    await db.refresh(execution)
+    validate_transition(ExecutionStatus(execution["status"]), ExecutionStatus.RUNNING)
+    execution["status"] = ExecutionStatus.RUNNING.value
+    db.set(EXECUTIONS, execution["id"], execution)
     return execution
 
 
@@ -300,21 +264,19 @@ async def resume_execution(db: AsyncSession, execution: AgentExecution) -> Agent
 
 
 async def list_session_executions(
-    db: AsyncSession, session_id: str, workspace_id: UUID | None = None, agent_id: UUID | None = None
-) -> list[AgentExecution]:
+    db: FirestoreDB, session_id: str, workspace_id: str | None = None, agent_id: str | None = None
+) -> list[dict]:
     """List all executions in a session, optionally scoped to a workspace."""
-    query = select(AgentExecution)
+    rows = [r for r in db.query(EXECUTIONS, "session_id", session_id)]
 
     if workspace_id:
-        # Join through agent to filter by workspace
-        query = query.join(Agent, AgentExecution.agent_id == Agent.id).where(
-            Agent.workspace_id == workspace_id
-        )
+        agent_ids = {
+            a["id"] for a in db.query(AGENTS, "workspace_id", str(workspace_id))
+        }
+        rows = [r for r in rows if r.get("agent_id") in agent_ids]
 
-    conditions = [AgentExecution.session_id == session_id]
     if agent_id:
-        conditions.append(AgentExecution.agent_id == agent_id)
+        rows = [r for r in rows if str(r.get("agent_id") or "") == str(agent_id)]
 
-    query = query.where(*conditions).order_by(AgentExecution.created_at.asc())
-    result = await db.execute(query)
-    return list(result.scalars().all())
+    rows.sort(key=lambda r: r.get("created_at") or "")
+    return rows

@@ -1,26 +1,17 @@
-"""MCP Gateway service - LLM provider abstraction, model routing, cost governance."""
+"""MCP Gateway service - LLM provider abstraction, model routing, cost governance (Firestore)."""
 
 import time
-import json
 import httpx
-from datetime import datetime, timezone
-from uuid import UUID
-
 from datetime import datetime, timezone, timedelta
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.mcp import LLMCall, ModelRegistry, LLMProvider, ProviderConfig
-from app.schemas.mcp import ChatCompletionRequest, ChatCompletionResponse, ChatMessage
-from app.core.config import settings
+from app.core.db import FirestoreDB, stamp
+from app.models.mcp import LLMProvider
+from app.schemas.mcp import ChatCompletionRequest, ChatCompletionResponse
 from app.services.provider_service import get_api_key_for_provider, get_provider_config, list_provider_configs
 from app.services.provider_metadata import get_fallback_chain, is_rate_limit_error
 
-
-# ─── Provider Fallback Configuration ────────────────────────────
-
-# Default query message for fallback: brief, generic
-FALLBACK_USER_QUERY = "Hello, please respond with a brief acknowledgment."
+LLM_CALLS = "llm_calls"
+MODEL_REGISTRY = "model_registry"
 
 
 # ─── Default model pricing (per 1K tokens in USD) ──
@@ -59,28 +50,21 @@ class ModelNotFoundError(MCPError):
 
 
 async def get_available_models(
-    db: AsyncSession, provider: LLMProvider | None = None
-) -> list[ModelRegistry]:
+    db: FirestoreDB, provider: LLMProvider | None = None
+) -> list[dict]:
     """List all available models, optionally filtered by provider."""
-    conditions = [
-        ModelRegistry.is_active.is_(True),
-        ModelRegistry.is_deprecated.is_(False),
-        ModelRegistry.deleted_at.is_(None),
+    rows = [
+        r for r in db.query(MODEL_REGISTRY)
+        if r.get("is_active") and not r.get("is_deprecated") and not r.get("deleted_at")
+        and (provider is None or r.get("provider") == provider.value)
     ]
-    if provider:
-        conditions.append(ModelRegistry.provider == provider)
-
-    result = await db.execute(
-        select(ModelRegistry).where(*conditions).order_by(ModelRegistry.provider, ModelRegistry.model_name)
-    )
-    return list(result.scalars().all())
+    rows.sort(key=lambda r: (r.get("provider") or "", r.get("model_name") or ""))
+    return rows
 
 
-async def seed_default_models(db: AsyncSession) -> int:
+async def seed_default_models(db: FirestoreDB) -> int:
     """Seed default model pricing into the registry if empty."""
-    result = await db.execute(select(func.count(ModelRegistry.id)))
-    count = result.scalar() or 0
-    if count > 0:
+    if db.count(MODEL_REGISTRY) > 0:
         return 0
 
     count = 0
@@ -91,20 +75,21 @@ async def seed_default_models(db: AsyncSession) -> int:
         elif model_key.startswith("gemini"):
             provider = LLMProvider.GOOGLE
 
-        model = ModelRegistry(
-            provider=provider,
-            model_name=model_key,
-            input_price_per_1k=pricing["input"],
-            output_price_per_1k=pricing["output"],
-            context_window=pricing["context"],
-            max_output_tokens=8192,
-            is_active=True,
-            capabilities=["chat", "function_calling", "streaming"],
-        )
-        db.add(model)
+        model = stamp({
+            "provider": provider.value,
+            "model_name": model_key,
+            "input_price_per_1k": pricing["input"],
+            "output_price_per_1k": pricing["output"],
+            "context_window": pricing["context"],
+            "max_output_tokens": 8192,
+            "is_active": True,
+            "is_deprecated": False,
+            "capabilities": ["chat", "function_calling", "streaming"],
+            "description": None,
+            "registry_metadata": None,
+        })
+        db.add(MODEL_REGISTRY, model)
         count += 1
-
-    await db.flush()
     return count
 
 
@@ -114,6 +99,54 @@ def calculate_cost(model_name: str, prompt_tokens: int, completion_tokens: int) 
     input_cost = (prompt_tokens / 1000) * pricing["input"]
     output_cost = (completion_tokens / 1000) * pricing["output"]
     return round(input_cost + output_cost, 6)
+
+
+def _record_call(
+    db: FirestoreDB,
+    workspace_id: str | None,
+    agent_id: str | None,
+    execution_id: str | None,
+    provider: LLMProvider,
+    model_name: str,
+    system_prompt: str | None,
+    messages: list[dict],
+    temperature: float,
+    max_tokens: int | None,
+    response_content: str,
+    finish_reason: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    cost_usd: float,
+    duration_ms: int,
+    is_error: bool,
+    error_message: str | None,
+    is_streaming: bool,
+) -> dict:
+    """Persist an LLM call record to Firestore."""
+    call = stamp({
+        "workspace_id": str(workspace_id) if workspace_id else None,
+        "agent_id": str(agent_id) if agent_id else None,
+        "execution_id": str(execution_id) if execution_id else None,
+        "provider": provider.value,
+        "model_name": model_name,
+        "system_prompt": system_prompt,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "response_content": response_content,
+        "finish_reason": finish_reason,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": prompt_tokens + completion_tokens,
+        "cost_usd": cost_usd,
+        "duration_ms": duration_ms,
+        "is_cached": False,
+        "is_error": is_error,
+        "error_message": error_message,
+        "is_streaming": is_streaming,
+    })
+    db.add(LLM_CALLS, call)
+    return call
 
 
 # ─── Real LLM API Calls ────────────────────────────
@@ -127,25 +160,15 @@ async def _call_openai_compatible(
     max_tokens: int | None,
     base_url: str = "https://api.openai.com/v1",
 ) -> dict:
-    """Call an OpenAI-compatible chat completions API.
-    
-    This works with any provider that supports the OpenAI API format:
-    - DeepSeek, Groq, Cerebras, OpenRouter, Together, Fireworks, etc.
-    """
+    """Call an OpenAI-compatible chat completions API."""
     body = {"model": model, "messages": messages, "temperature": temperature}
     if max_tokens:
         body["max_tokens"] = max_tokens
-    
-    # Ensure base URL ends with /chat/completions
+
     url = base_url.rstrip("/")
     if not url.endswith("chat/completions"):
-        if url.endswith("v1"):
-            url += "/chat/completions"
-        elif url.endswith("openai"):
-            url += "/chat/completions"
-        else:
-            url += "/chat/completions"
-    
+        url += "/chat/completions"
+
     async with httpx.AsyncClient(timeout=60) as client:
         r = await client.post(
             url,
@@ -159,24 +182,7 @@ async def _call_openai_compatible(
             error_data = r.json().get("error", {})
             raise MCPError(f"Rate limit exceeded: {error_data.get('message', 'Too many requests')}", 429)
         if r.status_code == 402:
-            raise MCPError(f"Insufficient balance/credits: Payment required", 402)
-        r.raise_for_status()
-        return r.json()
-
-
-async def _call_openai(
-    api_key: str, messages: list[dict], model: str, temperature: float, max_tokens: int | None
-) -> dict:
-    """Call OpenAI chat completions API."""
-    body = {"model": model, "messages": messages, "temperature": temperature}
-    if max_tokens:
-        body["max_tokens"] = max_tokens
-    async with httpx.AsyncClient(timeout=60) as client:
-        r = await client.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json=body,
-        )
+            raise MCPError("Insufficient balance/credits: Payment required", 402)
         r.raise_for_status()
         return r.json()
 
@@ -185,7 +191,6 @@ async def _call_anthropic(
     api_key: str, messages: list[dict], model: str, temperature: float, max_tokens: int | None
 ) -> dict:
     """Call Anthropic messages API."""
-    # Extract system message
     system = None
     chat_messages = []
     for m in messages:
@@ -234,16 +239,12 @@ async def _call_google(
     api_key: str, messages: list[dict], model: str, temperature: float, max_tokens: int | None
 ) -> dict:
     """Call Google Gemini API."""
-    # Convert OpenAI-style messages to Gemini format
     contents = []
     for m in messages:
         if m["role"] in ("user", "assistant"):
             contents.append({"role": m["role"], "parts": [{"text": m["content"]}]})
 
-    body = {
-        "contents": contents,
-        "generationConfig": {"temperature": temperature},
-    }
+    body = {"contents": contents, "generationConfig": {"temperature": temperature}}
     if max_tokens:
         body["generationConfig"]["maxOutputTokens"] = max_tokens
 
@@ -275,7 +276,7 @@ async def _call_google(
 # ─── Chat/Completion ───────────────────────────────
 
 
-def _build_system_message(messages: list[ChatMessage]) -> str | None:
+def _build_system_message(messages) -> str | None:
     """Extract system message from messages array."""
     for msg in messages:
         if msg.role == "system":
@@ -283,30 +284,36 @@ def _build_system_message(messages: list[ChatMessage]) -> str | None:
     return None
 
 
+def _get_model_for_provider(provider: LLMProvider) -> str | None:
+    """Get the default model name for a provider."""
+    model_map = {
+        LLMProvider.OPENAI: "gpt-4o-mini",
+        LLMProvider.ANTHROPIC: "claude-3-haiku-20240307",
+        LLMProvider.GOOGLE: "gemini-2.0-flash",
+        LLMProvider.GROQ: "llama-3.3-70b-versatile",
+        LLMProvider.CEREBRAS: "llama3.1-8b",
+        LLMProvider.OPENROUTER: "meta-llama/llama-3.3-70b-instruct:free",
+        LLMProvider.MISTRAL: "open-mistral-nemo",
+        LLMProvider.HUGGINGFACE: "meta-llama/Llama-3.3-70B-Instruct",
+        LLMProvider.DEEPSEEK: "deepseek-chat",
+        LLMProvider.OLLAMA: "llama3.2",
+    }
+    return model_map.get(provider)
+
+
 async def route_chat_completion(
-    db: AsyncSession,
+    db: FirestoreDB,
     request: ChatCompletionRequest,
-    workspace_id: UUID | None = None,
-    agent_id: UUID | None = None,
-    execution_id: UUID | None = None,
+    workspace_id: str | None = None,
+    agent_id: str | None = None,
+    execution_id: str | None = None,
     use_fallback: bool = True,
 ) -> ChatCompletionResponse:
-    """Route a chat completion request to the appropriate LLM provider.
-    
-    Features:
-    - Makes a real API call if the provider has a configured API key
-    - Falls back to simulated response if no keys are configured
-    - Supports automatic fallback chain: if a provider fails (rate limit/quota),
-      tries the next configured provider in priority order
-    
-    Args:
-        use_fallback: If True, automatically tries fallback providers on failure.
-    """
+    """Route a chat completion request to the appropriate LLM provider."""
     model_name = request.model
     system_prompt = _build_system_message(request.messages)
     temperature = request.temperature if request.temperature is not None else 0.7
 
-    # Provider detection from model name
     primary_provider = LLMProvider.OPENAI
     if model_name.startswith("claude"):
         primary_provider = LLMProvider.ANTHROPIC
@@ -317,30 +324,25 @@ async def route_chat_completion(
     elif model_name.startswith("deepseek"):
         primary_provider = LLMProvider.DEEPSEEK
 
-    # If fallback is enabled, build fallback chain of configured providers
     fallback_providers: list[LLMProvider] = []
     if use_fallback:
         all_configs = await list_provider_configs(db)
-        configured_slugs = [c.provider.value for c in all_configs if c.is_active]
+        configured_slugs = [c.get("provider") for c in all_configs if c.get("is_active")]
         fallback_chain = get_fallback_chain(configured_slugs, model_name=model_name)
         fallback_providers = [
             LLMProvider(slug) for slug in fallback_chain
             if slug in configured_slugs
         ]
-        # Ensure primary is first in chain
         if primary_provider.value in configured_slugs:
             if primary_provider in fallback_providers:
                 fallback_providers.remove(primary_provider)
             fallback_providers.insert(0, primary_provider)
 
     providers_to_try = fallback_providers if use_fallback else [primary_provider]
-
-    # If no fallback providers configured, just use primary
     if not providers_to_try:
         providers_to_try = [primary_provider]
 
     last_error = None
-    response = None
 
     for attempt_idx, provider in enumerate(providers_to_try):
         provider_config = await get_provider_config(db, provider)
@@ -355,22 +357,22 @@ async def route_chat_completion(
         try:
             messages_dict = [m.model_dump() for m in request.messages]
 
-            # Determine the model to use for this provider
-            # Use provider's default model if the original model doesn't match
             actual_model = model_name
             if is_fallback:
-                # Use the provider's default model for fallback calls
                 default_model = _get_model_for_provider(provider)
                 actual_model = default_model or model_name
 
-            if provider == LLMProvider.OPENAI or provider == LLMProvider.DEEPSEEK:
-                # OpenAI-compatible API call
-                base_url = provider_config.base_url if provider_config else None
+            if provider in (LLMProvider.OPENAI, LLMProvider.DEEPSEEK, LLMProvider.GROQ,
+                            LLMProvider.CEREBRAS, LLMProvider.OPENROUTER, LLMProvider.MISTRAL,
+                            LLMProvider.HUGGINGFACE, LLMProvider.OLLAMA):
+                base_url = provider_config.get("base_url") if provider_config else None
                 if not base_url:
                     if provider == LLMProvider.DEEPSEEK:
                         base_url = "https://api.deepseek.com"
                     else:
                         base_url = "https://api.openai.com/v1"
+                if provider == LLMProvider.OLLAMA:
+                    base_url = base_url or "http://localhost:11434/v1"
 
                 result = await _call_openai_compatible(
                     api_key=api_key,
@@ -400,8 +402,7 @@ async def route_chat_completion(
                 finish_reason = result["choices"][0].get("finish_reason", "stop")
 
             else:
-                # Try OpenAI-compatible call for unknown providers
-                base_url = provider_config.base_url if provider_config else None
+                base_url = provider_config.get("base_url") if provider_config else None
                 if base_url:
                     result = await _call_openai_compatible(
                         api_key=api_key,
@@ -418,37 +419,22 @@ async def route_chat_completion(
                 else:
                     raise MCPError(f"Real API calls for {provider.value} are not yet implemented")
 
-            # Success — record and return
             duration_ms = int((time.monotonic() - start_time) * 1000)
             total_tokens = prompt_tokens + completion_tokens
             cost_usd = calculate_cost(model_name, prompt_tokens, completion_tokens)
 
-            llm_call = LLMCall(
-                workspace_id=workspace_id,
-                agent_id=agent_id,
-                execution_id=execution_id,
-                provider=provider,
-                model_name=actual_model,
-                system_prompt=system_prompt,
-                messages=[m.model_dump() for m in request.messages],
-                temperature=temperature,
-                max_tokens=request.max_tokens,
-                response_content=response_content,
-                finish_reason=finish_reason,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                total_tokens=total_tokens,
-                cost_usd=cost_usd,
-                duration_ms=duration_ms,
-                is_error=False,
-                error_message=None,
-                is_streaming=request.stream,
+            llm_call = _record_call(
+                db, workspace_id, agent_id, execution_id,
+                provider, actual_model, system_prompt,
+                [m.model_dump() for m in request.messages],
+                temperature, request.max_tokens,
+                response_content, finish_reason,
+                prompt_tokens, completion_tokens, cost_usd,
+                duration_ms, False, None, request.stream,
             )
-            db.add(llm_call)
-            await db.flush()
 
             return ChatCompletionResponse(
-                id=f"chatcmpl-{llm_call.id}",
+                id=f"chatcmpl-{llm_call['id']}",
                 model=actual_model,
                 provider=provider,
                 choices=[{
@@ -469,33 +455,16 @@ async def route_chat_completion(
             error_str = str(e)
             last_error = error_str
 
-            # Record failed attempt
             duration_ms = int((time.monotonic() - start_time) * 1000)
-            llm_call = LLMCall(
-                workspace_id=workspace_id,
-                agent_id=agent_id,
-                execution_id=execution_id,
-                provider=provider,
-                model_name=model_name,
-                system_prompt=system_prompt,
-                messages=[m.model_dump() for m in request.messages],
-                temperature=temperature,
-                max_tokens=request.max_tokens,
-                response_content="",
-                finish_reason="error",
-                prompt_tokens=0,
-                completion_tokens=0,
-                total_tokens=0,
-                cost_usd=0,
-                duration_ms=duration_ms,
-                is_error=True,
-                error_message=f"Fallback from {provider.value}: {error_str}",
-                is_streaming=request.stream,
+            _record_call(
+                db, workspace_id, agent_id, execution_id,
+                provider, model_name, system_prompt,
+                [m.model_dump() for m in request.messages],
+                temperature, request.max_tokens,
+                "", "error", 0, 0, 0.0, duration_ms,
+                True, f"Fallback from {provider.value}: {error_str}", request.stream,
             )
-            db.add(llm_call)
-            await db.flush()
 
-            # Check if we should try next provider
             if is_fallback or (is_rate_limit_error(error_str) and len(providers_to_try) > 1):
                 continue
             break
@@ -512,37 +481,22 @@ async def route_chat_completion(
         f"Last error: {last_error or 'No configured providers'}. "
         f"Your message: '{last_user_msg}...'"
     )
-    prompt_tokens = max(len(str(request.messages)) // 4, 10)
+    prompt_tokens = max(len(str([m.model_dump() for m in request.messages])) // 4, 10)
     completion_tokens = max(len(response_content) // 4, 10)
     total_tokens = prompt_tokens + completion_tokens
     cost_usd = calculate_cost(model_name, prompt_tokens, completion_tokens)
 
-    llm_call = LLMCall(
-        workspace_id=workspace_id,
-        agent_id=agent_id,
-        execution_id=execution_id,
-        provider=primary_provider,
-        model_name=model_name,
-        system_prompt=system_prompt,
-        messages=[m.model_dump() for m in request.messages],
-        temperature=temperature,
-        max_tokens=request.max_tokens,
-        response_content=response_content,
-        finish_reason="stop",
-        prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens,
-        total_tokens=total_tokens,
-        cost_usd=cost_usd,
-        duration_ms=0,
-        is_error=True,
-        error_message=f"All providers failed. Last: {last_error}",
-        is_streaming=request.stream,
+    llm_call = _record_call(
+        db, workspace_id, agent_id, execution_id,
+        primary_provider, model_name, system_prompt,
+        [m.model_dump() for m in request.messages],
+        temperature, request.max_tokens,
+        response_content, "stop", prompt_tokens, completion_tokens, cost_usd,
+        0, True, f"All providers failed. Last: {last_error}", request.stream,
     )
-    db.add(llm_call)
-    await db.flush()
 
     return ChatCompletionResponse(
-        id=f"chatcmpl-{llm_call.id}",
+        id=f"chatcmpl-{llm_call['id']}",
         model=model_name,
         provider=primary_provider,
         choices=[{
@@ -556,53 +510,26 @@ async def route_chat_completion(
     )
 
 
-def _get_model_for_provider(provider: LLMProvider) -> str | None:
-    """Get the default model name for a provider."""
-    model_map = {
-        LLMProvider.OPENAI: "gpt-4o-mini",
-        LLMProvider.ANTHROPIC: "claude-3-haiku-20240307",
-        LLMProvider.GOOGLE: "gemini-2.0-flash",
-        LLMProvider.GROQ: "llama-3.3-70b-versatile",
-        LLMProvider.CEREBRAS: "llama3.1-8b",
-        LLMProvider.OPENROUTER: "meta-llama/llama-3.3-70b-instruct:free",
-        LLMProvider.MISTRAL: "open-mistral-nemo",
-        LLMProvider.HUGGINGFACE: "meta-llama/Llama-3.3-70B-Instruct",
-        LLMProvider.DEEPSEEK: "deepseek-chat",
-        LLMProvider.OLLAMA: "llama3.2",
-    }
-    return model_map.get(provider)
-
-
 # ─── Cost Tracking ─────────────────────────────────
 
 
+def _cost_rows(db: FirestoreDB, workspace_id: str | None, days: int) -> list[dict]:
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    rows = db.query(LLM_CALLS) if workspace_id is None else db.query(LLM_CALLS, "workspace_id", str(workspace_id))
+    return [r for r in rows if (r.get("created_at") or "") >= cutoff]
+
+
 async def get_cost_summary(
-    db: AsyncSession, workspace_id: UUID | None = None, days: int = 30
+    db: FirestoreDB, workspace_id: str | None = None, days: int = 30
 ) -> dict:
     """Get cost summary for a workspace or globally."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-    conditions = [
-        LLMCall.created_at >= cutoff,
-    ]
-    if workspace_id:
-        conditions.append(LLMCall.workspace_id == workspace_id)
+    rows = _cost_rows(db, workspace_id, days)
 
-    result = await db.execute(
-        select(
-            func.count(LLMCall.id),
-            func.coalesce(func.sum(LLMCall.prompt_tokens), 0),
-            func.coalesce(func.sum(LLMCall.completion_tokens), 0),
-            func.coalesce(func.sum(LLMCall.total_tokens), 0),
-            func.coalesce(func.sum(LLMCall.cost_usd), 0.0),
-        ).where(*conditions)
-    )
-    row = result.one()
-
-    total_calls = row[0] or 0
-    total_prompt = row[1] or 0
-    total_completion = row[2] or 0
-    total_tokens = row[3] or 0
-    total_cost = float(row[4] or 0.0)
+    total_calls = len(rows)
+    total_prompt = sum(r.get("prompt_tokens") or 0 for r in rows)
+    total_completion = sum(r.get("completion_tokens") or 0 for r in rows)
+    total_tokens = sum(r.get("total_tokens") or 0 for r in rows)
+    total_cost = float(sum(r.get("cost_usd") or 0 for r in rows))
 
     return {
         "total_cost_usd": round(total_cost, 4),
@@ -616,78 +543,49 @@ async def get_cost_summary(
 
 
 async def get_cost_by_provider(
-    db: AsyncSession, workspace_id: UUID | None = None, days: int = 30
+    db: FirestoreDB, workspace_id: str | None = None, days: int = 30
 ) -> list[dict]:
     """Get cost breakdown by LLM provider."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-    conditions = [
-        LLMCall.created_at >= cutoff,
+    rows = _cost_rows(db, workspace_id, days)
+    agg: dict[str, dict] = {}
+    for r in rows:
+        prov = r.get("provider") or "unknown"
+        entry = agg.setdefault(prov, {"calls": 0, "tokens": 0, "cost_usd": 0.0})
+        entry["calls"] += 1
+        entry["tokens"] += r.get("total_tokens") or 0
+        entry["cost_usd"] += r.get("cost_usd") or 0
+    result = [
+        {"provider": k, "calls": v["calls"], "tokens": v["tokens"], "cost_usd": round(v["cost_usd"], 4)}
+        for k, v in agg.items()
     ]
-    if workspace_id:
-        conditions.append(LLMCall.workspace_id == workspace_id)
-
-    result = await db.execute(
-        select(
-            LLMCall.provider,
-            func.count(LLMCall.id),
-            func.coalesce(func.sum(LLMCall.total_tokens), 0),
-            func.coalesce(func.sum(LLMCall.cost_usd), 0.0),
-        )
-        .where(*conditions)
-        .group_by(LLMCall.provider)
-        .order_by(func.sum(LLMCall.cost_usd).desc())
-    )
-    return [
-        {"provider": row[0], "calls": row[1] or 0, "tokens": row[2] or 0, "cost_usd": round(float(row[3] or 0.0), 4)}
-        for row in result.all()
-    ]
+    result.sort(key=lambda x: x["cost_usd"], reverse=True)
+    return result
 
 
 async def get_cost_by_model(
-    db: AsyncSession, workspace_id: UUID | None = None, days: int = 30
+    db: FirestoreDB, workspace_id: str | None = None, days: int = 30
 ) -> list[dict]:
     """Get cost breakdown by model."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-    conditions = [
-        LLMCall.created_at >= cutoff,
+    rows = _cost_rows(db, workspace_id, days)
+    agg: dict[tuple, dict] = {}
+    for r in rows:
+        key = (r.get("model_name") or "unknown", r.get("provider") or "unknown")
+        entry = agg.setdefault(key, {"calls": 0, "tokens": 0, "cost_usd": 0.0})
+        entry["calls"] += 1
+        entry["tokens"] += r.get("total_tokens") or 0
+        entry["cost_usd"] += r.get("cost_usd") or 0
+    result = [
+        {"model": k[0], "provider": k[1], "calls": v["calls"], "tokens": v["tokens"], "cost_usd": round(v["cost_usd"], 4)}
+        for k, v in agg.items()
     ]
-    if workspace_id:
-        conditions.append(LLMCall.workspace_id == workspace_id)
-
-    result = await db.execute(
-        select(
-            LLMCall.model_name,
-            LLMCall.provider,
-            func.count(LLMCall.id),
-            func.coalesce(func.sum(LLMCall.total_tokens), 0),
-            func.coalesce(func.sum(LLMCall.cost_usd), 0.0),
-        )
-        .where(*conditions)
-        .group_by(LLMCall.model_name, LLMCall.provider)
-        .order_by(func.sum(LLMCall.cost_usd).desc())
-    )
-    return [
-        {
-            "model": row[0], "provider": row[1],
-            "calls": row[2] or 0, "tokens": row[3] or 0,
-            "cost_usd": round(float(row[4] or 0.0), 4),
-        }
-        for row in result.all()
-    ]
+    result.sort(key=lambda x: x["cost_usd"], reverse=True)
+    return result
 
 
 async def get_recent_calls(
-    db: AsyncSession, workspace_id: UUID | None = None, limit: int = 50
-) -> list[LLMCall]:
+    db: FirestoreDB, workspace_id: str | None = None, limit: int = 50
+) -> list[dict]:
     """Get recent LLM calls."""
-    conditions = []
-    if workspace_id:
-        conditions.append(LLMCall.workspace_id == workspace_id)
-
-    result = await db.execute(
-        select(LLMCall)
-        .where(*conditions)
-        .order_by(LLMCall.created_at.desc())
-        .limit(limit)
-    )
-    return list(result.scalars().all())
+    rows = db.query(LLM_CALLS) if workspace_id is None else db.query(LLM_CALLS, "workspace_id", str(workspace_id))
+    rows.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+    return rows[:limit]
