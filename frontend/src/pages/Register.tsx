@@ -54,10 +54,24 @@ export default function Register() {
     setError('')
     setGoogleLoading(true)
     try {
-      await loginWithGoogle()
-      // Page navigates away to Google — result handled by checkGoogleRedirect on return
+      const result = await loginWithGoogle()
+      // Popup path: sign-in completed inline → finish auth now.
+      // Redirect path (result === null): page navigated away to Google; the
+      // mount effect's checkGoogleRedirect finishes auth on return.
+      if (result) {
+        await finishAuth(result.idToken)
+      }
     } catch (err: any) {
-      setError(err.message || 'Google Sign-In failed. Please try again.')
+      // User closing the popup is not an error — just show the form again.
+      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/user-cancelled') {
+        setGoogleLoading(false)
+        return
+      }
+      // finishAuth already surfaced API errors (response detail); only show
+      // our own message for popup-level failures so the detail isn't lost.
+      if (!err?.response) {
+        setError(err.message || 'Google Sign-In failed. Please try again.')
+      }
       setGoogleLoading(false)
     }
   }

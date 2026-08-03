@@ -2,6 +2,7 @@ import { initializeApp, getApps, getApp } from 'firebase/app'
 import {
   getAuth,
   GoogleAuthProvider,
+  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   onAuthStateChanged,
@@ -66,34 +67,65 @@ function notConfiguredError(what: string): Error {
 }
 
 // ─── Session flag ────────────────────────────────────────────────────
-// Used to distinguish "returning from Google redirect" from "normal page load".
-// Without this, onAuthStateChanged fires with a cached Firebase user on every
-// page load, causing an infinite redirect loop.
+// Set only when Google sign-in falls back to the same-tab redirect flow
+// (popups unavailable). checkGoogleRedirect() reads it on the return trip to
+// distinguish "returning from a Google redirect" from a normal page load.
 const REDIRECT_FLAG = 'agentos_google_redirect'
 
 /**
- * Initiates Google Sign-In via same-tab redirect (no popup window).
- * Sets a sessionStorage flag so the login page knows to process the result.
+ * Google Sign-In.
+ *
+ * Primary: signInWithPopup — completes inline, no redirect round-trip. This
+ * is far more reliable in production; the previous redirect-only flow could
+ * silently fail to complete on the return trip (slow cold starts, ITP,
+ * in-app browsers) leaving users stuck on the guest dashboard.
+ *
+ * Fallback: signInWithRedirect — used only when popups are unavailable
+ * (blocked popups, in-app browsers). The page navigates away to Google; on
+ * return, checkGoogleRedirect() completes the sign-in.
+ *
+ * @returns { user, idToken } when the sign-in completed inline (popup path),
+ *          or null when the redirect fallback navigated away.
  */
-export async function loginWithGoogle(): Promise<void> {
+export async function loginWithGoogle(): Promise<{ user: FirebaseUser; idToken: string } | null> {
   if (!auth || !googleProvider) {
     throw notConfiguredError('Google Sign-In')
   }
-  sessionStorage.setItem(REDIRECT_FLAG, '1')
-  await signInWithRedirect(auth, googleProvider)
+  try {
+    const result = await signInWithPopup(auth, googleProvider)
+    const idToken = await result.user.getIdToken()
+    return { user: result.user, idToken }
+  } catch (err: unknown) {
+    const code: string = (err as { code?: string })?.code || ''
+    const popupUnavailable = [
+      'auth/popup-blocked',
+      'auth/operation-not-supported-in-this-environment',
+      'auth/cancelled-popup-request',
+    ]
+    if (popupUnavailable.includes(code)) {
+      // Popup not possible → same-tab redirect. checkGoogleRedirect()
+      // completes the sign-in when the user returns.
+      sessionStorage.setItem(REDIRECT_FLAG, '1')
+      await signInWithRedirect(auth, googleProvider)
+      return null
+    }
+    throw err
+  }
 }
 
 /**
- * Check if we're returning from a Google redirect.
+ * Check if we're returning from a Google redirect (the popup fallback path).
  * Call this on login/register page mount.
  *
  * Strategy:
- * 1. If no redirect flag → return null immediately (normal page load, no redirect loop)
- * 2. If flag is set → try getRedirectResult() first (works in Chrome/Firefox)
- * 3. If getRedirectResult() returns null (Safari ITP) → fall back to onAuthStateChanged
- * 4. Clear the flag after processing
+ * 1. No redirect flag → normal page load. Show the form. (Never signs out a
+ *    live session — that previously destroyed logged-in users' sessions.)
+ * 2. Flag set → try getRedirectResult() first (works in Chrome/Firefox).
+ * 3. If getRedirectResult() returns null (Safari ITP) → fall back to
+ *    onAuthStateChanged.
+ * 4. Clear the flag after processing.
  *
- * @returns { user, idToken } if a redirect sign-in just completed, null otherwise
+ * @returns an unsubscribe/cleanup function for the effect.
  */
 export function checkGoogleRedirect(
   onSuccess: (user: FirebaseUser, idToken: string) => void,
@@ -110,9 +142,6 @@ export function checkGoogleRedirect(
 
   // No flag = normal page load, not a redirect return
   if (!sessionStorage.getItem(REDIRECT_FLAG)) {
-    // Sign out any lingering Firebase session so it doesn't interfere
-    // (e.g., user logged out of our app but Firebase session persists)
-    signOut(authRef).catch(() => {})
     onNoRedirect()
     return () => {}
   }
@@ -148,14 +177,12 @@ export function checkGoogleRedirect(
     }
   })
 
-  // Safety timeout: if neither fires within 8s, give up and show the form
+  // Slow connections / cold starts can exceed a few seconds. If nothing has
+  // completed after 20s, show the form — but KEEP the listener alive so the
+  // sign-in result is still consumed if it lands later (no lost logins).
   const timeout = setTimeout(() => {
-    if (!handled) {
-      handled = true
-      unsubscribe()
-      onNoRedirect()
-    }
-  }, 8000)
+    if (!handled) onNoRedirect()
+  }, 20000)
 
   return () => {
     handled = true
