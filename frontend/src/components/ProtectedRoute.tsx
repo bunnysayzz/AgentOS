@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Navigate, Outlet } from 'react-router-dom'
+import { Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 
 /**
@@ -27,9 +27,16 @@ function useHasHydrated() {
   return hydrated
 }
 
+/**
+ * Guards only against the store not being hydrated yet.
+ *
+ * NOTE: guests are NOT redirected to /login. The app is fully browsable
+ * without an account — Sign in / Create account live inside the UI (sidebar
+ * and guest banner), so visitors land on the dashboard and can explore before
+ * deciding to authenticate.
+ */
 export default function ProtectedRoute() {
   const hydrated = useHasHydrated()
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
 
   if (!hydrated) {
     return (
@@ -40,10 +47,6 @@ export default function ProtectedRoute() {
         </div>
       </div>
     )
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
   }
 
   return <Outlet />

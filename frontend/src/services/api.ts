@@ -66,11 +66,22 @@ export function requestInterceptor(config: InternalAxiosRequestConfig): Internal
  * Handles 401 responses by refreshing the Firebase ID token (Firebase SDK
  * auto-rotates it) and retrying queued requests.
  * Exported so tests can invoke it with a plain error object.
+ *
+ * Guest mode: when there's no active session at all (visitor browsing the
+ * app without signing in), 401s are passed through WITHOUT logging out or
+ * redirecting — pages simply show empty/guest states.
  */
 export async function responseErrorInterceptor(error: AxiosError) {
   const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
 
   if (error.response?.status !== 401) {
+    return Promise.reject(error)
+  }
+
+  // Guest browsing (no session token yet): don't force-logout/redirect, just
+  // let the caller handle the 401 (pages render guest/empty states).
+  const currentState = useAuthStore.getState()
+  if (!currentState.accessToken) {
     return Promise.reject(error)
   }
 
@@ -92,12 +103,6 @@ export async function responseErrorInterceptor(error: AxiosError) {
       }
       return api(originalRequest)
     })
-  }
-
-  const currentState = useAuthStore.getState()
-  if (!currentState.accessToken) {
-    debouncedLogout()
-    return Promise.reject(error)
   }
 
   isRefreshing = true
