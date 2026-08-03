@@ -28,10 +28,9 @@ describe('ProtectedRoute', () => {
     })
   })
 
-  it('redirects to /login when unauthenticated', async () => {
+  it('renders the outlet for unauthenticated guests (no redirect)', async () => {
     renderProtected()
-    expect(await screen.findByText('Login page')).toBeInTheDocument()
-    expect(screen.queryByText('Dashboard content')).not.toBeInTheDocument()
+    expect(await screen.findByText('Dashboard content')).toBeInTheDocument()
   })
 
   it('renders the outlet when authenticated', async () => {
