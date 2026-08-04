@@ -47,11 +47,11 @@ graph TB
     end
 
     subgraph Storage["💾 Storage Layer"]
-        DB[(SQLite / PostgreSQL<br/>Async Database)]
+        DB[(Cloud Firestore<br/>Google Firebase)]
     end
 
     Client <-->|HTTP/JSON| Server
-    Server <-->|Async SQL| Storage
+    Server <-->|Firestore SDK| Storage
     Server ~~~|LLM API Calls| LLM[🤖 External LLMs<br/>GPT-4o, Claude, Gemini]
 ```
 
@@ -81,14 +81,13 @@ agentos-studio/
 │   │   │   └── execution_graphs.py   # Execution node tracing
 │   │   ├── core/                     # Core config
 │   │   │   ├── config.py             # App settings
-│   │   │   ├── database.py           # Async SQLAlchemy setup
-│   │   │   └── security.py           # JWT + password hashing
-│   │   ├── models/                   # SQLAlchemy ORM models (18 tables)
+│   │   │   ├── database.py           # Firestore-backed data layer
+│   │   │   └── security.py           # Firebase token verification
+│   │   ├── models/                   # Enum definitions for schema compat
 │   │   ├── schemas/                  # Pydantic request/response models
 │   │   ├── services/                 # Business logic (12 modules)
 │   │   └── main.py                   # FastAPI app factory
-│   ├── alembic/                      # Database migrations
-│   └── tests/                        # 43+ async tests
+│   └── tests/                        # 220+ async tests
 │
 └── frontend/                         # React + TypeScript Frontend
     └── src/
@@ -240,6 +239,8 @@ graph LR
 
 ## 🗄️ Data Model Relationships
 
+> These relationships are **conceptual** — everything is stored as Firestore documents/collections (no SQL tables, no migrations).
+
 ```mermaid
 erDiagram
     users ||--o{ workspaces : "is owner"
@@ -381,8 +382,8 @@ graph TB
     end
 
     subgraph Core["Core Layer"]
-        DB[(Async Database)]
-        JWT[JWT Auth]
+        DB[(Cloud Firestore)]
+        JWT[Firebase Auth<br/>+ JWT]
         CFG[Config]
     end
 
@@ -459,31 +460,19 @@ graph TB
 sequenceDiagram
     actor U as User
     participant F as Frontend
+    participant FA as Firebase Auth
     participant B as Backend
-    participant DB as Database
+    participant FS as Cloud Firestore
 
-    U->>F: Enter email + password
-    F->>B: POST /auth/login
-    B->>DB: Verify credentials
-    DB-->>B: User found
-    B->>B: Generate JWT (access + refresh)
-    B-->>F: { access_token, refresh_token }
-    F->>B: GET /auth/me (with Bearer token)
-    B->>B: Verify JWT
-    B-->>F: { id, email, username, full_name }
-    F->>F: Store tokens + user in Zustand
+    U->>F: Sign in (email/password or Google)
+    F->>FA: Firebase Auth request
+    FA-->>F: ID token
+    F->>B: Call API (Bearer Firebase ID token)
+    B->>B: Verify Firebase ID token (public certs)
+    B->>FS: Read / write user data
+    FS-->>B: Documents
+    B-->>F: { user profile, workspaces }
     F-->>U: ✅ Redirect to /dashboard
-
-    Note over F,B: Token refresh
-    F->>B: POST /auth/refresh (expired token)
-    B-->>F: { access_token, refresh_token }
-    F->>F: Update stored tokens
-
-    Note over F,B: Logout
-    U->>F: Click Sign Out
-    F->>F: Clear auth store
-    F->>F: Clear localStorage
-    F-->>U: Redirect to /login
 ```
 
 ---
@@ -540,8 +529,8 @@ flowchart LR
         ROUTE[Route Handler]
         SCHEMA_IN[Pydantic Validation<br/>Request Schema]
         SERVICE[Service Layer<br/>Business Logic]
-        MODEL[SQLAlchemy ORM]
-        DB[(Database)]
+        MODEL[FirestoreDB Data Layer]
+        DB[(Cloud Firestore)]
         SCHEMA_OUT[Pydantic Serialization<br/>Response Schema]
         RESP[JSON Response]
     end
@@ -562,29 +551,24 @@ graph TB
     subgraph Local["💻 Local Development"]
         VITE[Vite Dev Server<br/>Port 5173]
         UVICORN[Uvicorn<br/>Port 8000]
-        SQLITE[(SQLite<br/>agentos.db)]
-        SCREEN[screen session<br/>agentos_start]
+        FS[(Cloud Firestore<br/>agentos-7f01e)]
     end
 
-    subgraph Production["☁️ Production (Future)"]
-        NGINX[NGINX / Traefik<br/>Reverse Proxy]
-        REACT_BUILD[Static Build<br/>dist/]
-        GUNICORN[Gunicorn + Uvicorn<br/>Workers]
-        POSTGRES[(PostgreSQL)]
-        REDIS[(Redis Cache)]
-        S3[(S3 / GCS<br/>Artifact Storage)]
+    subgraph Production["☁️ Production (Render)"]
+        API[FastAPI Single Service<br/>Serves frontend + /api]
+        FS_PROD[(Cloud Firestore)]
+        FB_AUTH[Firebase Auth<br/>Email + Google Sign-In]
+        FB_STORAGE[Firebase Storage<br/>Avatars / Artifacts]
     end
 
     USER([User Browser])
     USER -->|Dev| VITE
-    USER -->|Prod| NGINX
+    USER -->|Prod| API
     VITE -->|/api/* Proxy| UVICORN
-    NGINX -->|/ Static| REACT_BUILD
-    NGINX -->|/api/*| GUNICORN
-    UVICORN --> SQLITE
-    GUNICORN --> POSTGRES
-    GUNICORN --> REDIS
-    GUNICORN --> S3
+    UVICORN --> FS
+    API --> FS_PROD
+    API --> FB_AUTH
+    API --> FB_STORAGE
 ```
 
 ---
@@ -594,15 +578,15 @@ graph TB
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | **Backend Framework** | FastAPI (async) | Native async, auto-docs, Pydantic integration, high performance |
-| **ORM** | SQLAlchemy 2.0 (async) | Mature, async support, comprehensive migration system (Alembic) |
-| **Database** | SQLite (dev) / PostgreSQL (prod) | Zero-config for dev, production-grade for deployment |
+| **ORM** | None | Data access via Firestore SDK — no ORM, no migrations |
+| **Database** | Firebase Cloud Firestore | Serverless, realtime, zero-ops, never powers off |
 | **Auth** | JWT (access + refresh tokens) | Stateless, scalable, industry standard |
 | **Frontend Framework** | React 18 + Vite | Modern, fast HMR, excellent DX |
 | **State Management** | Zustand | Minimal boilerplate, TypeScript-first, tiny bundle size |
 | **API Client** | Axios + TanStack Query | Automatic caching, refetching, error handling |
 | **Styling** | Tailwind CSS | Utility-first, consistent design, dark theme |
-| **Password Hashing** | bcrypt (passlib) | Industry standard, resistant to brute force |
-| **Async DB** | aiosqlite (dev) / asyncpg (prod) | Non-blocking database access |
+| **Password Hashing** | Firebase Auth | Managed auth — email/password + Google Sign-In |
+| **Data Store** | Firestore SDK | Async, serverless, no cold starts |
 
 ---
 
@@ -615,8 +599,8 @@ mindmap
       66 API Endpoints
       14 Route Modules
       12 Service Modules
-      18 Database Tables
-      43 Passing Tests
+      Firestore Collections
+      220+ Passing Tests
     ⚛️ Frontend
       15 Page Components
       5 Shared Components
