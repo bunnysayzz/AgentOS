@@ -78,7 +78,7 @@ fi
 
 source "$VENV_DIR/bin/activate"
 
-if ! command -v uvicorn &> /dev/null || ! command -v alembic &> /dev/null; then
+if ! command -v uvicorn &> /dev/null; then
     echo -e "  ${YELLOW}Installing backend dependencies...${NC}"
     pip install -e .
 fi
@@ -87,9 +87,7 @@ fi
 find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 find . -name '*.pyc' -delete 2>/dev/null || true
 
-# Run migrations against the configured database (see backend/.env)
-echo -e "  ${GREEN}Running migrations...${NC}"
-alembic upgrade head 2>&1 | tail -3
+# No database migrations needed — all data lives in Cloud Firestore.
 
 # Start backend
 echo -e "  ${GREEN}Starting uvicorn on port 8000...${NC}"

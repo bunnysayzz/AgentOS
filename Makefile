@@ -65,11 +65,11 @@ format:  ## Format all code
 
 # ─── Database ──────────────────────────────────────────────
 
-migrate:  ## Run Alembic migrations
-	cd backend && alembic upgrade head
+migrate:  ## (legacy) Alembic migrations — no-op: all data lives in Cloud Firestore
+	@echo "No database migrations needed — AgentOS Studio uses Cloud Firestore."
 
-migration:  ## Create a new Alembic migration
-	cd backend && alembic revision --autogenerate -m "$(name)"
+migration:  ## (legacy) Create an Alembic migration — no-op: Firestore only
+	@echo "No SQL migrations needed — AgentOS Studio uses Cloud Firestore."
 
 # ─── Help ──────────────────────────────────────────────────
 

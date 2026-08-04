@@ -1,4 +1,12 @@
-"""Alembic environment configuration."""
+"""Alembic environment configuration (legacy — unused at runtime).
+
+AgentOS Studio no longer uses a SQL database: all data lives in Cloud
+Firestore, and production boots directly from ``entrypoint.sh`` without
+running migrations. This file exists only so ``alembic`` can still be run
+manually for legacy tooling. It never connects to a remote database — it
+falls back to a local SQLite file so nothing ever reaches out to an
+external Postgres (e.g. the decommissioned Aiven instance).
+"""
 
 import asyncio
 from logging.config import fileConfig
@@ -8,7 +16,6 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from app.core.config import settings
 from app.core.database import Base
 
 # Import all models so Alembic can detect them
@@ -16,8 +23,8 @@ import app.models  # noqa: F401
 
 config = context.config
 
-# Override sqlalchemy.url with settings
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# Never read a DATABASE_URL from env — stay on the local SQLite fallback
+# declared in alembic.ini so legacy tooling can't touch a remote database.
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -48,7 +55,8 @@ def do_run_migrations(connection: Connection) -> None:
 async def run_async_migrations() -> None:
     """Run migrations in 'online' mode with async engine."""
     configuration = config.get_section(config.config_ini_section, {})
-    configuration["sqlalchemy.url"] = settings.DATABASE_URL
+    # Local SQLite only — see module docstring (no remote database).
+    configuration["sqlalchemy.url"] = config.get_main_option("sqlalchemy.url")
     connectable = async_engine_from_config(
         configuration,
         prefix="sqlalchemy.",

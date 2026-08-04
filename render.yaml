@@ -32,7 +32,7 @@ services:
     runtime: python
     rootDir: backend
     plan: free
-    region: singapore # closest Render region to the Aiven Postgres (Bangalore)
+    region: singapore # closest Render region to the primary user base
     buildCommand: |
       npm --prefix ../frontend ci
       npm --prefix ../frontend run build

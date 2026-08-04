@@ -1,6 +1,7 @@
-"""SQLAlchemy ORM models.
+"""SQLAlchemy ORM models (legacy — unused at runtime).
 
-All models are imported here so Alembic can auto-detect them.
+All data lives in Cloud Firestore; these models exist only to keep the
+schema enum types (re-exported by ``app.schemas``) importable.
 """
 
 from app.models.base import BaseModel

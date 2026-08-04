@@ -9,7 +9,7 @@
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-blue.svg)](backend/pyproject.toml)
 [![React 18](https://img.shields.io/badge/React-18-61dafb.svg)](frontend/package.json)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688.svg)](backend/requirements.txt)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-336791.svg)](#database)
+[![Firestore](https://img.shields.io/badge/Firestore-FFCA28.svg)](#database)
 [![Tests](https://img.shields.io/badge/tests-267%20passing-22c55e.svg)](#-testing)
 
 </div>
@@ -40,9 +40,9 @@ AgentOS Studio is a full-stack AI agent orchestration platform. It gives you a u
 
 ## 🧱 Tech Stack
 
-- **Backend:** Python 3.12 · FastAPI · SQLAlchemy 2 (async) · Alembic · JWT auth (bcrypt) · OpenTelemetry
+- **Backend:** Python 3.12 · FastAPI · JWT auth · OpenTelemetry
 - **Frontend:** React 18 · TypeScript · Vite · Tailwind CSS · Zustand · TanStack Query · Axios
-- **Database:** PostgreSQL (Aiven cloud) · SQLite (in-memory for tests)
+- **Database:** Cloud Firestore (Firebase) — no SQL database required
 - **Testing:** pytest (224 tests) · Vitest (38 tests) · Playwright E2E (5 tests) · GitHub Actions CI
 - **Infra:** Docker · Render Blueprint (render.yaml)
 
@@ -54,7 +54,7 @@ AgentOS Studio is a full-stack AI agent orchestration platform. It gives you a u
 
 - Python 3.11+
 - Node.js 20+
-- PostgreSQL 14+ (or use the Aiven cloud DB — see [Database](#database))
+- A Firebase project (Firestore + Auth) — no SQL database needed
 
 ### 1. Backend
 
@@ -65,10 +65,9 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 # Configure environment
-cp .env.example .env          # then fill in DATABASE_URL, SECRET_KEY, Firebase keys
+cp .env.example .env          # then fill in SECRET_KEY, ENCRYPTION_KEY, Firebase keys
 
-# Run migrations & start the API
-alembic upgrade head
+# No database migrations — all data lives in Cloud Firestore.
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -94,14 +93,13 @@ npm run dev                   # → http://localhost:5173
 
 | Variable | Required | Description |
 |---|---|---|
-| `DATABASE_URL` | ✅ | Async SQLAlchemy URL, e.g. `postgresql+asyncpg://user:pass@host:5432/db?ssl=require` |
 | `SECRET_KEY` | ✅ | JWT signing secret (generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"`) |
 | `ENCRYPTION_KEY` | ✅ | Secret-encryption key (32+ bytes) |
 | `CORS_ORIGINS` | | JSON list of allowed frontend origins |
 | `FIREBASE_PROJECT_ID` | | Firebase project (defaults to `agentos-7f01e`) |
-| `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` | | Firebase service-account (production Firestore sync) |
+| `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` | | Firebase service-account (production Firestore access) |
 | `FIREBASE_REFRESH_TOKEN` / `FIREBASE_CLIENT_ID` | | Firebase CLI OAuth fallback (local dev) |
-| `FIRST_SUPERUSER_EMAIL` / `FIRST_SUPERUSER_PASSWORD` | | Auto-create an admin on first boot |
+| `FIRST_SUPERUSER_EMAIL` | | Email promoted to admin on first sign-in |
 
 ### Frontend (`frontend/.env`)
 
@@ -156,10 +154,10 @@ The repo ships with a [**Render Blueprint**](render.yaml) **and** a root [**Dock
 2. In [Render](https://render.com), click **New + → Blueprint** and select the repo.
 3. Render auto-detects `render.yaml` and creates **one web service** (`agentos`) using the native Python runtime. The build command installs the backend deps **and** builds the frontend (`npm ci && npm run build`); FastAPI serves the SPA at the root.
 4. Fill in the secret env vars the blueprint asks for (`sync: false` fields):
-   - `DATABASE_URL` → your Aiven Postgres URI
    - `SECRET_KEY`, `ENCRYPTION_KEY` → generate strong random values
-   - `VITE_FIREBASE_*` → your Firebase web config (**optional** — only for Google Sign-In)
-5. Deploy. Migrations run automatically on start (`alembic upgrade head`).
+   - `FIREBASE_REFRESH_TOKEN`, `FIREBASE_CLIENT_ID` → Firebase credentials (data store)
+   - `VITE_FIREBASE_*` → your Firebase web config (for Google Sign-In)
+5. Deploy. No database migrations — all data lives in Cloud Firestore.
 
 ### Option B — Web Service (Docker)
 
@@ -167,7 +165,7 @@ If you create a plain **New + → Web Service** instead of a Blueprint, Render a
 
 1. **New + → Web Service** → select the repo (leave root directory as repo root).
 2. Render detects the `Dockerfile` and builds the single-service image (frontend + backend).
-3. In **Environment**, add: `DATABASE_URL`, `SECRET_KEY`, `ENCRYPTION_KEY` (and `VITE_FIREBASE_*` if you want Google Sign-In — for Docker deploys these are build-time args, see the `Dockerfile`).
+3. In **Environment**, add: `SECRET_KEY`, `ENCRYPTION_KEY`, the Firebase credential vars, and `VITE_FIREBASE_*` if you want Google Sign-In (for Docker deploys these are build-time args, see the `Dockerfile`).
 4. **Deploy** — done. One service, one URL.
 
 ### Notes for Render
@@ -180,7 +178,7 @@ If you create a plain **New + → Web Service** instead of a Blueprint, Render a
 ### Deploy with Docker instead
 
 ```bash
-docker-compose up --build    # backend + frontend + postgres + redis
+docker-compose up --build    # backend + frontend (data lives in Cloud Firestore)
 ```
 
 ---
@@ -193,11 +191,11 @@ AgentOS/
 │   ├── app/
 │   │   ├── api/                # Route handlers (auth, workspaces, agents, workflows, …)
 │   │   ├── core/               # Config, database, security, firebase
-│   │   ├── models/             # SQLAlchemy ORM models (21 tables)
+│   │   ├── models/             # Legacy ORM model definitions (unused at runtime)
 │   │   ├── schemas/            # Pydantic request/response models
 │   │   ├── services/           # Business logic
 │   │   └── main.py             # App entry point
-│   ├── alembic/                # Database migrations
+│   ├── alembic/                # Legacy migration tooling (unused — Firestore only)
 │   └── tests/                  # 224 pytest tests
 ├── frontend/                   # React + Vite frontend
 │   ├── src/
