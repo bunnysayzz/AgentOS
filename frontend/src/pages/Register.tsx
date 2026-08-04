@@ -101,13 +101,14 @@ export default function Register() {
 
   if (googleLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-surface-950">
+      <div className="min-h-screen relative flex items-center justify-center">
+        <div className="stage" aria-hidden />
         <div className="text-center space-y-4">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 shadow-lg shadow-primary-500/20">
-            <LogoIcon size={28} className="text-white" />
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-[#16151a] to-[#08080b] border border-primary-600/40 shadow-lg shadow-primary-500/25 mx-auto">
+            <LogoIcon size={30} />
           </div>
           <div className="flex items-center gap-3 text-surface-400">
-            <div className="w-5 h-5 border-2 border-surface-600 border-t-primary-500 rounded-full animate-spin" />
+            <div className="w-5 h-5 border-2 border-surface-700 border-t-primary-400 rounded-full animate-spin" />
             <span className="text-sm">Signing you in…</span>
           </div>
         </div>
@@ -116,17 +117,21 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-surface-950 p-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen relative flex items-center justify-center p-4">
+      <div className="stage" aria-hidden />
+      <div className="w-full max-w-md relative">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 shadow-lg shadow-primary-500/20 mb-4">
-            <LogoIcon size={28} className="text-white" />
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-[#16151a] to-[#08080b] border border-primary-600/40 shadow-lg shadow-primary-500/25 mb-5">
+            <LogoIcon size={30} />
           </div>
-          <h1 className="text-2xl font-bold text-gradient">Create Account</h1>
+          <p className="microlabel mb-3">agent orchestration studio</p>
+          <h1 className="text-4xl font-light tracking-tight serif-display text-surface-100">
+            Create Account
+          </h1>
           <p className="text-surface-400 text-sm mt-2">Join AgentOS Studio</p>
         </div>
 
-        <div className="glass-panel p-6 space-y-4">
+        <div className="glass-strong rounded-2xl p-6 space-y-4 shadow-glass">
           {error && (
             <div data-testid="auth-error" className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
               {error}

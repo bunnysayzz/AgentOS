@@ -75,15 +75,21 @@ export default function Sidebar() {
         )}
       >
       {/* Logo */}
-      <div className={cn('flex items-center h-16 border-b border-surface-700/30', collapsed ? 'justify-center' : 'px-5')}>
+      <div className={cn('flex items-center h-16 border-b border-white/[0.06]', collapsed ? 'justify-center' : 'px-5')}>
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20">
-            <LogoIcon size={16} className="text-white" />
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#16151a] to-[#08080b] border border-primary-600/40 flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20">
+            <LogoIcon size={17} />
           </div>
           {!collapsed && (
-            <span className="text-sm font-bold bg-gradient-to-r from-primary-400 to-primary-200 bg-clip-text text-transparent truncate">
-              AgentOS
-            </span>
+            <div className="min-w-0 leading-tight">
+              <span className="text-sm font-semibold tracking-tight text-surface-100">
+                Agent
+                <span className="text-primary-400">OS</span>
+              </span>
+              <span className="microlabel block mt-0.5" style={{ fontSize: '8.5px', letterSpacing: '0.18em' }}>
+                studio
+              </span>
+            </div>
           )}
         </div>
       </div>
@@ -98,8 +104,8 @@ export default function Sidebar() {
               cn(
                 'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
                 isActive
-                  ? 'bg-primary-500/10 text-primary-400 border border-primary-500/20'
-                  : 'text-surface-400 hover:text-surface-200 hover:bg-surface-800/50 border border-transparent',
+                  ? 'bg-primary-500/10 text-primary-300 border border-primary-500/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]'
+                  : 'text-surface-400 hover:text-surface-100 hover:bg-surface-800/60 border border-transparent',
                 collapsed && 'justify-center px-2',
               )
             }
@@ -151,7 +157,8 @@ export default function Sidebar() {
             )}
             <Link
               to="/login"
-              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold bg-primary-500 hover:bg-primary-400 text-white shadow-lg shadow-primary-500/20 transition-all duration-200 hover:shadow-primary-500/30"
+              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-primary-500/20 transition-all duration-200 hover:shadow-primary-500/30"
+              style={{ color: '#141007', background: 'linear-gradient(120deg, #b8842f, #e3b862)' }}
             >
               <LogInIcon size={16} />
               {!collapsed && <span>Sign in</span>}

@@ -175,32 +175,37 @@ export default function Dashboard() {
   return (
     <div className="space-y-8">
       {/* Welcome Header — guest-aware */}
-      <div className="flex items-center gap-4 justify-between flex-wrap">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center shadow-lg shadow-primary-500/25 flex-shrink-0">
-            <LogoIcon size={22} className="text-white" />
+      <div className="relative overflow-hidden rounded-3xl border border-white/[0.06] bg-gradient-to-br from-white/[0.04] to-transparent p-6 sm:p-8">
+        <div className="absolute -top-24 -right-16 w-72 h-72 rounded-full bg-primary-500/10 blur-3xl pointer-events-none" aria-hidden />
+        <div className="flex items-center gap-5 justify-between flex-wrap relative">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#16151a] to-[#08080b] border border-primary-600/40 flex items-center justify-center shadow-lg shadow-primary-500/25 flex-shrink-0">
+              <LogoIcon size={24} />
+            </div>
+            <div>
+              <p className="microlabel mb-1">agent orchestration studio</p>
+              <h1 className="text-2xl sm:text-3xl font-light tracking-tight serif-display">
+                {isAuthenticated
+                  ? `Welcome back${user?.fullName ? `, ${user.fullName.split(' ')[0]}` : ''}`
+                  : 'Welcome to AgentOS Studio'}
+              </h1>
+              <p className="text-surface-400 mt-1.5 text-sm">
+                {isAuthenticated
+                  ? "Here's everything happening in your AgentOS Studio"
+                  : 'Explore everything freely — sign in to save your work.'}
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold">
-              {isAuthenticated
-                ? `Welcome back${user?.fullName ? `, ${user.fullName.split(' ')[0]}` : ''}`
-                : 'Welcome to AgentOS Studio'}
-            </h1>
-            <p className="text-surface-400 mt-1">
-              {isAuthenticated
-                ? "Here's everything happening in your AgentOS Studio"
-                : 'Explore everything freely — sign in to save your work.'}
-            </p>
-          </div>
+          {!isAuthenticated && (
+            <Link
+              to="/login"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-primary-500/20 transition-all duration-200 hover:shadow-primary-500/30 active:scale-[0.98]"
+              style={{ color: '#141007', background: 'linear-gradient(120deg, #b8842f, #e3b862)' }}
+            >
+              Sign in to save your work <ArrowRightIcon size={14} />
+            </Link>
+          )}
         </div>
-        {!isAuthenticated && (
-          <Link
-            to="/login"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary-500 hover:bg-primary-400 text-white text-sm font-semibold shadow-lg shadow-primary-500/20 transition-all duration-200 hover:shadow-primary-500/30"
-          >
-            Sign in to save your work <ArrowRightIcon size={14} />
-          </Link>
-        )}
       </div>
 
       {/* Workspace selector if multiple */}
@@ -226,23 +231,26 @@ export default function Dashboard() {
 
       {/* Main Stats Grid */}
       <div>
-        <h2 className="text-sm font-medium text-surface-400 uppercase tracking-wider mb-3">Resources</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="microlabel">Resources</h2>
+          <span className="h-px flex-1 mx-4 bg-white/[0.06]" />
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {mainStatCards.filter((c) => c.show).map((card) => (
             <Link
               key={card.label}
               to={card.path}
-              className="card group relative overflow-hidden hover:border-surface-600/50 transition-all duration-200"
+              className="card group relative overflow-hidden hover:border-primary-500/30 hover:-translate-y-0.5 hover:shadow-glass transition-all duration-200"
             >
               <div className="flex items-center justify-between mb-4">
-                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center shadow-lg shadow-black/20`}>
+                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center shadow-lg shadow-black/20 group-hover:scale-105 transition-transform duration-200`}>
                   <card.icon className="w-5 h-5 text-white" />
                 </div>
-                <ArrowRightIcon className="w-4 h-4 text-surface-500 group-hover:text-surface-300 transition-colors" />
+                <ArrowRightIcon className="w-4 h-4 text-surface-500 group-hover:text-primary-400 group-hover:translate-x-0.5 transition-all duration-200" />
               </div>
-              <p className="text-2xl font-bold">
+              <p className="text-2xl font-semibold tracking-tight">
                 {isLoading ? (
-                  <div className="w-10 h-7 bg-surface-800 rounded animate-pulse" />
+                  <span className="inline-block w-10 h-7 bg-surface-800 rounded animate-pulse" />
                 ) : (
                   <span>{typeof card.value === 'number' ? card.value.toLocaleString() : card.value}</span>
                 )}
@@ -255,12 +263,15 @@ export default function Dashboard() {
 
       {/* Secondary Stats */}
       <div>
-        <h2 className="text-sm font-medium text-surface-400 uppercase tracking-wider mb-3">Platform Metrics</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="microlabel">Platform Metrics</h2>
+          <span className="h-px flex-1 mx-4 bg-white/[0.06]" />
+        </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {secondaryStatCards.map((card) => (
-            <div key={card.label} className="card">
+            <div key={card.label} className="card hover:border-primary-500/25 hover:-translate-y-0.5 transition-all duration-200">
               <card.icon size={18} className={`${card.color} mb-2`} />
-              <p className="text-2xl font-bold">{isLoading ? <div className="w-10 h-7 bg-surface-800 rounded animate-pulse inline-block" /> : card.value}</p>
+              <p className="text-2xl font-semibold tracking-tight">{isLoading ? <span className="inline-block w-10 h-7 bg-surface-800 rounded animate-pulse" /> : card.value}</p>
               <p className="text-xs text-surface-500 mt-0.5">{card.sub}</p>
             </div>
           ))}
@@ -294,7 +305,10 @@ export default function Dashboard() {
 
       {/* Quick Actions */}
       <div className="glass-panel p-6">
-        <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
+        <div className="flex items-center gap-2 mb-4">
+          <h2 className="microlabel">Quick Actions</h2>
+          <span className="h-px flex-1 bg-white/[0.06]" />
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {QUICK_ACTIONS.map((action) => (
             <Link
@@ -311,15 +325,18 @@ export default function Dashboard() {
 
       {/* All Domains */}
       <div>
-        <h2 className="text-lg font-semibold mb-4">All Domains</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="microlabel">All Domains</h2>
+          <span className="h-px flex-1 mx-4 bg-white/[0.06]" />
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {DOMAIN_LINKS.map((domain) => (
             <Link
               key={domain.path}
               to={domain.path}
-              className="card flex items-start gap-4 group hover:border-surface-600/50 transition-all duration-200"
+              className="card flex items-start gap-4 group hover:border-primary-500/30 hover:-translate-y-0.5 hover:shadow-glass transition-all duration-200"
             >
-              <div className="w-10 h-10 rounded-xl bg-surface-800 flex items-center justify-center flex-shrink-0 group-hover:bg-primary-500/10 transition-all duration-200">
+              <div className="w-10 h-10 rounded-xl bg-surface-800/80 flex items-center justify-center flex-shrink-0 group-hover:bg-primary-500/10 group-hover:border group-hover:border-primary-500/25 transition-all duration-200">
                 <domain.icon className={`w-5 h-5 text-surface-400 group-hover:${domain.color} transition-colors duration-200`} />
               </div>
               <div className="min-w-0">

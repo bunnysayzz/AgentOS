@@ -33,7 +33,12 @@ export default function Layout() {
 
   return (
     <ErrorBoundary>
-    <div className="min-h-screen bg-surface-950 text-surface-100">
+    <div className="min-h-screen text-surface-100">
+      {/* Ambient stage — fixed radial glows + film grain (InvestIQ look).
+          The wrapper above must stay transparent (no bg-*) so the negative-
+          z stage shows through; body supplies the base background. */}
+      <div className="stage" aria-hidden />
+      <div className="grain hidden sm:block" aria-hidden />
       <Sidebar />
 
       {/* Mobile menu button */}
@@ -67,7 +72,8 @@ export default function Layout() {
               <div className="flex items-center gap-2 flex-shrink-0">
                 <Link
                   to="/login"
-                  className="px-3 py-1.5 rounded-lg bg-primary-500 hover:bg-primary-400 text-white text-xs font-semibold transition-colors shadow-lg shadow-primary-500/20"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shadow-lg shadow-primary-500/20"
+                  style={{ color: '#141007', background: 'linear-gradient(120deg, #b8842f, #e3b862)' }}
                 >
                   Sign in
                 </Link>

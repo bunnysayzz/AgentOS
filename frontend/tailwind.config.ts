@@ -4,32 +4,79 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary: {
-          50: 'hsl(var(--primary-50, 221 100% 97%))',
-          100: 'hsl(var(--primary-100, 221 85% 93%))',
-          200: 'hsl(var(--primary-200, 221 80% 85%))',
-          300: 'hsl(var(--primary-300, 221 75% 73%))',
-          400: 'hsl(var(--primary-400, 221 70% 58%))',
-          500: 'hsl(var(--primary-500, 221 75% 48%))',
-          600: 'hsl(var(--primary-600, 221 80% 42%))',
-          700: 'hsl(var(--primary-700, 221 82% 35%))',
-          800: 'hsl(var(--primary-800, 221 80% 28%))',
-          900: 'hsl(var(--primary-900, 221 78% 22%))',
-          950: 'hsl(var(--primary-950, 221 75% 16%))',
-        },
+        // Warm near-black surfaces — driven by --surface-* CSS vars (light/dark)
         surface: {
-          50: 'hsl(var(--surface-50, 210 40% 98%))',
-          100: 'hsl(var(--surface-100, 210 40% 96%))',
-          200: 'hsl(var(--surface-200, 214 32% 91%))',
-          300: 'hsl(var(--surface-300, 213 27% 84%))',
-          400: 'hsl(var(--surface-400, 215 20% 65%))',
-          500: 'hsl(var(--surface-500, 215 16% 47%))',
-          600: 'hsl(var(--surface-600, 215 19% 35%))',
-          700: 'hsl(var(--surface-700, 215 25% 27%))',
-          800: 'hsl(var(--surface-800, 217 33% 17%))',
-          900: 'hsl(var(--surface-900, 222 47% 11%))',
-          950: 'hsl(var(--surface-950, 222 84% 5%))',
+          50: 'hsl(var(--surface-50) / <alpha-value>)',
+          100: 'hsl(var(--surface-100) / <alpha-value>)',
+          200: 'hsl(var(--surface-200) / <alpha-value>)',
+          300: 'hsl(var(--surface-300) / <alpha-value>)',
+          400: 'hsl(var(--surface-400) / <alpha-value>)',
+          500: 'hsl(var(--surface-500) / <alpha-value>)',
+          600: 'hsl(var(--surface-600) / <alpha-value>)',
+          700: 'hsl(var(--surface-700) / <alpha-value>)',
+          800: 'hsl(var(--surface-800) / <alpha-value>)',
+          900: 'hsl(var(--surface-900) / <alpha-value>)',
+          950: 'hsl(var(--surface-950) / <alpha-value>)',
         },
+        // Gold accent — the signature hue (was indigo)
+        primary: {
+          50: 'hsl(var(--primary-50) / <alpha-value>)',
+          100: 'hsl(var(--primary-100) / <alpha-value>)',
+          200: 'hsl(var(--primary-200) / <alpha-value>)',
+          300: 'hsl(var(--primary-300) / <alpha-value>)',
+          400: 'hsl(var(--primary-400) / <alpha-value>)',
+          500: 'hsl(var(--primary-500) / <alpha-value>)',
+          600: 'hsl(var(--primary-600) / <alpha-value>)',
+          700: 'hsl(var(--primary-700) / <alpha-value>)',
+          800: 'hsl(var(--primary-800) / <alpha-value>)',
+          900: 'hsl(var(--primary-900) / <alpha-value>)',
+          950: 'hsl(var(--primary-950) / <alpha-value>)',
+        },
+        // Semantic market colors (used for verdicts / status accents)
+        gold: {
+          DEFAULT: 'hsl(var(--gold) / <alpha-value>)',
+          bright: 'hsl(var(--gold-bright) / <alpha-value>)',
+          soft: 'rgba(227, 184, 98, 0.14)',
+        },
+        bull: {
+          DEFAULT: 'hsl(var(--bull) / <alpha-value>)',
+          bright: 'hsl(var(--bull-bright) / <alpha-value>)',
+        },
+        bear: {
+          DEFAULT: 'hsl(var(--bear) / <alpha-value>)',
+          bright: 'hsl(var(--bear-bright) / <alpha-value>)',
+        },
+        info: 'hsl(var(--info) / <alpha-value>)',
+      },
+      fontFamily: {
+        sans: ['Geist', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+        mono: ['Geist Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+        display: ['"Instrument Serif"', 'Georgia', 'serif'],
+      },
+      borderRadius: {
+        '4xl': '2rem',
+      },
+      boxShadow: {
+        'gold-glow': '0 0 34px rgba(227, 184, 98, 0.35)',
+        'gold-btn': '0 8px 40px -8px rgba(227, 184, 98, 0.25)',
+        'glass': '0 8px 40px -12px rgba(0, 0, 0, 0.5)',
+      },
+      keyframes: {
+        'grain-shift': {
+          '0%': { transform: 'translate(0, 0)' },
+          '25%': { transform: 'translate(-3%, 2%)' },
+          '50%': { transform: 'translate(2%, -3%)' },
+          '75%': { transform: 'translate(-2%, -2%)' },
+          '100%': { transform: 'translate(0, 0)' },
+        },
+        'pulse-dot': {
+          '0%, 100%': { opacity: '1', transform: 'scale(1)' },
+          '50%': { opacity: '0.35', transform: 'scale(0.8)' },
+        },
+      },
+      animation: {
+        'grain-shift': 'grain-shift 9s steps(8) infinite',
+        'pulse-dot': 'pulse-dot 1.4s ease-in-out infinite',
       },
     },
   },

@@ -177,9 +177,12 @@ export default function Profile() {
   return (
     <div className="max-w-2xl mx-auto space-y-8">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-surface-100">Settings</h1>
-        <p className="text-surface-400 mt-1">Manage your profile and account settings</p>
+      <div className="flex items-center gap-3">
+        <div>
+          <p className="microlabel mb-1">account</p>
+          <h1 className="text-3xl font-light tracking-tight serif-display text-surface-100">Settings</h1>
+          <p className="text-surface-400 mt-1.5 text-sm">Manage your profile and account settings</p>
+        </div>
       </div>
 
       {/* Profile fetch error — still usable via the optimistic fallback */}
