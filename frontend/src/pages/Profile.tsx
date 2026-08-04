@@ -4,7 +4,7 @@ import api from '@/services/api'
 import { useAuthStore } from '@/stores/authStore'
 import { toast } from '@/components/Toast'
 import { SkeletonPage } from '@/components/Skeleton'
-import { KeyIcon, SaveIcon, EyeIcon, EyeOffIcon, CameraIcon } from '@/components/Icons'
+import { KeyIcon, SaveIcon, EyeIcon, EyeOffIcon, CameraIcon, RefreshCwIcon } from '@/components/Icons'
 import { uploadAvatar, changeFirebasePassword } from '@/services/firebase'
 
 interface UserProfile {
@@ -24,6 +24,10 @@ interface UserProfile {
 export default function Profile() {
   const qc = useQueryClient()
   const setUser = useAuthStore((s) => s.setUser)
+  // Optimistic identity from the auth store (set at login from Firebase
+  // claims — includes the Google photo/name). Used as an immediate fallback
+  // while /users/me loads, and when it errors.
+  const storeUser = useAuthStore((s) => s.user)
 
   // Profile form
   const [fullName, setFullName] = useState('')
@@ -42,18 +46,39 @@ export default function Profile() {
   const [showPassword, setShowPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
 
-  const { data: profile, isLoading } = useQuery({
+  const { data: profile, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['profile'],
     queryFn: () => api.get<UserProfile>('/users/me').then((r) => r.data),
+    retry: 1,
   })
 
+  // Fallback profile assembled from the auth store (kept in sync on login
+  // and after profile saves), so the page is never blank even if the API
+  // temporarily fails.
+  const fallbackProfile: UserProfile | undefined = profile ?? (storeUser
+    ? {
+        id: storeUser.id,
+        email: storeUser.email,
+        username: storeUser.username,
+        full_name: storeUser.fullName || null,
+        avatar_url: storeUser.avatarUrl || null,
+        is_active: true,
+        is_superuser: !!storeUser.isSuperuser,
+        is_verified: true,
+        last_login_at: null,
+        created_at: '',
+        updated_at: null,
+      }
+    : undefined)
+  const display = fallbackProfile
+
   useEffect(() => {
-    if (profile) {
-      setFullName(profile.full_name || '')
-      setEmail(profile.email)
-      setAvatarUrl(profile.avatar_url || '')
+    if (display) {
+      setFullName(display.full_name || '')
+      setEmail(display.email)
+      setAvatarUrl(display.avatar_url || '')
     }
-  }, [profile])
+  }, [display?.id, display?.full_name, display?.email, display?.avatar_url])
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -89,7 +114,7 @@ export default function Profile() {
           setAvatarUploading(false)
         }
       }
-      return api.patch(`/users/${profile?.id}`, payload)
+      return api.patch(`/users/${display?.id}`, payload)
     },
     onSuccess: (res) => {
       const u = res.data
@@ -147,7 +172,7 @@ export default function Profile() {
     passwordMutation.mutate({ current_password: currentPassword, new_password: newPassword })
   }
 
-  if (isLoading) return <SkeletonPage />
+  if (isLoading && !storeUser) return <SkeletonPage />
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
@@ -156,6 +181,24 @@ export default function Profile() {
         <h1 className="text-2xl font-bold text-surface-100">Settings</h1>
         <p className="text-surface-400 mt-1">Manage your profile and account settings</p>
       </div>
+
+      {/* Profile fetch error — still usable via the optimistic fallback */}
+      {isError && (
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-300 text-sm">
+          <span className="flex-1 min-w-0">
+            Couldn't refresh your profile from the server. Showing your saved info — changes you make here will still be applied.
+          </span>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-200 text-xs font-semibold transition-colors disabled:opacity-50 flex items-center gap-1.5"
+          >
+            <RefreshCwIcon size={12} />
+            {isFetching ? 'Retrying…' : 'Retry'}
+          </button>
+        </div>
+      )}
 
       {/* Profile Section */}
       <form onSubmit={handleProfileSubmit} className="glass-panel p-6 space-y-6">
@@ -166,7 +209,7 @@ export default function Profile() {
               <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full bg-surface-800 flex items-center justify-center text-surface-300 font-bold text-lg">
-                {fullName ? fullName.charAt(0).toUpperCase() : profile?.username?.charAt(0).toUpperCase()}
+                {fullName ? fullName.charAt(0).toUpperCase() : display?.username?.charAt(0).toUpperCase() || 'U'}
               </div>
             )}
             <label className="absolute inset-0 bg-surface-950/75 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-[10px] font-medium transition-all cursor-pointer">
@@ -182,8 +225,8 @@ export default function Profile() {
           </div>
 
           <div>
-            <h2 className="text-lg font-semibold text-surface-100">{fullName || profile?.username}</h2>
-            <p className="text-xs text-surface-400">Username: @{profile?.username}</p>
+            <h2 className="text-lg font-semibold text-surface-100">{fullName || display?.username || 'User'}</h2>
+            <p className="text-xs text-surface-400">Username: @{display?.username || 'user'}</p>
             <label className="inline-flex items-center gap-1 mt-1 text-xs text-primary-400 hover:text-primary-300 font-medium cursor-pointer">
               <CameraIcon size={12} />
               <span>{avatarUploading ? 'Uploading…' : 'Upload new picture'}</span>
@@ -228,18 +271,18 @@ export default function Profile() {
 
         {/* Verification status */}
         <div className="flex items-center gap-2 text-xs">
-          <span className={profile?.is_verified ? 'text-emerald-400' : 'text-amber-400'}>
-            {profile?.is_verified ? '✅ Verified' : '⚠️ Not verified'}
+          <span className={display?.is_verified ? 'text-emerald-400' : 'text-amber-400'}>
+            {display?.is_verified ? '✅ Verified' : '⚠️ Not verified'}
           </span>
           <span className="text-surface-600">|</span>
           <span className="text-surface-500">
-            Joined {profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : '—'}
+            Joined {display?.created_at ? new Date(display.created_at).toLocaleDateString() : '—'}
           </span>
-          {profile?.last_login_at && (
+          {display?.last_login_at && (
             <>
               <span className="text-surface-600">|</span>
               <span className="text-surface-500">
-                Last login: {new Date(profile.last_login_at).toLocaleDateString()}
+                Last login: {new Date(display.last_login_at).toLocaleDateString()}
               </span>
             </>
           )}
@@ -346,7 +389,7 @@ export default function Profile() {
       <div className="glass-panel p-4">
         <div className="flex items-center justify-between text-sm">
           <span className="text-surface-500">Account ID</span>
-          <span className="text-surface-300 font-mono text-xs">{profile?.id}</span>
+          <span className="text-surface-300 font-mono text-xs">{display?.id}</span>
         </div>
       </div>
     </div>

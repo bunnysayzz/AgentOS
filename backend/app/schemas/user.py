@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from uuid import UUID
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, field_validator
 
 
 # ─── User ─────────────────────────────────────────────────
@@ -34,6 +34,27 @@ class UserResponse(UserBase):
     updated_at: datetime | None
 
     model_config = {"from_attributes": True}
+
+    # Defense-in-depth: legacy Firestore docs may hold None where a bool is
+    # expected. Coerce instead of failing validation (the service layer also
+    # normalizes, this catches anything that slips through).
+    @field_validator("is_active", "is_superuser", "is_verified", mode="before")
+    @classmethod
+    def _coerce_bool(cls, v):
+        if v is None:
+            return False
+        if isinstance(v, str):
+            return v.strip().lower() in ("1", "true", "yes", "on")
+        return bool(v)
+
+    @field_validator("avatar_url", "full_name", mode="before")
+    @classmethod
+    def _clean_optional_str(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, str) and v.strip().lower() in ("", "none", "null", "nan", "undefined"):
+            return None
+        return v
 
 
 class UserListResponse(BaseModel):

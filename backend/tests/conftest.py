@@ -45,18 +45,25 @@ def fake_verify_firebase_token(token: str) -> dict:
     """Stand-in for app.core.firebase.verify_firebase_token.
 
     Token format: ``firebase.<email>`` (or ``firebase.<email>:<name>``).
-    Anything else raises ValueError, mirroring an invalid token.
+    A token whose name ends with ``~<url>`` carries a picture claim (mirrors
+    the Google ``picture`` claim). Anything else raises ValueError, mirroring
+    an invalid token.
     """
     if not token.startswith("firebase."):
         raise ValueError("Invalid Firebase token")
     body = token[len("firebase."):]
-    email = body.split(":")[0]
-    name = body.split(":")[1] if ":" in body else email.split("@")[0]
+    # Split on the FIRST colon only — the optional name suffix may itself
+    # contain colons (a Google photo URL like https://…).
+    email, sep, name = body.partition(":")
+    name = name if sep else email.split("@")[0]
+    picture = None
+    if "~" in name:
+        name, picture = name.split("~", 1)
     return {
         "uid": hashlib.sha256(token.encode()).hexdigest()[:28],
         "email": email,
         "name": name,
-        "picture": None,
+        "picture": picture,
     }
 
 

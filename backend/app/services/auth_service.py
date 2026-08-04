@@ -41,19 +41,65 @@ class UserNotFoundError(AuthError):
         super().__init__("User not found", status_code=404)
 
 
+_FALSY_STRINGS = {"", "none", "null", "nan", "undefined"}
+
+
+def _clean_str(value: Any) -> str | None:
+    """Return None for missing/empty/"None" string values, else the string."""
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip().lower() in _FALSY_STRINGS:
+        return None
+    return str(value) if value else None
+
+
+def _as_bool(value: Any, default: bool = False) -> bool:
+    """Coerce a stored value to a real boolean (legacy docs may hold None)."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
+
+
+def normalize_user(user: dict) -> dict:
+    """Sanitize a Firestore user doc so API schemas can validate it.
+
+    Legacy user documents (created before the Firestore migration) may hold
+    ``None`` where the API expects a bool (``is_superuser``) or the literal
+    string ``"None"`` for optional fields (``avatar_url``). Coerce those so
+    ``UserResponse`` validation never 500s.
+    """
+    user["is_active"] = _as_bool(user.get("is_active"), True)
+    user["is_superuser"] = _as_bool(user.get("is_superuser"), False)
+    user["is_verified"] = _as_bool(user.get("is_verified"), False)
+    user["full_name"] = _clean_str(user.get("full_name"))
+    user["avatar_url"] = _clean_str(user.get("avatar_url"))
+    user["username"] = (
+        _clean_str(user.get("username"))
+        or user.get("email", "").split("@")[0]
+        or "user"
+    )
+    return user
+
+
 def get_user_by_id(db: FirestoreDB, user_id: str) -> dict | None:
     """Get a user by their UUID (as stored in Firestore)."""
     user = db.get(USERS, str(user_id))
     if user is None or user.get("deleted_at"):
         return None
-    return user
+    return normalize_user(user)
 
 
 def get_user_by_email(db: FirestoreDB, email: str) -> dict | None:
     """Get a non-deleted user by email."""
     for row in db.query(USERS, "email", email):
         if not row.get("deleted_at"):
-            return row
+            return normalize_user(row)
     return None
 
 
@@ -91,39 +137,47 @@ def get_or_create_user_from_firebase(db: FirestoreDB, fb: dict) -> dict:
     full_name = fb.get("name") or fb.get("email", "").split("@")[0]
     avatar_url = fb.get("picture")
 
+    is_superuser = bool(
+        settings.FIRST_SUPERUSER_EMAIL
+        and email.lower() == settings.FIRST_SUPERUSER_EMAIL.lower()
+    )
+
     user = get_user_by_email(db, email)
     if user is not None:
-        # Refresh profile details and login bookkeeping
+        # Refresh profile details and login bookkeeping. Google sign-in
+        # supplies name/picture in the token claims — always adopt them when
+        # the stored value is missing/placeholder ("None"), and keep a
+        # user-set custom avatar/full name otherwise.
         updates: dict[str, Any] = {"last_login_at": now_iso()}
         if avatar_url and not user.get("avatar_url"):
             updates["avatar_url"] = avatar_url
-        if not user.get("full_name") and full_name:
+        if full_name and not user.get("full_name"):
             updates["full_name"] = full_name
         updates["is_verified"] = True
+        # FIRST_SUPERUSER_EMAIL promotion is idempotent — re-apply on every
+        # login so legacy accounts created before this rule get promoted.
+        updates["is_superuser"] = is_superuser or bool(user.get("is_superuser"))
         updates["firebase_uid"] = fb.get("uid")
         user.update(updates)
         db.set(USERS, user["id"], user)
-        return user
+        return normalize_user(user)
 
     username = _unique_username(db, (fb.get("email") or "").split("@")[0] or "user")
     user = AttrDict({
         "id": _new_user_id(db),
         "email": email,
         "username": username,
-        "full_name": full_name,
-        "avatar_url": avatar_url,
+        "full_name": _clean_str(full_name),
+        "avatar_url": _clean_str(avatar_url),
         "is_active": True,
-        "is_superuser": bool(
-            settings.FIRST_SUPERUSER_EMAIL
-            and email.lower() == settings.FIRST_SUPERUSER_EMAIL.lower()
-        ),
+        "is_superuser": is_superuser,
         "is_verified": True,
         "last_login_at": now_iso(),
         "failed_login_attempts": 0,
         "firebase_uid": fb.get("uid"),
     })
     db.add(USERS, user)
-    return user
+    return normalize_user(user)
 
 
 def _new_user_id(db: FirestoreDB) -> str:
@@ -141,9 +195,13 @@ def update_user(db: FirestoreDB, user_id: str, updates: dict) -> dict | None:
     user = get_user_by_id(db, user_id)
     if user is None:
         return None
+    # Never let an empty string or the literal "None" overwrite a real value.
+    for field in ("full_name", "avatar_url", "username"):
+        if field in updates:
+            updates[field] = _clean_str(updates[field])
     user.update(updates)
     db.set(USERS, user["id"], user)
-    return user
+    return normalize_user(user)
 
 
 def list_users(db: FirestoreDB, page: int = 1, page_size: int = 50) -> tuple[list[dict], int]:
