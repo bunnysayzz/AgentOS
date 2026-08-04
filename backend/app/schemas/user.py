@@ -28,10 +28,10 @@ class UserResponse(UserBase):
     is_active: bool
     is_superuser: bool
     is_verified: bool
-    avatar_url: str | None
-    last_login_at: datetime | None
+    avatar_url: str | None = None
+    last_login_at: datetime | None = None
     created_at: datetime
-    updated_at: datetime | None
+    updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

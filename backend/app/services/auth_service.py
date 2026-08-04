@@ -84,6 +84,11 @@ def normalize_user(user: dict) -> dict:
         or user.get("email", "").split("@")[0]
         or "user"
     )
+    # Legacy docs may be missing these keys entirely — the schema needs them
+    # present (even as null) or validation fails with "field required".
+    user.setdefault("last_login_at", None)
+    user.setdefault("created_at", now_iso())
+    user.setdefault("updated_at", None)
     return user
 
 

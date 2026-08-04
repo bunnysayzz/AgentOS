@@ -108,9 +108,8 @@ class TestLegacyUserDocs:
             "is_active": True,
             "is_superuser": None,   # missing key → None
             "is_verified": None,
-            "last_login_at": None,
+            # last_login_at / updated_at keys entirely absent (old docs)
             "created_at": now_iso(),
-            "updated_at": now_iso(),
         })
 
         token = "firebase.legacy@example.com"
