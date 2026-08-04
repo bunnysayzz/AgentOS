@@ -1,8 +1,17 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // ─── AgentOS Studio: Firestore is strictly server-side ──────────────
+    // The FastAPI backend reads/writes Firestore through a service-account
+    // client, which BYPASSES security rules entirely. The browser app never
+    // talks to Firestore directly — it only uses Firebase Auth + Storage.
+    //
+    // Therefore ALL direct client access is denied. This is defense in
+    // depth: even if the public API key (embedded in the frontend bundle)
+    // is extracted, no user can read, write, or delete a single document
+    // without going through the authenticated backend API (JWT/RBAC).
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

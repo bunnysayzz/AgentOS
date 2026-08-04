@@ -74,6 +74,13 @@ vi.mock('@/services/firebase', () => ({
   createUserWithEmailAndPassword: vi.fn(),
   sendEmailVerification: vi.fn(),
   loginWithGoogle: vi.fn().mockResolvedValue({ user: {}, idToken: 'google-id-token' }),
+  firebaseUserToStoreUser: vi.fn((user: any) => ({
+    id: user?.uid || '',
+    email: user?.email || '',
+    username: user?.displayName || '',
+    fullName: user?.displayName || 'User',
+    avatarUrl: user?.photoURL || undefined,
+  })),
   checkGoogleRedirect: vi.fn((_onSuccess: unknown, onNoRedirect: () => void) => {
     onNoRedirect()
     return () => {}

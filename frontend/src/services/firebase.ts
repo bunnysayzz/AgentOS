@@ -17,7 +17,10 @@ import {
   reauthenticateWithCredential,
   EmailAuthProvider,
   updatePassword,
+  setPersistence,
+  browserLocalPersistence,
 } from 'firebase/auth'
+import { useAuthStore } from '@/stores/authStore'
 
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
@@ -56,6 +59,12 @@ if (isFirebaseConfigured) {
   auth = getAuth(app)
   googleProvider = new GoogleAuthProvider()
   googleProvider.setCustomParameters({ prompt: 'select_account' })
+  // Explicit session persistence (browser localStorage). This is already the
+  // SDK default, but declaring it guards against future default changes and
+  // makes the intent obvious. Failures (private browsing, blocked storage)
+  // fall back to the SDK default silently — the app still works, just
+  // without a remembered session.
+  setPersistence(auth, browserLocalPersistence).catch(() => {})
 }
 
 export const firebaseAuth = auth
@@ -148,6 +157,86 @@ export async function loginWithGoogle(): Promise<{ user: FirebaseUser; idToken: 
     }
     throw err
   }
+}
+
+/**
+ * Map a Firebase user to the optimistic store profile. Used for instant
+ * hydration before the backend /auth/me refines it with the full profile.
+ */
+export function firebaseUserToStoreUser(user: FirebaseUser): {
+  id: string
+  email: string
+  username: string
+  fullName: string
+  avatarUrl?: string
+} {
+  return {
+    id: user.uid,
+    email: user.email || '',
+    username: user.displayName || '',
+    fullName: user.displayName || 'User',
+    avatarUrl: user.photoURL || undefined,
+  }
+}
+
+/**
+ * Keep the persisted auth store reconciled with Firebase Auth — the single
+ * source of truth. Call once at app boot (main.tsx).
+ *
+ * - Boot: if Firebase reports a signed-in user but the store is empty
+ *   (stale/cleared persistence), hydrate the store from the real session.
+ * - Sign-out anywhere: if Firebase reports NO session but the store thinks
+ *   it is authenticated (revoked token, sign-out in another tab), clear it
+ *   — this gives cross-tab logout sync for free. A short grace period
+ *   avoids the logged-out flicker when Firebase asynchronously restores a
+ *   valid session on boot.
+ * - Guests: no Firebase session and no stored token → untouched.
+ *
+ * @returns an unsubscribe function, or null when Firebase isn't configured.
+ */
+export function attachAuthStateSync(): (() => void) | null {
+  if (!auth) return null
+  const authRef = auth
+  let clearTimer: ReturnType<typeof setTimeout> | null = null
+
+  return onAuthStateChanged(authRef, (user) => {
+    const { accessToken, clearAuth, setAuth } = useAuthStore.getState()
+
+    if (user) {
+      // A session arrived — cancel any pending clear.
+      if (clearTimer) {
+        clearTimeout(clearTimer)
+        clearTimer = null
+      }
+      // Only hydrate when the store has no session (don't clobber a fresh
+      // login's optimistic profile with the coarser Firebase profile).
+      if (!accessToken) {
+        user
+          .getIdToken()
+          .then((idToken) => {
+            // Apply only if nobody signed in meanwhile (a ghost setAuth
+            // self-heals anyway — the next onAuthStateChanged(null) clears it).
+            if (useAuthStore.getState().accessToken) return
+            setAuth(idToken, '', firebaseUserToStoreUser(user))
+          })
+          .catch(() => {
+            // Token fetch can transiently fail while the tab is hidden —
+            // the store is fine as-is; a later state change re-syncs.
+          })
+      }
+    } else if (accessToken) {
+      // Firebase says there is no session but the store claims otherwise:
+      // revoked/expired session, or sign-out from another tab. Wait briefly
+      // in case Firebase is still restoring a valid session on boot.
+      if (clearTimer) clearTimeout(clearTimer)
+      clearTimer = setTimeout(() => {
+        clearTimer = null
+        if (!useAuthStore.getState().accessToken) return
+        clearAuth()
+        localStorage.removeItem('agentos-auth')
+      }, 1250)
+    }
+  })
 }
 
 /**

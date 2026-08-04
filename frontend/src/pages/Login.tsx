@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { EyeIcon, EyeOffIcon, LockIcon, LogInIcon, LogoIcon, MailIcon, GoogleIcon } from '@/components/Icons'
 import { useAuthStore } from '@/stores/authStore'
-import { loginWithGoogle, checkGoogleRedirect, loginWithFirebaseEmail } from '@/services/firebase'
+import { loginWithGoogle, checkGoogleRedirect, loginWithFirebaseEmail, firebaseUserToStoreUser, type FirebaseUser } from '@/services/firebase'
 import axios from 'axios'
 
 const API_BASE = import.meta.env.VITE_API_URL
@@ -30,17 +30,8 @@ export default function Login() {
   // Complete authentication instantly from the Firebase ID token — no waiting
   // on a backend round-trip. The full Firestore profile (id, username,
   // superuser flag) refreshes in the background once it arrives.
-  const finishAuth = async (
-    idToken: string,
-    uid: string,
-    email?: string | null,
-    displayName?: string | null,
-    photoURL?: string | null,
-  ) => {
-    setAuth(idToken, '', {
-      id: uid, email: email || '', username: displayName || '',
-      fullName: displayName || 'User', avatarUrl: photoURL || undefined,
-    })
+  const finishAuth = async (idToken: string, user: FirebaseUser) => {
+    setAuth(idToken, '', firebaseUserToStoreUser(user))
     navigate('/dashboard', { replace: true })
 
     // Background: fetch the full profile from the backend (auto-creates the
@@ -66,7 +57,7 @@ export default function Login() {
     const cleanup = checkGoogleRedirect(
       // onSuccess: redirect completed → resolve profile via our backend
       async (user, idToken) => {
-        await finishAuth(idToken, user.uid, user.email, user.displayName, user.photoURL)
+        await finishAuth(idToken, user)
       },
       // onNoRedirect: normal page load, just show the form
       () => { setGoogleLoading(false) }
@@ -83,7 +74,7 @@ export default function Login() {
       // Redirect path (result === null): page navigated away to Google; the
       // mount effect's checkGoogleRedirect finishes auth on return.
       if (result) {
-        await finishAuth(result.idToken, result.user.uid, result.user.email, result.user.displayName, result.user.photoURL)
+        await finishAuth(result.idToken, result.user)
       }
     } catch (err: any) {
       // User closing the popup is not an error — just show the form again.
@@ -110,7 +101,7 @@ export default function Login() {
     setLoading(true)
     try {
       const { user, idToken } = await loginWithFirebaseEmail(form.email, form.password)
-      await finishAuth(idToken, user.uid, user.email, user.displayName, user.photoURL)
+      await finishAuth(idToken, user)
     } catch (err: any) {
       setError(firebaseAuthErrorMessage(err))
     } finally {
