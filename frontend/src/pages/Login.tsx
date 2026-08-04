@@ -91,6 +91,14 @@ export default function Login() {
         setGoogleLoading(false)
         return
       }
+      // Message-only SDK storage errors ("Database is closing/hidden" fired
+      // while the tab is hidden) are benign — loginWithGoogle already falls
+      // back to the redirect flow for them; if one escapes, treat it like a
+      // cancelled popup and show the form again, not a scary banner.
+      if (!err?.code && typeof err?.message === 'string' && /Database is (closing|hidden)|database connection is closing/i.test(err.message)) {
+        setGoogleLoading(false)
+        return
+      }
       setError(err.message || 'Google Sign-In failed.')
       setGoogleLoading(false)
     }

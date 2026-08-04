@@ -67,6 +67,12 @@ export default function Register() {
         setGoogleLoading(false)
         return
       }
+      // Benign SDK storage error fired while the tab is hidden — loginWithGoogle
+      // already fell back to redirect for it; don't show a scary banner.
+      if (!err?.code && typeof err?.message === 'string' && /Database is (closing|hidden)|database connection is closing/i.test(err.message)) {
+        setGoogleLoading(false)
+        return
+      }
       // finishAuth already surfaced API errors (response detail); only show
       // our own message for popup-level failures so the detail isn't lost.
       if (!err?.response) {

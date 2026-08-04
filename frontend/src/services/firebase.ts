@@ -72,6 +72,25 @@ function notConfiguredError(what: string): Error {
 // distinguish "returning from a Google redirect" from a normal page load.
 const REDIRECT_FLAG = 'agentos_google_redirect'
 
+// ─── Benign SDK rejection guard ─────────────────────────────────────────
+// The Firebase SDK rejects promises with "Database is closing/hidden" from
+// its IndexedDB layer whenever a background write races with the tab being
+// hidden (popup sign-in stealing focus, tab switches, page unload). These
+// rejections are harmless and never affect app state — swallow them globally
+// so they don't pollute the console or trip error monitors. Installed once.
+const windowWithGuard = typeof window !== 'undefined'
+  ? (window as unknown as { __agentosFirebaseRejectionGuard?: boolean })
+  : null
+if (windowWithGuard && !windowWithGuard.__agentosFirebaseRejectionGuard) {
+  windowWithGuard.__agentosFirebaseRejectionGuard = true
+  window.addEventListener('unhandledrejection', (event) => {
+    const message = (event.reason as Error | undefined)?.message || String(event.reason || '')
+    if (/Database is (closing|hidden)|database connection is closing/i.test(message)) {
+      event.preventDefault()
+    }
+  })
+}
+
 /**
  * Google Sign-In.
  *
@@ -96,17 +115,35 @@ export async function loginWithGoogle(): Promise<{ user: FirebaseUser; idToken: 
     const idToken = await result.user.getIdToken()
     return { user: result.user, idToken }
   } catch (err: unknown) {
-    const code: string = (err as { code?: string })?.code || ''
+    const e = err as { code?: string; message?: string } | undefined
+    const code = e?.code || ''
+    const message = e?.message || ''
     const popupUnavailable = [
       'auth/popup-blocked',
       'auth/operation-not-supported-in-this-environment',
       'auth/cancelled-popup-request',
     ]
-    if (popupUnavailable.includes(code)) {
+    // The Firebase SDK's IndexedDB layer throws "Database is closing/hidden"
+    // (a message-only error with NO code) when a background storage write
+    // races with the tab being hidden — exactly what happens when a sign-in
+    // popup steals focus on desktop Safari/fullscreen. It is never a real
+    // failure: fall back to the same-tab redirect flow instead of surfacing
+    // it. checkGoogleRedirect() completes the sign-in when the user returns.
+    const hiddenTabStorageError = !code && /Database is (closing|hidden)/i.test(message)
+    if (popupUnavailable.includes(code) || hiddenTabStorageError) {
       // Popup not possible → same-tab redirect. checkGoogleRedirect()
       // completes the sign-in when the user returns.
       sessionStorage.setItem(REDIRECT_FLAG, '1')
-      await signInWithRedirect(auth, googleProvider)
+      try {
+        await signInWithRedirect(auth, googleProvider)
+      } catch (redirectErr) {
+        // Starting the redirect can fail while the browser is still mid-flight
+        // with the popup it just opened. When the root cause was the benign
+        // hidden-tab error, rethrow THAT so the UI takes the graceful "show
+        // the form again" path instead of a confusing redirect banner.
+        if (hiddenTabStorageError) throw err
+        throw redirectErr
+      }
       return null
     }
     throw err

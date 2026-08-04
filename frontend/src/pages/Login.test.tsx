@@ -6,7 +6,7 @@ import { MemoryRouter } from 'react-router-dom'
 import Login from './Login'
 import axios from 'axios'
 import { useAuthStore } from '@/stores/authStore'
-import { loginWithFirebaseEmail } from '@/services/firebase'
+import { loginWithFirebaseEmail, loginWithGoogle } from '@/services/firebase'
 
 function renderLogin() {
   return render(
@@ -86,5 +86,38 @@ describe('Login', () => {
     expect(password).toHaveAttribute('type', 'password')
     await user.click(screen.getByRole('button', { name: /show password/i }))
     expect(password).toHaveAttribute('type', 'text')
+  })
+
+  it('treats the benign hidden-tab storage error like a cancelled popup', async () => {
+    // The Firebase SDK throws "Database is closing/hidden" (no error code)
+    // when a background IndexedDB write races with the tab being hidden —
+    // e.g. a sign-in popup stealing focus on desktop. It must never surface
+    // as a scary error banner; the form simply shows again.
+    ;(loginWithGoogle as any).mockRejectedValueOnce(new Error('Database is closing/hidden'))
+
+    const user = userEvent.setup()
+    renderLogin()
+
+    await user.click(await screen.findByRole('button', { name: /sign in with google/i }))
+
+    // Form comes back, no error banner, still not authenticated.
+    expect(await screen.findByPlaceholderText('you@example.com')).toBeInTheDocument()
+    expect(screen.queryByTestId('auth-error')).not.toBeInTheDocument()
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
+  })
+
+  it('shows an error banner for real Google sign-in failures', async () => {
+    ;(loginWithGoogle as any).mockRejectedValueOnce({
+      code: 'auth/network-request-failed',
+      message: 'A network error (such as timeout, interrupted connection) has occurred.',
+    })
+
+    const user = userEvent.setup()
+    renderLogin()
+
+    await user.click(await screen.findByRole('button', { name: /sign in with google/i }))
+
+    expect(await screen.findByTestId('auth-error')).toHaveTextContent(/network error/i)
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
   })
 })
