@@ -59,8 +59,8 @@ PROVIDER_METADATA: dict[str, dict] = {
         "label": "Cerebras",
         "color": "from-orange-500 to-orange-600",
         "icon": "cerebras",
-        "tagline": "Llama 3.1 8B — 20x faster inference, 1M tokens/day",
-        "default_model": "llama3.1-8b",
+        "tagline": "GPT-OSS-120B, Llama 3.3 70B — 20x faster inference",
+        "default_model": "gpt-oss-120b",
         "base_url": "https://api.cerebras.ai/v1",
         "free_tier": "1M tokens/day free",
         "fallback_priority": 7,
@@ -342,6 +342,7 @@ MODEL_PROVIDER_MAP: dict[str, str] = {
     "gpt-4o-mini": "openai",
     "gpt-4-turbo": "openai",
     "gpt-3.5-turbo": "openai",
+    "gpt-oss": "cerebras",  # GPT-OSS models run on Cerebras
     "o1-preview": "openai",
     "o1-mini": "openai",
     "claude": "anthropic",

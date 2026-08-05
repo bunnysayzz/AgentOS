@@ -149,6 +149,23 @@ def _record_call(
     return call
 
 
+def _clean_messages(messages: list[dict]) -> list[dict]:
+    """Strip null-only keys (name/tool_calls/tool_call_id) from message dicts.
+
+    Pydantic's model_dump() emits ``name: null``, ``tool_calls: null`` and
+    ``tool_call_id: null`` for plain user/system messages. Groq and Cerebras
+    reject those with HTTP 400 ("Value is not nullable"), so drop them before
+    sending to any OpenAI-compatible endpoint.
+    """
+    cleaned = []
+    for m in messages:
+        if not isinstance(m, dict):
+            cleaned.append(m)
+            continue
+        cleaned.append({k: v for k, v in m.items() if v is not None})
+    return cleaned
+
+
 # ─── Real LLM API Calls ────────────────────────────
 
 
@@ -291,7 +308,7 @@ def _get_model_for_provider(provider: LLMProvider) -> str | None:
         LLMProvider.ANTHROPIC: "claude-3-haiku-20240307",
         LLMProvider.GOOGLE: "gemini-2.0-flash",
         LLMProvider.GROQ: "llama-3.3-70b-versatile",
-        LLMProvider.CEREBRAS: "llama3.1-8b",
+        LLMProvider.CEREBRAS: "gpt-oss-120b",
         LLMProvider.OPENROUTER: "meta-llama/llama-3.3-70b-instruct:free",
         LLMProvider.MISTRAL: "open-mistral-nemo",
         LLMProvider.HUGGINGFACE: "meta-llama/Llama-3.3-70B-Instruct",
@@ -355,7 +372,7 @@ async def route_chat_completion(
         start_time = time.monotonic()
 
         try:
-            messages_dict = [m.model_dump() for m in request.messages]
+            messages_dict = _clean_messages([m.model_dump() for m in request.messages])
 
             actual_model = model_name
             if is_fallback:
@@ -426,7 +443,7 @@ async def route_chat_completion(
             llm_call = _record_call(
                 db, workspace_id, agent_id, execution_id,
                 provider, actual_model, system_prompt,
-                [m.model_dump() for m in request.messages],
+                messages_dict,
                 temperature, request.max_tokens,
                 response_content, finish_reason,
                 prompt_tokens, completion_tokens, cost_usd,
@@ -459,7 +476,7 @@ async def route_chat_completion(
             _record_call(
                 db, workspace_id, agent_id, execution_id,
                 provider, model_name, system_prompt,
-                [m.model_dump() for m in request.messages],
+                messages_dict,
                 temperature, request.max_tokens,
                 "", "error", 0, 0, 0.0, duration_ms,
                 True, f"Fallback from {provider.value}: {error_str}", request.stream,
