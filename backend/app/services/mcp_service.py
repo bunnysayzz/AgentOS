@@ -325,8 +325,14 @@ async def route_chat_completion(
     agent_id: str | None = None,
     execution_id: str | None = None,
     use_fallback: bool = True,
+    preferred_provider: LLMProvider | None = None,
 ) -> ChatCompletionResponse:
-    """Route a chat completion request to the appropriate LLM provider."""
+    """Route a chat completion request to the appropriate LLM provider.
+
+    ``preferred_provider`` pins the first provider to try (used by agent and
+    workflow execution so an agent's declared provider is honored); the
+    normal model-prefix detection + fallback chain still applies afterwards.
+    """
     model_name = request.model
     system_prompt = _build_system_message(request.messages)
     temperature = request.temperature if request.temperature is not None else 0.7
@@ -355,11 +361,20 @@ async def route_chat_completion(
                 fallback_providers.remove(primary_provider)
             fallback_providers.insert(0, primary_provider)
 
+    # Honoring the agent's declared provider: make it first in line.
+    if preferred_provider is not None and preferred_provider.value in [
+        c.get("provider") for c in (await list_provider_configs(db)) if c.get("is_active")
+    ]:
+        if preferred_provider in fallback_providers:
+            fallback_providers.remove(preferred_provider)
+        fallback_providers.insert(0, preferred_provider)
+
     providers_to_try = fallback_providers if use_fallback else [primary_provider]
     if not providers_to_try:
         providers_to_try = [primary_provider]
 
     last_error = None
+    messages_dict: list[dict] = _clean_messages([m.model_dump() for m in request.messages])
 
     for attempt_idx, provider in enumerate(providers_to_try):
         provider_config = await get_provider_config(db, provider)

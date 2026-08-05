@@ -136,8 +136,8 @@ class TestAgentExecutionLifecycle:
         eid = exec_data["id"]
         base = f"/api/v1/workspaces/{test_workspace['id']}/agents/{agent['id']}/executions/{eid}"
 
-        # pending -> running
-        r = await client.post(f"{base}/start", headers=auth_headers)
+        # pending -> running (auto_run=false keeps the state machine manual)
+        r = await client.post(f"{base}/start?auto_run=false", headers=auth_headers)
         assert r.status_code == 200 and r.json()["status"] == "running"
 
         # running -> paused
@@ -173,8 +173,8 @@ class TestAgentExecutionLifecycle:
         assert r.status_code == 400
 
         # Cannot start twice
-        await client.post(f"{base}/start", headers=auth_headers)
-        r = await client.post(f"{base}/start", headers=auth_headers)
+        await client.post(f"{base}/start?auto_run=false", headers=auth_headers)
+        r = await client.post(f"{base}/start?auto_run=false", headers=auth_headers)
         assert r.status_code == 400
 
         # Cannot resume a running execution

@@ -52,7 +52,58 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"⚠️  Firebase cert warmup skipped: {e}")
 
+    # Reap executions orphaned by a previous process restart (they were RUNNING
+    # or PENDING but the background engine died with the process).
+    try:
+        await _reap_orphaned_executions()
+    except Exception as e:
+        print(f"⚠️  Execution reaper skipped: {e}")
+
     yield
+
+
+async def _reap_orphaned_executions(db: FirestoreDB | None = None) -> None:
+    """Fail executions still in-flight from before a restart.
+
+    Pass a ``db`` handle for tests; defaults to the live Firestore wrapper.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app.models.agent import ExecutionStatus
+    from app.models.workflow import WorkflowExecutionStatus
+    from app.services import agent_service, workflow_service
+
+    db = db or FirestoreDB()
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+    reaped = 0
+
+    # Agent executions that were started > 10 min ago and never finished.
+    for row in db.query(agent_service.EXECUTIONS):
+        if row.get("status") not in (ExecutionStatus.RUNNING.value, ExecutionStatus.PENDING.value):
+            continue
+        if (row.get("created_at") or "") < cutoff:
+            row["status"] = ExecutionStatus.FAILED.value
+            row["error_message"] = "Execution interrupted by service restart"
+            row["completed_at"] = datetime.now(timezone.utc).isoformat()
+            db.set(agent_service.EXECUTIONS, row["id"], row)
+            reaped += 1
+
+    # Same for workflow executions (respect approvals — leave those parked).
+    for row in db.query(workflow_service.WORKFLOW_EXECUTIONS):
+        if row.get("status") not in (
+            WorkflowExecutionStatus.RUNNING.value,
+            WorkflowExecutionStatus.PENDING.value,
+        ):
+            continue
+        if (row.get("created_at") or "") < cutoff:
+            row["status"] = WorkflowExecutionStatus.FAILED.value
+            row["error_message"] = "Execution interrupted by service restart"
+            row["completed_at"] = datetime.now(timezone.utc).isoformat()
+            db.set(workflow_service.WORKFLOW_EXECUTIONS, row["id"], row)
+            reaped += 1
+
+    if reaped:
+        print(f"♻️  Reaped {reaped} orphaned execution(s) from the previous run")
 
 
 app = FastAPI(
@@ -70,6 +121,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Rate limiting (per-IP sliding window; in-memory, single-instance safe)
+from app.core.rate_limit import RateLimitMiddleware
+app.add_middleware(RateLimitMiddleware)
 
 
 @app.middleware("http")

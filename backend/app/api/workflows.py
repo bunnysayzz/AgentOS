@@ -158,12 +158,16 @@ async def start_execution(
     workflow: Workflow = Depends(get_workflow_or_404),
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
     db: AsyncSession = Depends(get_db),
+    auto_run: bool = Query(True, description="Run the workflow DAG immediately in the background"),
 ):
     execution = await workflow_service.get_execution(db, execution_id)
     if execution is None or execution.workflow_id != workflow.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Execution not found")
     try:
         execution = await workflow_service.start_execution(db, execution)
+        if auto_run:
+            from app.services.execution_engine import run_workflow_execution, schedule
+            schedule(db, lambda: run_workflow_execution(db, str(execution["id"])))
         return WorkflowExecutionResponse.model_validate(execution)
     except workflow_service.WorkflowError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message)
@@ -233,6 +237,9 @@ async def approve_execution(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Execution not found")
     try:
         execution = await workflow_service.approve_execution(db, execution)
+        # Resume the DAG from where it parked at the approval gate.
+        from app.services.execution_engine import run_workflow_execution, schedule
+        schedule(db, lambda: run_workflow_execution(db, str(execution["id"])))
         return WorkflowExecutionResponse.model_validate(execution)
     except workflow_service.WorkflowError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message)

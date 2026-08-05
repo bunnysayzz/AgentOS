@@ -125,7 +125,7 @@ class TestWorkflowExecution:
         ).json()["id"]
         base = f"/api/v1/workspaces/{test_workspace['id']}/workflows/{wf['id']}/executions/{eid}"
 
-        r = await client.post(f"{base}/start", headers=auth_headers)
+        r = await client.post(f"{base}/start?auto_run=false", headers=auth_headers)
         assert r.status_code == 200 and r.json()["status"] == "running"
 
         r = await client.post(f"{base}/pause", headers=auth_headers)

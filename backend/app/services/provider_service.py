@@ -1,30 +1,47 @@
-"""Provider config service - manage LLM API keys, test connections, encryption (Firestore)."""
+"""Provider config service - manage LLM API keys, test connections, encryption (Firestore).
+
+API keys are encrypted at rest with Fernet (AES-128-CBC + HMAC, key derived
+from ``ENCRYPTION_KEY`` via PBKDF2) — the same scheme ``secret_service`` uses.
+Legacy XOR-encrypted values (written before the Fernet migration) are still
+decrypted transparently, so existing stored keys keep working.
+"""
 
 import base64
 from datetime import datetime, timezone
 
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
 from app.core.db import AttrDict, FirestoreDB, new_id, now_iso
-from app.schemas.mcp import ProviderConfigCreate
 from app.core.config import settings
+from app.schemas.mcp import ProviderConfigCreate
 
 PROVIDER_CONFIGS = "provider_configs"
 
+# Marker prefix for Fernet-encrypted values (legacy XOR values have none).
+_FERNET_PREFIX = "fernet:"
 
-# ─── Simple XOR-based encryption (for development) ──
-# In production, use HashiCorp Vault, AWS KMS, or similar.
+
+def _get_fernet() -> Fernet:
+    """Derive a Fernet key from ENCRYPTION_KEY (matches secret_service)."""
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=b"agentos-provider-config",
+        iterations=100_000,
+    )
+    key = base64.urlsafe_b64encode(kdf.derive(settings.ENCRYPTION_KEY.encode()))
+    return Fernet(key)
+
 
 def _encrypt_key(api_key: str) -> str:
-    """Simple encryption for API keys using the app's encryption key."""
-    key = settings.ENCRYPTION_KEY
-    encrypted = []
-    for i, c in enumerate(api_key):
-        k = ord(key[i % len(key)])
-        encrypted.append(chr(ord(c) ^ k))
-    return base64.b64encode("".join(encrypted).encode()).decode()
+    """Encrypt an API key with Fernet (production-grade)."""
+    return _FERNET_PREFIX + _get_fernet().encrypt(api_key.encode()).decode()
 
 
-def _decrypt_key(encrypted: str) -> str:
-    """Decrypt an API key."""
+def _decrypt_key_legacy_xor(encrypted: str) -> str:
+    """Decrypt a legacy XOR-encrypted key (pre-Fernet values only)."""
     key = settings.ENCRYPTION_KEY
     decoded = base64.b64decode(encrypted.encode()).decode()
     decrypted = []
@@ -32,6 +49,13 @@ def _decrypt_key(encrypted: str) -> str:
         k = ord(key[i % len(key)])
         decrypted.append(chr(ord(c) ^ k))
     return "".join(decrypted)
+
+
+def _decrypt_key(encrypted: str) -> str:
+    """Decrypt an API key — Fernet values, falling back to legacy XOR."""
+    if encrypted.startswith(_FERNET_PREFIX):
+        return _get_fernet().decrypt(encrypted[len(_FERNET_PREFIX):].encode()).decode()
+    return _decrypt_key_legacy_xor(encrypted)
 
 
 def _doc_id(provider) -> str:
@@ -93,15 +117,23 @@ async def delete_provider_config(db: FirestoreDB, provider) -> bool:
 
 
 async def test_connection(db: FirestoreDB, provider) -> tuple[bool, str]:
-    """Test the connection to a provider by making a minimal API call."""
+    """Test the connection to a provider by making a minimal API call.
+
+    Supports every provider the gateway can route to: OpenAI-compatible
+    providers (OpenAI, Groq, Cerebras, OpenRouter, Mistral, DeepSeek, LLM API,
+    Together, Fireworks, and friends) are tested with a lightweight GET to
+    their ``/models`` endpoint; Anthropic and Google use their native health
+    calls; Ollama checks the local tags endpoint.
+    """
     from app.models.mcp import LLMProvider
+    from app.services.provider_metadata import get_provider_metadata
 
     config = await get_provider_config(db, provider)
     if config is None:
         return False, "Provider not configured"
 
     api_key = _decrypt_key(config["encrypted_api_key"])
-    base_url = config.get("base_url")
+    base_url = config.get("base_url") or get_provider_metadata(provider).get("base_url") or ""
 
     import httpx
 
@@ -111,51 +143,74 @@ async def test_connection(db: FirestoreDB, provider) -> tuple[bool, str]:
         db.set(PROVIDER_CONFIGS, _doc_id(provider), config)
         return success, error or "Connection successful"
 
-    try:
-        if provider == LLMProvider.OPENAI:
-            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-            url = base_url or "https://api.openai.com/v1/models"
-            async with httpx.AsyncClient(timeout=10) as client:
-                r = await client.get(url, headers=headers)
-                if r.status_code == 200:
-                    return await _record(True)
-                error = r.json().get("error", {}).get("message", str(r.status_code))
-                return await _record(False, error)
+    # ─── OpenAI-compatible providers (incl. Groq, Cerebras, LLM API, etc.) ──
+    openai_compatible = {
+        LLMProvider.OPENAI, LLMProvider.GROQ, LLMProvider.CEREBRAS,
+        LLMProvider.OPENROUTER, LLMProvider.MISTRAL, LLMProvider.HUGGINGFACE,
+        LLMProvider.NVIDIA_NIM, LLMProvider.GITHUB_MODELS, LLMProvider.CLOUDFLARE,
+        LLMProvider.SHUTTLEAI, LLMProvider.AIHUBMIX, LLMProvider.KLUSTER_AI,
+        LLMProvider.ZHIPU_ZAI, LLMProvider.TOGETHER_AI, LLMProvider.SAMBANOVA,
+        LLMProvider.HYPERBOLIC, LLMProvider.FIREWORKS, LLMProvider.DEEPINFRA,
+        LLMProvider.NOVITA, LLMProvider.AIML_API, LLMProvider.SWIFTROUTER,
+        LLMProvider.DEEPSEEK, LLMProvider.API_FREE_LLM, LLMProvider.LLMAPI,
+        LLMProvider.POLLINATIONS, LLMProvider.NAGA_AI, LLMProvider.BLUESMINDS,
+        LLMProvider.CUSTOM, LLMProvider.AZURE,
+    }
 
-        elif provider == LLMProvider.ANTHROPIC:
+    try:
+        if provider == LLMProvider.ANTHROPIC:
             headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
-            url = base_url or "https://api.anthropic.com/v1/messages"
+            url = (base_url or "https://api.anthropic.com").rstrip("/") + "/v1/messages"
             async with httpx.AsyncClient(timeout=10) as client:
                 r = await client.post(
                     url,
                     headers=headers,
                     json={
-                        "model": "claude-3-haiku-20240307",
+                        "model": "claude-3-5-haiku-20241022",
                         "max_tokens": 1,
                         "messages": [{"role": "user", "content": "ping"}],
                     },
                 )
                 if r.status_code in (200, 201):
                     return await _record(True)
-                error = r.json().get("error", {}).get("message", str(r.status_code))
+                try:
+                    error = r.json().get("error", {}).get("message", str(r.status_code))
+                except Exception:
+                    error = str(r.status_code)
                 return await _record(False, error)
 
         elif provider == LLMProvider.GOOGLE:
-            url = base_url or f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+            url = (base_url or f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}")
             async with httpx.AsyncClient(timeout=10) as client:
                 r = await client.get(url)
                 if r.status_code == 200:
                     return await _record(True)
-                error = r.json().get("error", {}).get("message", str(r.status_code))
+                try:
+                    error = r.json().get("error", {}).get("message", str(r.status_code))
+                except Exception:
+                    error = str(r.status_code)
                 return await _record(False, error)
 
         elif provider == LLMProvider.OLLAMA:
-            url = base_url or "http://localhost:11434/api/tags"
+            url = (base_url or "http://localhost:11434").rstrip("/") + "/api/tags"
             async with httpx.AsyncClient(timeout=10) as client:
                 r = await client.get(url)
                 if r.status_code == 200:
                     return await _record(True)
                 return await _record(False, f"HTTP {r.status_code}")
+
+        elif provider in openai_compatible:
+            url = (base_url or "https://api.openai.com/v1").rstrip("/") + "/models"
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.get(url, headers=headers)
+                if r.status_code == 200:
+                    return await _record(True)
+                try:
+                    error = r.json().get("error", {}).get("message", str(r.status_code))
+                except Exception:
+                    error = str(r.status_code)
+                return await _record(False, error)
 
         else:
             return False, f"Testing for {provider.value} is not yet supported"

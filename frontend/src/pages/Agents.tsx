@@ -43,6 +43,12 @@ export default function Agents() {
     queryKey: ['agent-executions', detailId],
     queryFn: () => api.get(`/workspaces/${wsId}/agents/${detailId}/executions`).then((r) => r.data),
     enabled: !!detailId && !!wsId,
+    // Poll while any execution is still in flight so the background engine's
+    // result (output/tokens/status) shows up automatically.
+    refetchInterval: (query) => {
+      const rows: any[] = query.state.data || []
+      return rows.some((e: any) => ['pending', 'running', 'paused'].includes(e.status)) ? 2000 : false
+    },
   })
 
   // ── Available tools for binding ──
@@ -202,26 +208,40 @@ export default function Agents() {
             ) : (
               <div className="space-y-2">
                 {execList.map((ex: any) => (
-                  <div key={ex.id} className="flex items-center justify-between py-2 px-3 rounded-xl bg-surface-800/50">
-                    <div className="flex items-center gap-3">
-                      <ActivityIcon size={14} className={cn(ex.status === 'completed' ? 'text-emerald-400' : ex.status === 'failed' ? 'text-red-400' : 'text-amber-400')} />
-                      <span className="text-sm capitalize">{ex.status}</span>
+                  <div key={ex.id} className="py-2 px-3 rounded-xl bg-surface-800/50">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <ActivityIcon size={14} className={cn(ex.status === 'completed' ? 'text-emerald-400' : ex.status === 'failed' ? 'text-red-400' : 'text-amber-400')} />
+                        <span className="text-sm capitalize">{ex.status}</span>
+                        {ex.total_tokens != null && (
+                          <span className="text-xs text-surface-500">{ex.total_tokens} tokens · ${Number(ex.cost_usd || 0).toFixed(5)}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-surface-500">{ex.created_at?.slice(0, 10)}</span>
+                        {ex.status === 'pending' && (
+                          <button onClick={() => execMutations.start.mutate(ex.id)} className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-all" title="Start"><PlayIcon size={12} /></button>
+                        )}
+                        {ex.status === 'running' && (
+                          <>
+                            <button onClick={() => execMutations.pause.mutate(ex.id)} className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all" title="Pause"><PauseIcon /></button>
+                            <button onClick={() => execMutations.cancel.mutate(ex.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all" title="Cancel"><StopIcon /></button>
+                          </>
+                        )}
+                        {ex.status === 'paused' && (
+                          <button onClick={() => execMutations.resume.mutate(ex.id)} className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-all" title="Resume"><PlayIcon size={12} /></button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-surface-500">{ex.created_at?.slice(0, 10)}</span>
-                      {ex.status === 'pending' && (
-                        <button onClick={() => execMutations.start.mutate(ex.id)} className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-all" title="Start"><PlayIcon size={12} /></button>
-                      )}
-                      {ex.status === 'running' && (
-                        <>
-                          <button onClick={() => execMutations.pause.mutate(ex.id)} className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all" title="Pause"><PauseIcon /></button>
-                          <button onClick={() => execMutations.cancel.mutate(ex.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all" title="Cancel"><StopIcon /></button>
-                        </>
-                      )}
-                      {ex.status === 'paused' && (
-                        <button onClick={() => execMutations.resume.mutate(ex.id)} className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-all" title="Resume"><PlayIcon size={12} /></button>
-                      )}
-                    </div>
+                    {(ex.status === 'completed' || ex.status === 'failed') && (
+                      <div className="mt-2 pl-7">
+                        {ex.error_message ? (
+                          <p className="text-xs text-red-300/90 bg-red-500/5 border border-red-500/10 rounded-lg p-2 break-words">{ex.error_message}</p>
+                        ) : ex.output_data?.response ? (
+                          <p className="text-xs text-surface-300 bg-surface-900/40 border border-surface-700/20 rounded-lg p-2 break-words whitespace-pre-wrap">{String(ex.output_data.response).slice(0, 600)}</p>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

@@ -33,12 +33,21 @@ export default function Workflows() {
     queryKey: ['wf-executions', detailId],
     queryFn: () => api.get(`/workspaces/${wsId}/workflows/${detailId}/executions`).then((r) => r.data),
     enabled: !!detailId && !!wsId,
+    // Poll while any execution is in flight so background DAG results appear.
+    refetchInterval: (query) => {
+      const rows: any[] = query.state.data || []
+      return rows.some((e: any) => ['pending', 'running', 'awaiting_approval'].includes(e.status)) ? 2000 : false
+    },
   })
 
   const { data: execGraph } = useQuery({
     queryKey: ['wf-execution-graph', wsId, selectedExecId],
     queryFn: () => api.get(`/workspaces/${wsId}/executions/${selectedExecId}/graph`).then((r) => r.data),
     enabled: !!wsId && !!selectedExecId,
+    refetchInterval: (query) => {
+      const nodes: any[] = (query.state.data as any)?.nodes || []
+      return nodes.some((n: any) => ['pending', 'running', 'awaiting_input'].includes(n.status)) ? 2000 : false
+    },
   })
 
   const { mutate: create, isPending: creating } = useMutation({

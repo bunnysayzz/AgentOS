@@ -28,7 +28,7 @@ async def detect_provider(
         "sk-": {"provider": "openai", "label": "OpenAI", "base_url": "https://api.openai.com/v1", "default_model": "gpt-4o-mini"},
         "sk-or-v1": {"provider": "openrouter", "label": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "default_model": "meta-llama/llama-3.3-70b-instruct:free"},
         "gsk_": {"provider": "groq", "label": "Groq", "base_url": "https://api.groq.com/openai/v1", "default_model": "llama-3.3-70b-versatile"},
-        "csk-": {"provider": "cerebras", "label": "Cerebras", "base_url": "https://api.cerebras.ai/v1", "default_model": "llama3.1-8b"},
+        "csk-": {"provider": "cerebras", "label": "Cerebras", "base_url": "https://api.cerebras.ai/v1", "default_model": "gpt-oss-120b"},
         "AIzaSy": {"provider": "google", "label": "Google Gemini", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", "default_model": "gemini-2.0-flash"},
         "hf_": {"provider": "huggingface", "label": "HuggingFace", "base_url": "https://router.huggingface.co/v1", "default_model": "meta-llama/Llama-3.3-70B-Instruct"},
         "nvapi-": {"provider": "nvidia_nim", "label": "NVIDIA NIM", "base_url": "https://integrate.api.nvidia.com/v1", "default_model": "meta/llama-3.1-8b-instruct"},
@@ -140,42 +140,6 @@ async def delete_provider(
             detail=f"Provider '{provider.value}' not configured",
         )
     return None
-
-
-@router.post("/{provider}/test")
-async def test_provider_connection(
-    provider: LLMProvider,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
-):
-    """Test the connection to a configured provider."""
-    success, message = await provider_service.test_connection(db, provider)
-    return {
-        "provider": provider.value,
-        "success": success,
-        "message": message,
-    }
-async def detect_provider(
-    api_key: str = Query(..., min_length=3),
-    current_user: User = Depends(get_current_active_user),
-):
-    """Detect the provider from an API key prefix."""
-    for prefix, info in SORTED_SIGNATURES:
-        if api_key.startswith(prefix):
-            return {
-                "detected": True,
-                "provider": info["provider"],
-                "label": info["label"],
-                "base_url": info["base_url"],
-                "default_model": info["default_model"],
-            }
-    return {
-        "detected": False,
-        "provider": None,
-        "label": "Unknown provider",
-        "base_url": None,
-        "default_model": None,
-    }
 
 
 @router.post("/{provider}/test")

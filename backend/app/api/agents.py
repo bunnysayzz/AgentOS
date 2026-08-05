@@ -154,13 +154,17 @@ async def start_execution(
     agent: Agent = Depends(get_agent_or_404),
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
     db: AsyncSession = Depends(get_db),
+    auto_run: bool = Query(True, description="Run the agent immediately in the background"),
 ):
-    """Start a pending execution."""
+    """Start a pending execution and run the agent in the background."""
     execution = await agent_service.get_execution_by_id(db, execution_id)
     if execution is None or execution.agent_id != agent.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Execution not found")
     try:
         execution = await agent_service.start_execution(db, execution)
+        if auto_run:
+            from app.services.execution_engine import run_agent_execution, schedule
+            schedule(db, lambda: run_agent_execution(db, str(execution["id"])))
         return AgentExecutionResponse.model_validate(execution)
     except agent_service.InvalidTransitionError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message)

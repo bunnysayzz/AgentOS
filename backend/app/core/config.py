@@ -59,5 +59,11 @@ class Settings(BaseSettings):
     # first Firebase authentication (no password stored server-side).
     FIRST_SUPERUSER_EMAIL: str = ""
 
+    # Rate limiting (per-IP sliding window)
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_AUTH_PER_MIN: int = 20
+    RATE_LIMIT_CHAT_PER_MIN: int = 60
+    RATE_LIMIT_DEFAULT_PER_MIN: int = 300
+
 
 settings = Settings()

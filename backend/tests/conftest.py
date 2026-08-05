@@ -75,6 +75,11 @@ def fake_firebase_token_auth(monkeypatch, firestore_client):
     from app.core import firebase as firebase_core
     from app.core import database as database_module
 
+    # Rate limiting is in-memory and global — reset windows so a fast test
+    # run doesn't trip the per-minute caps (each test starts fresh).
+    from app.core.rate_limit import reset_rate_limits
+    reset_rate_limits()
+
     monkeypatch.setattr(deps_module, "verify_firebase_token", fake_verify_firebase_token)
     monkeypatch.setattr(auth_module, "verify_firebase_token", fake_verify_firebase_token)
     monkeypatch.setattr(firebase_core, "verify_firebase_token", fake_verify_firebase_token)
