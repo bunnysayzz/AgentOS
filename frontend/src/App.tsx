@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import ProtectedRoute from '@/components/ProtectedRoute'
+import RequireAuth from '@/components/RequireAuth'
 import Login from '@/pages/Login'
 import Register from '@/pages/Register'
 import VerifyEmail from '@/pages/VerifyEmail'
@@ -51,15 +52,21 @@ function App() {
           <Route path="/workflows" element={<Workflows />} />
           <Route path="/tools" element={<Tools />} />
           <Route path="/prompts" element={<Prompts />} />
-          <Route path="/secrets" element={<Secrets />} />
           <Route path="/artifacts" element={<Artifacts />} />
           <Route path="/memory" element={<Memory />} />
           <Route path="/mcp" element={<MCPGateway />} />
           <Route path="/telemetry" element={<Telemetry />} />
           <Route path="/graphs" element={<ExecutionGraphs />} />
-          <Route path="/providers" element={<Providers />} />
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/api-keys" element={<ApiKeys />} />
+
+          {/* Account & security pages — require a signed-in user. Guests are
+              redirected to /login?redirect=<target> and return after auth. */}
+          <Route element={<RequireAuth />}>
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/api-keys" element={<ApiKeys />} />
+            <Route path="/secrets" element={<Secrets />} />
+            <Route path="/workspaces/:workspaceId/secrets" element={<Secrets />} />
+            <Route path="/providers" element={<Providers />} />
+          </Route>
         </Route>
       </Route>
 

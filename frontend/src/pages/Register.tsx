@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { EyeIcon, EyeOffIcon, LockIcon, LogoIcon, MailIcon, UserIcon, UserPlusIcon, GoogleIcon } from '@/components/Icons'
 import axios from 'axios'
 import { useAuthStore } from '@/stores/authStore'
@@ -15,13 +15,22 @@ export default function Register() {
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(true)
   const [error, setError] = useState('')
+  const [searchParams] = useSearchParams()
+
+  // Where a guest was headed when the login-only guard redirected them to
+  // /login (which then linked here). Internal paths only.
+  const rawRedirect = searchParams.get('redirect')
+  const safeRedirect =
+    rawRedirect && rawRedirect.startsWith('/') && !rawRedirect.startsWith('//')
+      ? rawRedirect
+      : null
 
   /**
    * Exchange a Firebase ID token for the profile. The backend auto-creates
    * the Firestore user on first sign-in, so no separate register step exists.
    * Email signups land on the verification screen (their account isn't
-   * verified yet); Google accounts are already verified → straight to the
-   * dashboard.
+   * verified yet); Google accounts are already verified → back to where the
+   * user was headed, or the dashboard.
    */
   const finishAuth = async (idToken: string, dest = '/dashboard') => {
     try {
@@ -43,7 +52,9 @@ export default function Register() {
     const cleanup = checkGoogleRedirect(
       async (_user, idToken) => {
         try {
-          await finishAuth(idToken)
+          // Redirect-return path (popup unavailable): land back on the page
+          // the guest was headed to, same as the inline popup path.
+          await finishAuth(idToken, safeRedirect ?? '/dashboard')
         } catch {
           // error already surfaced via setError
         }
@@ -62,7 +73,7 @@ export default function Register() {
       // Redirect path (result === null): page navigated away to Google; the
       // mount effect's checkGoogleRedirect finishes auth on return.
       if (result) {
-        await finishAuth(result.idToken)
+        await finishAuth(result.idToken, safeRedirect ?? '/dashboard')
       }
     } catch (err: any) {
       // User closing the popup is not an error — just show the form again.
@@ -213,7 +224,10 @@ export default function Register() {
 
           <p className="text-center text-sm text-surface-400">
             Already have an account?{' '}
-            <Link to="/login" className="text-primary-400 hover:text-primary-300 font-medium transition-colors">
+            <Link
+              to={`/login${safeRedirect ? `?redirect=${encodeURIComponent(safeRedirect)}` : ''}`}
+              className="text-primary-400 hover:text-primary-300 font-medium transition-colors"
+            >
               Sign in
             </Link>
           </p>

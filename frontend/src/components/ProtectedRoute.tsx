@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/authStore'
  * Use zustand persist's built-in hydration tracking via useSyncExternalStore
  * for a race-condition-free approach.
  */
-function useHasHydrated() {
+export function useHasHydrated() {
   const [hydrated, setHydrated] = useState(false)
 
   useEffect(() => {

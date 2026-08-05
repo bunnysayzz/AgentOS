@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { EyeIcon, EyeOffIcon, LockIcon, LogInIcon, LogoIcon, MailIcon, GoogleIcon } from '@/components/Icons'
 import { useAuthStore } from '@/stores/authStore'
 import { loginWithGoogle, checkGoogleRedirect, loginWithFirebaseEmail, firebaseUserToStoreUser, type FirebaseUser } from '@/services/firebase'
@@ -26,13 +26,24 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(true)
   const [error, setError] = useState('')
+  const [searchParams] = useSearchParams()
+
+  // Where a guest was headed when the login-only guard redirected them here
+  // (e.g. /login?redirect=%2Fprofile). Only internal paths are accepted.
+  const rawRedirect = searchParams.get('redirect')
+  const safeRedirect =
+    rawRedirect && rawRedirect.startsWith('/') && !rawRedirect.startsWith('//')
+      ? rawRedirect
+      : null
 
   // Complete authentication instantly from the Firebase ID token — no waiting
   // on a backend round-trip. The full Firestore profile (id, username,
   // superuser flag) refreshes in the background once it arrives. Unverified
-  // email accounts are routed to the verification screen first.
-  const finishAuth = async (idToken: string, user: FirebaseUser, dest = '/dashboard') => {
+  // email accounts are routed to the verification screen first; otherwise the
+  // user lands back on the page they were headed to (or the dashboard).
+  const finishAuth = async (idToken: string, user: FirebaseUser) => {
     setAuth(idToken, '', firebaseUserToStoreUser(user))
+    const dest = user.emailVerified === false ? '/verify-email' : (safeRedirect ?? '/dashboard')
     navigate(dest, { replace: true })
 
     // Background: fetch the full profile from the backend (auto-creates the
@@ -102,10 +113,7 @@ export default function Login() {
     setLoading(true)
     try {
       const { user, idToken } = await loginWithFirebaseEmail(form.email, form.password)
-      // Firebase sets emailVerified to a real boolean — Google accounts are
-      // always verified; email signups aren't until they click the link.
-      const dest = user.emailVerified === false ? '/verify-email' : '/dashboard'
-      await finishAuth(idToken, user, dest)
+      await finishAuth(idToken, user)
     } catch (err: any) {
       setError(firebaseAuthErrorMessage(err))
     } finally {
@@ -237,7 +245,10 @@ export default function Login() {
 
           <p className="text-center text-sm text-surface-400">
             Don't have an account?{' '}
-            <Link to="/register" className="text-primary-400 hover:text-primary-300 font-medium transition-colors">
+            <Link
+              to={`/register${safeRedirect ? `?redirect=${encodeURIComponent(safeRedirect)}` : ''}`}
+              className="text-primary-400 hover:text-primary-300 font-medium transition-colors"
+            >
               Create one
             </Link>
           </p>

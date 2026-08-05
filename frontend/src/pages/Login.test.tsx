@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 // axios and firebase are mocked centrally in src/test/setup.ts
 import Login from './Login'
 import axios from 'axios'
@@ -119,5 +119,55 @@ describe('Login', () => {
 
     expect(await screen.findByTestId('auth-error')).toHaveTextContent(/network error/i)
     expect(useAuthStore.getState().isAuthenticated).toBe(false)
+  })
+
+  it('returns to the page the guest was headed to after sign-in', async () => {
+    ;(loginWithFirebaseEmail as any).mockResolvedValueOnce({
+      user: { email: 'a@b.com', displayName: 'A B', photoURL: null, emailVerified: true },
+      idToken: 'firebase-id-token',
+    })
+
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/login?redirect=/profile']}>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/profile" element={<div>profile-marker</div>} />
+          <Route path="/dashboard" element={<div>dashboard-marker</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await user.type(await screen.findByPlaceholderText('you@example.com'), 'a@b.com')
+    await user.type(screen.getByPlaceholderText('••••••••'), 'password123')
+    await user.click(screen.getByRole('button', { name: /sign in$/i }))
+
+    // Back to Settings — not the generic dashboard.
+    expect(await screen.findByText('profile-marker')).toBeInTheDocument()
+  })
+
+  it('sends unverified users to the verification screen even with a redirect target', async () => {
+    ;(loginWithFirebaseEmail as any).mockResolvedValueOnce({
+      user: { email: 'a@b.com', displayName: 'A B', photoURL: null, emailVerified: false },
+      idToken: 'firebase-id-token',
+    })
+
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/login?redirect=/profile']}>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/verify-email" element={<div>verify-marker</div>} />
+          <Route path="/dashboard" element={<div>dashboard-marker</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await user.type(await screen.findByPlaceholderText('you@example.com'), 'a@b.com')
+    await user.type(screen.getByPlaceholderText('••••••••'), 'password123')
+    await user.click(screen.getByRole('button', { name: /sign in$/i }))
+
+    expect(await screen.findByText('verify-marker')).toBeInTheDocument()
+    expect(screen.queryByText('profile-marker')).not.toBeInTheDocument()
   })
 })
