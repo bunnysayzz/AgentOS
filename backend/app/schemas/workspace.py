@@ -2,9 +2,16 @@
 
 from datetime import datetime
 from uuid import UUID
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.workspace import MembershipRole
+
+
+def _normalize_role(value) -> MembershipRole:
+    """Accept role values case-insensitively ("MEMBER", "Member", "member")."""
+    if isinstance(value, str):
+        return value.strip().lower()
+    return value
 
 
 class WorkspaceBase(BaseModel):
@@ -29,6 +36,8 @@ class WorkspaceResponse(WorkspaceBase):
     updated_at: datetime | None
     member_count: int = 0
     slug: str = Field("", max_length=128)
+    # Current user's role in this workspace ("owner"/"admin"/"member"/"viewer")
+    role: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -48,6 +57,16 @@ class WorkspaceMemberAdd(BaseModel):
     user_id: UUID
     role: MembershipRole = MembershipRole.MEMBER
 
+    @field_validator("role", mode="before")
+    @classmethod
+    def _role_case_insensitive(cls, value):
+        return _normalize_role(value)
+
 
 class WorkspaceMemberUpdate(BaseModel):
     role: MembershipRole
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def _role_case_insensitive(cls, value):
+        return _normalize_role(value)

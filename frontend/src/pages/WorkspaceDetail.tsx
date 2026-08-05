@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ActivityIcon, ArchiveIcon, ArrowLeftIcon, BotIcon, BrainIcon, FileTextIcon, KeyIcon, PlusIcon, SettingsIcon, UserCogIcon, UserMinusIcon, UsersIcon, WorkflowIcon, WrenchIcon } from '@/components/Icons'
 import api from '@/services/api'
 import { confirm } from '@/components/ConfirmDialog'
+import { toast } from '@/components/Toast'
 import { cn } from '@/utils/cn'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 
@@ -26,7 +27,10 @@ export default function WorkspaceDetail() {
   const setSelectedWorkspace = useWorkspaceStore((s) => s.setSelectedWorkspace)
   const [showAddMember, setShowAddMember] = useState(false)
   const [newMemberUserId, setNewMemberUserId] = useState('')
-  const [newMemberRole, setNewMemberRole] = useState('MEMBER')
+  const [newMemberRole, setNewMemberRole] = useState('member')
+  const [addError, setAddError] = useState('')
+  const [lookingUp, setLookingUp] = useState(false)
+  const [addedLabel, setAddedLabel] = useState('')
 
   const { data: workspace, isLoading } = useQuery({
     queryKey: ['workspace', workspaceId],
@@ -46,20 +50,80 @@ export default function WorkspaceDetail() {
     enabled: !!workspaceId,
   })
 
-  const { mutate: addMember } = useMutation({
-    mutationFn: () => api.post(`/workspaces/${workspaceId}/members`, { user_id: newMemberUserId, role: newMemberRole }).then((r) => r.data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['workspace-members', workspaceId] }); setShowAddMember(false); setNewMemberUserId(''); setNewMemberRole('MEMBER') },
+  const { mutate: addMember, isPending: addPending } = useMutation({
+    mutationFn: (payload: { user_id: string; role: string }) =>
+      api.post(`/workspaces/${workspaceId}/members`, payload).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['workspace-members', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['workspace', workspaceId] })
+      setShowAddMember(false)
+      setNewMemberUserId('')
+      setNewMemberRole('member')
+      setAddError('')
+      toast.success('Member added', `${addedLabel} now has access to this workspace.`)
+    },
+    onError: (err: any) => {
+      // Surface backend errors — previously the request failed silently
+      // (404 unknown user, 409 already a member, 403 not an admin).
+      setAddError(err?.response?.data?.detail || err?.message || 'Could not add the member.')
+    },
   })
 
   const { mutate: removeMember } = useMutation({
     mutationFn: (userId: string) => api.delete(`/workspaces/${workspaceId}/members/${userId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['workspace-members', workspaceId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['workspace-members', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['workspace', workspaceId] })
+      toast.success('Member removed', 'The member no longer has access to this workspace.')
+    },
+    onError: (err: any) => {
+      toast.error('Remove failed', err?.response?.data?.detail || 'Could not remove the member.')
+    },
   })
 
   const { mutate: updateRole } = useMutation({
     mutationFn: ({ userId, role }: { userId: string; role: string }) => api.patch(`/workspaces/${workspaceId}/members/${userId}`, { role }).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['workspace-members', workspaceId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['workspace-members', workspaceId] })
+      toast.success('Role updated', 'The member\'s role has been changed.')
+    },
+    onError: (err: any) => {
+      toast.error('Update failed', err?.response?.data?.detail || 'Could not update the role.')
+    },
   })
+
+  /**
+   * Add a member. The field accepts either a raw user UUID (advanced) or an
+   * email address, which is resolved via the API first — no guessing IDs.
+   */
+  const handleAddMember = async () => {
+    const value = newMemberUserId.trim()
+    if (!value) return
+    setAddError('')
+    setLookingUp(true)
+    try {
+      // Tolerate {braces} around a pasted UUID.
+      const normalized = value.replace(/[{}]/g, '')
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalized)
+      let targetId = normalized
+      if (!isUuid) {
+        const { data: u } = await api.get('/users/lookup', { params: { email: value } })
+        targetId = u.id
+        setAddedLabel(u.email || u.username || targetId)
+      } else {
+        setAddedLabel(normalized)
+      }
+      addMember({ user_id: targetId, role: newMemberRole })
+    } catch (err: any) {
+      if (err?.response?.status === 404) {
+        setAddError('No account found with that email. Ask them to sign in once, then try again.')
+      } else {
+        setAddError(err?.response?.data?.detail || err?.message || 'Could not resolve that email or user ID.')
+      }
+    } finally {
+      setLookingUp(false)
+    }
+  }
 
   if (isLoading) {
     return (
@@ -106,7 +170,9 @@ export default function WorkspaceDetail() {
               <p className="text-surface-400 text-sm mt-1">{workspace.description}</p>
             )}
           </div>
-          <span className="chip">{workspace.role || 'member'}</span>
+          <span className="chip">
+            {workspace.role ? workspace.role.charAt(0).toUpperCase() + workspace.role.slice(1) : 'Member'}
+          </span>
         </div>
       </div>
 
@@ -157,7 +223,12 @@ export default function WorkspaceDetail() {
       <div className="glass-panel p-5">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-medium flex items-center gap-2"><UsersIcon size={16} />Members ({memberList.length})</h3>
-          <button onClick={() => setShowAddMember(true)} className="btn-primary flex items-center gap-1.5 text-xs py-1.5 px-3"><PlusIcon size={12} />Add</button>
+          <button
+            onClick={() => { setShowAddMember(true); setAddError('') }}
+            className="btn-primary flex items-center gap-1.5 text-xs py-1.5 px-3"
+          >
+            <PlusIcon size={12} />Add
+          </button>
         </div>
         <div className="space-y-2">
           {memberList.length === 0 ? (
@@ -178,21 +249,24 @@ export default function WorkspaceDetail() {
                   {/* Role selector */}
                   <select
                     value={m.role}
-                    onChange={(e) => updateRole({ userId: m.user_id, role: e.target.value })}
+                    onChange={(e) => {
+                      // No-op when the option didn't actually change.
+                      if (e.target.value !== m.role) updateRole({ userId: m.user_id, role: e.target.value })
+                    }}
                     className={cn(
                       'text-xs rounded-lg px-2 py-1 border transition-colors cursor-pointer',
-                      m.role === 'OWNER' ? 'border-primary-500/30 bg-primary-500/10 text-primary-400' :
-                      m.role === 'ADMIN' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' :
+                      m.role === 'owner' ? 'border-primary-500/30 bg-primary-500/10 text-primary-400' :
+                      m.role === 'admin' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' :
                       'border-surface-700 bg-surface-800 text-surface-400'
                     )}
-                    disabled={m.role === 'OWNER'}
+                    disabled={m.role === 'owner'}
                   >
-                    <option value="VIEWER">Viewer</option>
-                    <option value="MEMBER">Member</option>
-                    <option value="ADMIN">Admin</option>
-                    <option value="OWNER" disabled>Owner</option>
+                    <option value="viewer">Viewer</option>
+                    <option value="member">Member</option>
+                    <option value="admin">Admin</option>
+                    <option value="owner" disabled>Owner</option>
                   </select>
-                  {m.role !== 'OWNER' && (
+                  {m.role !== 'owner' && (
                     <button
                       onClick={() => confirm.danger('Remove Member?',`Remove this member from the workspace? This cannot be undone.`,async () => removeMember(m.user_id))}
                       className="p-1.5 rounded-lg text-surface-500 hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
@@ -210,26 +284,50 @@ export default function WorkspaceDetail() {
 
       {/* Add Member Modal */}
       {showAddMember && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setShowAddMember(false)}>
+        <div data-testid="add-member-modal" className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setShowAddMember(false)}>
           <div className="w-full max-w-sm glass-panel p-6" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-semibold mb-4">Add Member</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-surface-300 mb-1.5">UserIcon ID</label>
-                <input type="text" placeholder="Paste user UUID..." value={newMemberUserId} onChange={(e) => setNewMemberUserId(e.target.value)} className="input-field" />
+                <label className="block text-sm font-medium text-surface-300 mb-1.5">Email or User ID</label>
+                <input
+                  type="text"
+                  placeholder="team@example.com"
+                  value={newMemberUserId}
+                  onChange={(e) => setNewMemberUserId(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddMember() } }}
+                  className="input-field"
+                />
+                <p className="text-xs text-surface-500 mt-1.5">
+                  Type their email, or paste the account ID from their Settings → Account ID.
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-surface-300 mb-1.5">Role</label>
                 <select value={newMemberRole} onChange={(e) => setNewMemberRole(e.target.value)} className="input-field">
-                  <option value="VIEWER">Viewer</option>
-                  <option value="MEMBER">Member</option>
-                  <option value="ADMIN">Admin</option>
+                  <option value="viewer">Viewer</option>
+                  <option value="member">Member</option>
+                  <option value="admin">Admin</option>
                 </select>
               </div>
+              {addError && (
+                <div className="px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+                  {addError}
+                </div>
+              )}
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setShowAddMember(false)} className="btn-secondary flex-1">Cancel</button>
-                <button onClick={() => addMember()} disabled={!newMemberUserId.trim()} className="btn-primary flex-1 flex items-center justify-center gap-2">
-                  <UserCogIcon size={14} />Add
+                <button
+                  onClick={handleAddMember}
+                  disabled={!newMemberUserId.trim() || lookingUp || addPending}
+                  className="btn-primary flex-1 flex items-center justify-center gap-2"
+                >
+                  {lookingUp || addPending ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <UserCogIcon size={14} />
+                  )}
+                  {lookingUp || addPending ? 'Adding…' : 'Add'}
                 </button>
               </div>
             </div>

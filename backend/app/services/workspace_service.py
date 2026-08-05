@@ -136,12 +136,14 @@ async def list_user_workspaces(
 ) -> tuple[list[dict], int]:
     """List all workspaces the user has access to."""
     member_rows = db.query(MEMBERS, "user_id", user["id"])
-    ws_ids = {str(r["workspace_id"]) for r in member_rows}
+    role_by_ws = {str(r["workspace_id"]): r.get("role") for r in member_rows}
+    ws_ids = set(role_by_ws)
 
     rows = [r for r in db.query(WORKSPACES) if not r.get("deleted_at") and r["id"] in ws_ids]
     rows.sort(key=lambda r: (r.get("updated_at") or "", r.get("created_at") or ""), reverse=True)
     for r in rows:
         r["member_count"] = _member_count(db, r["id"])
+        r["role"] = role_by_ws.get(r["id"])
 
     total = len(rows)
     start = (page - 1) * page_size

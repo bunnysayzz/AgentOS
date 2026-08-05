@@ -135,11 +135,16 @@ async def create_workspace(
 async def get_workspace(
     workspace: Workspace = Depends(get_workspace_or_404),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
 ):
     """Get workspace details."""
     count = await workspace_service.get_member_count(db, workspace.id)
     resp = WorkspaceResponse.model_validate(workspace)
     resp.member_count = count
+    membership = await workspace_service.get_workspace_membership(
+        db, current_user.id, workspace.id
+    )
+    resp.role = membership.get("role") if membership else None
     return resp
 
 

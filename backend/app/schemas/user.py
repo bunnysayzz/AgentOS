@@ -64,6 +64,21 @@ class UserListResponse(BaseModel):
     page_size: int
 
 
+class UserLookupResponse(BaseModel):
+    """Slim public profile for the Add-Member lookup.
+
+    Deliberately omits account metadata (is_superuser, is_verified,
+    last_login_at, created_at) — the lookup is callable by any signed-in
+    user, and only needs enough to identify + display the person.
+    """
+
+    id: str
+    email: EmailStr
+    username: str = Field("", max_length=64)
+    full_name: str | None = None
+    avatar_url: str | None = None
+
+
 # ─── API Key ──────────────────────────────────────────────
 
 class ApiKeyCreate(BaseModel):

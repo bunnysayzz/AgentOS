@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.db import FirestoreDB
 from app.core.database import get_db
 from app.api.deps import get_current_user, get_current_active_user, require_superuser
-from app.schemas.user import UserResponse, UserUpdate, UserListResponse, PasswordChange
+from app.schemas.user import UserResponse, UserUpdate, UserListResponse, UserLookupResponse, PasswordChange
 from app.services import auth_service
 
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -18,6 +18,30 @@ async def get_current_user_profile(
 ):
     """Get the current user's profile."""
     return current_user
+
+
+@router.get("/lookup", response_model=UserLookupResponse)
+async def lookup_user_by_email(
+    email: str = Query(..., min_length=3),
+    db: FirestoreDB = Depends(get_db),
+    current_user: dict = Depends(get_current_active_user),
+):
+    """Look up a user by email (used by the Add Member flow).
+
+    Registered BEFORE /{user_id} so "lookup" is never captured as an id.
+    Returns only a slim public profile (never is_superuser/login metadata)
+    so the caller can add the person without copy-pasting raw UUIDs.
+    """
+    user = auth_service.get_user_by_email(db, email.strip().lower())
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No account found with that email")
+    return UserLookupResponse(
+        id=user["id"],
+        email=user["email"],
+        username=user.get("username") or "",
+        full_name=user.get("full_name"),
+        avatar_url=user.get("avatar_url"),
+    )
 
 
 @router.get("", response_model=UserListResponse)
