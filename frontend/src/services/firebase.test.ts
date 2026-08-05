@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => {
   const signInWithEmailAndPassword = vi.fn()
   const createUserWithEmailAndPassword = vi.fn()
   const sendEmailVerification = vi.fn()
+  const sendPasswordResetEmail = vi.fn()
   const signOut = vi.fn()
   const reauthenticateWithCredential = vi.fn()
   const updatePassword = vi.fn()
@@ -41,7 +42,18 @@ const mocks = vi.hoisted(() => {
       return this
     }
   }
-  const getAuth = vi.fn(() => ({ currentUser: null }))
+  // The module captures `auth = getAuth(app)` once at import; exposing the
+  // SAME currentUser object lets tests flip emailVerified / sign-out state.
+  const currentUser = {
+    uid: 'u1',
+    email: 'a@b.com',
+    emailVerified: false,
+    reload: vi.fn(function (this: any) {
+      this.emailVerified = true
+      return Promise.resolve()
+    }),
+  }
+  const getAuth = vi.fn(() => ({ currentUser }))
   const getApps = vi.fn(() => [])
   const getApp = vi.fn(() => ({}))
   const initializeApp = vi.fn(() => ({}))
@@ -57,6 +69,7 @@ const mocks = vi.hoisted(() => {
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
     sendEmailVerification,
+    sendPasswordResetEmail,
     signOut,
     reauthenticateWithCredential,
     updatePassword,
@@ -71,6 +84,7 @@ const mocks = vi.hoisted(() => {
     ref,
     uploadBytes,
     getDownloadURL,
+    currentUser,
   }
 })
 
@@ -84,6 +98,7 @@ vi.mock('firebase/auth', () => ({
   signInWithEmailAndPassword: mocks.signInWithEmailAndPassword,
   createUserWithEmailAndPassword: mocks.createUserWithEmailAndPassword,
   sendEmailVerification: mocks.sendEmailVerification,
+  sendPasswordResetEmail: mocks.sendPasswordResetEmail,
   signOut: mocks.signOut,
   reauthenticateWithCredential: mocks.reauthenticateWithCredential,
   updatePassword: mocks.updatePassword,
@@ -105,7 +120,14 @@ vi.mock('firebase/storage', () => ({
   getDownloadURL: mocks.getDownloadURL,
 }))
 
-import { loginWithGoogle, attachAuthStateSync } from '@/services/firebase'
+import {
+  loginWithGoogle,
+  attachAuthStateSync,
+  sendPasswordResetEmailWrapper,
+  resendVerificationEmail,
+  reloadFirebaseUser,
+  firebaseAuth,
+} from '@/services/firebase'
 import { useAuthStore } from '@/stores/authStore'
 
 describe('loginWithGoogle', () => {
@@ -255,5 +277,48 @@ describe('attachAuthStateSync', () => {
 
     expect(useAuthStore.getState().accessToken).toBeNull()
     expect(useAuthStore.getState().isAuthenticated).toBe(false)
+  })
+})
+
+describe('verification & password-reset wrappers', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.currentUser.emailVerified = false
+    // The module captured `auth = getAuth(app)` at import — mutate the
+    // exported instance, not a fresh getAuth() call.
+    ;(firebaseAuth as { currentUser: unknown }).currentUser = mocks.currentUser
+  })
+
+  it('sendPasswordResetEmailWrapper sends the reset email for the address', async () => {
+    mocks.sendPasswordResetEmail.mockResolvedValue(undefined)
+
+    await sendPasswordResetEmailWrapper('a@b.com')
+
+    expect(mocks.sendPasswordResetEmail).toHaveBeenCalledTimes(1)
+    expect(mocks.sendPasswordResetEmail.mock.calls[0][1]).toBe('a@b.com')
+  })
+
+  it('resendVerificationEmail sends the verification email to the current user', async () => {
+    mocks.sendEmailVerification.mockResolvedValue(undefined)
+
+    await resendVerificationEmail()
+
+    expect(mocks.sendEmailVerification).toHaveBeenCalledTimes(1)
+    expect(mocks.sendEmailVerification.mock.calls[0][0]).toBe(mocks.currentUser)
+  })
+
+  it('reloadFirebaseUser reloads and returns the live verification state', async () => {
+    const result = await reloadFirebaseUser()
+
+    expect(mocks.currentUser.reload).toHaveBeenCalledTimes(1)
+    // The mock's reload flips emailVerified to true — the wrapper must
+    // surface the refreshed state, not a stale snapshot.
+    expect(result).toEqual({ email: 'a@b.com', emailVerified: true })
+  })
+
+  it('reloadFirebaseUser returns null when no user is signed in', async () => {
+    ;(firebaseAuth as { currentUser: unknown }).currentUser = null
+
+    expect(await reloadFirebaseUser()).toBeNull()
   })
 })

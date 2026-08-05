@@ -64,6 +64,10 @@ def fake_verify_firebase_token(token: str) -> dict:
         "email": email,
         "name": name,
         "picture": picture,
+        # Google accounts (which supply a picture claim) have pre-verified
+        # emails; plain email/password signups start unverified until they
+        # click the verification link.
+        "email_verified": bool(picture),
     }
 
 

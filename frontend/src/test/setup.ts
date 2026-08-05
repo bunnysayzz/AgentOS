@@ -90,6 +90,10 @@ vi.mock('@/services/firebase', () => ({
   getCurrentIdToken: vi.fn().mockResolvedValue('fresh-id-token'),
   uploadAvatar: vi.fn().mockResolvedValue('https://storage.example/avatar.png'),
   changeFirebasePassword: vi.fn().mockResolvedValue(undefined),
+  sendPasswordResetEmail: vi.fn(),
+  sendPasswordResetEmailWrapper: vi.fn(),
+  resendVerificationEmail: vi.fn(),
+  reloadFirebaseUser: vi.fn(),
   isFirebaseConfigured: true,
 }))
 

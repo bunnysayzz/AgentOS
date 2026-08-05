@@ -29,10 +29,11 @@ export default function Login() {
 
   // Complete authentication instantly from the Firebase ID token — no waiting
   // on a backend round-trip. The full Firestore profile (id, username,
-  // superuser flag) refreshes in the background once it arrives.
-  const finishAuth = async (idToken: string, user: FirebaseUser) => {
+  // superuser flag) refreshes in the background once it arrives. Unverified
+  // email accounts are routed to the verification screen first.
+  const finishAuth = async (idToken: string, user: FirebaseUser, dest = '/dashboard') => {
     setAuth(idToken, '', firebaseUserToStoreUser(user))
-    navigate('/dashboard', { replace: true })
+    navigate(dest, { replace: true })
 
     // Background: fetch the full profile from the backend (auto-creates the
     // Firestore user on first sign-in). Apply only if still signed in.
@@ -101,7 +102,10 @@ export default function Login() {
     setLoading(true)
     try {
       const { user, idToken } = await loginWithFirebaseEmail(form.email, form.password)
-      await finishAuth(idToken, user)
+      // Firebase sets emailVerified to a real boolean — Google accounts are
+      // always verified; email signups aren't until they click the link.
+      const dest = user.emailVerified === false ? '/verify-email' : '/dashboard'
+      await finishAuth(idToken, user, dest)
     } catch (err: any) {
       setError(firebaseAuthErrorMessage(err))
     } finally {
@@ -206,6 +210,15 @@ export default function Login() {
                   {showPassword ? <EyeOffIcon size={16} /> : <EyeIcon size={16} />}
                 </button>
               </div>
+            </div>
+
+            <div className="flex justify-end -mt-1">
+              <Link
+                to="/forgot-password"
+                className="text-xs text-primary-400 hover:text-primary-300 font-medium transition-colors"
+              >
+                Forgot password?
+              </Link>
             </div>
 
             <button

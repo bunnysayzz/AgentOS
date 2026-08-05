@@ -4,8 +4,8 @@ import api from '@/services/api'
 import { useAuthStore } from '@/stores/authStore'
 import { toast } from '@/components/Toast'
 import { SkeletonPage } from '@/components/Skeleton'
-import { KeyIcon, SaveIcon, EyeIcon, EyeOffIcon, CameraIcon, RefreshCwIcon } from '@/components/Icons'
-import { uploadAvatar, changeFirebasePassword } from '@/services/firebase'
+import { KeyIcon, SaveIcon, EyeIcon, EyeOffIcon, CameraIcon, RefreshCwIcon, MailIcon } from '@/components/Icons'
+import { uploadAvatar, changeFirebasePassword, firebaseAuth, resendVerificationEmail, reloadFirebaseUser } from '@/services/firebase'
 
 interface UserProfile {
   id: string
@@ -45,6 +45,11 @@ export default function Profile() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
+  // Live email-verification state (Firebase is the source of truth; the
+  // backend snapshot refreshes on next login).
+  const [liveVerified, setLiveVerified] = useState<boolean | null>(null)
+  const [verifyBusy, setVerifyBusy] = useState(false)
+  const [verifyMessage, setVerifyMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
 
   const { data: profile, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['profile'],
@@ -71,6 +76,14 @@ export default function Profile() {
       }
     : undefined)
   const display = fallbackProfile
+
+  // Live verification status: prefer Firebase's real-time state (kept fresh
+  // by the Refresh button), fall back to the backend snapshot.
+  useEffect(() => {
+    const u = firebaseAuth?.currentUser
+    setLiveVerified(u ? u.emailVerified : null)
+  }, [])
+  const isVerified = liveVerified ?? (firebaseAuth?.currentUser ? firebaseAuth.currentUser.emailVerified : undefined) ?? display?.is_verified
 
   useEffect(() => {
     if (display) {
@@ -170,6 +183,35 @@ export default function Profile() {
       return
     }
     passwordMutation.mutate({ current_password: currentPassword, new_password: newPassword })
+  }
+
+  // Email verification actions (Firebase owns verification, not the backend)
+  const handleResendVerification = async () => {
+    setVerifyMessage(null)
+    setVerifyBusy(true)
+    try {
+      await resendVerificationEmail()
+      setVerifyMessage({ kind: 'success', text: 'Verification email sent — check your inbox (and spam).' })
+    } catch (err: any) {
+      setVerifyMessage({ kind: 'error', text: err?.message || 'Could not send the verification email.' })
+    } finally {
+      setVerifyBusy(false)
+    }
+  }
+
+  const handleRefreshVerification = async () => {
+    setVerifyMessage(null)
+    setVerifyBusy(true)
+    try {
+      const u = await reloadFirebaseUser()
+      if (u) setLiveVerified(u.emailVerified)
+      setVerifyMessage({ kind: 'success', text: 'Verification status refreshed.' })
+      qc.invalidateQueries({ queryKey: ['profile'] })
+    } catch {
+      setVerifyMessage({ kind: 'error', text: 'Could not refresh verification status.' })
+    } finally {
+      setVerifyBusy(false)
+    }
   }
 
   if (isLoading && !storeUser) return <SkeletonPage />
@@ -272,10 +314,10 @@ export default function Profile() {
           </p>
         </div>
 
-        {/* Verification status */}
+        {/* Verification status — live from Firebase when available */}
         <div className="flex items-center gap-2 text-xs">
-          <span className={display?.is_verified ? 'text-emerald-400' : 'text-amber-400'}>
-            {display?.is_verified ? '✅ Verified' : '⚠️ Not verified'}
+          <span className={isVerified ? 'text-emerald-400' : 'text-amber-400'}>
+            {isVerified ? '✅ Verified' : '⚠️ Not verified'}
           </span>
           <span className="text-surface-600">|</span>
           <span className="text-surface-500">
@@ -290,6 +332,45 @@ export default function Profile() {
             </>
           )}
         </div>
+
+        {!isVerified && (
+          <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 space-y-3">
+            <div className="flex items-start gap-2.5">
+              <MailIcon size={16} className="text-amber-400 mt-0.5 flex-shrink-0" />
+              <div className="text-sm text-amber-200">
+                <p className="font-medium text-amber-100">Your email isn't verified yet</p>
+                <p className="text-amber-200/80 mt-0.5">
+                  Verify it to secure your account and confirm it belongs to you.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleResendVerification}
+                disabled={verifyBusy}
+                className="px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-200 text-xs font-semibold transition-colors disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <MailIcon size={12} />
+                {verifyBusy ? 'Sending…' : 'Resend verification email'}
+              </button>
+              <button
+                type="button"
+                onClick={handleRefreshVerification}
+                disabled={verifyBusy}
+                className="px-3 py-1.5 rounded-lg bg-surface-900/60 hover:bg-surface-800/70 border border-surface-700/40 text-surface-300 text-xs font-semibold transition-colors disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <RefreshCwIcon size={12} className={verifyBusy ? 'animate-spin' : ''} />
+                Refresh status
+              </button>
+            </div>
+            {verifyMessage && (
+              <p className={`text-xs ${verifyMessage.kind === 'success' ? 'text-emerald-300' : 'text-red-400'}`}>
+                {verifyMessage.text}
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="pt-2">
           <button

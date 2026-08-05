@@ -3,6 +3,8 @@ import Layout from '@/components/Layout'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import Login from '@/pages/Login'
 import Register from '@/pages/Register'
+import VerifyEmail from '@/pages/VerifyEmail'
+import ForgotPassword from '@/pages/ForgotPassword'
 import Dashboard from '@/pages/Dashboard'
 import Workspaces from '@/pages/Workspaces'
 import WorkspaceDetail from '@/pages/WorkspaceDetail'
@@ -26,6 +28,8 @@ function App() {
       {/* Public routes */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/verify-email" element={<VerifyEmail />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
 
       {/* Protected routes */}
       <Route element={<ProtectedRoute />}>

@@ -9,6 +9,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendEmailVerification,
+  sendPasswordResetEmail,
   signOut,
   User as FirebaseUser,
 } from 'firebase/auth'
@@ -341,6 +342,41 @@ export async function loginWithFirebaseEmail(email: string, pass: string) {
 }
 
 /**
+ * Send a password-reset email for an existing account (forgot-password flow).
+ * Throws auth/… codes the UI maps to friendly messages. Unknown emails throw
+ * auth/user-not-found — callers should treat that as success to avoid
+ * revealing which accounts exist.
+ */
+export async function sendPasswordResetEmailWrapper(email: string): Promise<void> {
+  if (!auth) {
+    throw notConfiguredError('Password reset')
+  }
+  await sendPasswordResetEmail(auth, email)
+}
+
+/**
+ * (Re)send the email-verification link to the signed-in user.
+ */
+export async function resendVerificationEmail(): Promise<void> {
+  if (!auth?.currentUser) {
+    throw notConfiguredError('Email verification')
+  }
+  await sendEmailVerification(auth.currentUser)
+}
+
+/**
+ * Reload the signed-in Firebase user and return its live verification state.
+ * Used by the verify-email screen to detect the click on the verification
+ * link without a manual page refresh. Returns null when no user is signed in.
+ */
+export async function reloadFirebaseUser(): Promise<{ email: string; emailVerified: boolean } | null> {
+  if (!auth?.currentUser) return null
+  await auth.currentUser.reload()
+  const user = auth.currentUser
+  return { email: user?.email || '', emailVerified: !!user?.emailVerified }
+}
+
+/**
  * Null-safe wrapper around firebase/auth's signOut. Consumers pass the
  * (possibly null) `firebaseAuth` export; when Firebase isn't configured this
  * is a no-op so logout still clears the local session cleanly.
@@ -392,6 +428,7 @@ export {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendEmailVerification,
+  sendPasswordResetEmail,
   googleProvider,
   updatePassword,
   reauthenticateWithCredential,

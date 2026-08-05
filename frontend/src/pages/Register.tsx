@@ -19,8 +19,11 @@ export default function Register() {
   /**
    * Exchange a Firebase ID token for the profile. The backend auto-creates
    * the Firestore user on first sign-in, so no separate register step exists.
+   * Email signups land on the verification screen (their account isn't
+   * verified yet); Google accounts are already verified → straight to the
+   * dashboard.
    */
-  const finishAuth = async (idToken: string) => {
+  const finishAuth = async (idToken: string, dest = '/dashboard') => {
     try {
       const { data: u } = await axios.post(`${API_BASE}/auth/firebase`, { id_token: idToken })
       setAuth(idToken, '', {
@@ -32,7 +35,7 @@ export default function Register() {
       setGoogleLoading(false)
       throw err
     }
-    navigate('/dashboard', { replace: true })
+    navigate(dest, { replace: true })
   }
 
   // On mount: check if we're returning from a Google redirect
@@ -90,7 +93,9 @@ export default function Register() {
       // Create the account in Firebase Auth (email verification is sent).
       const { idToken } = await signupWithFirebaseEmail(form.email, form.password)
       // Backend auto-creates the Firestore user from the verified token.
-      await finishAuth(idToken)
+      // Redirect to the verification screen — the session is live, the
+      // account just isn't verified yet.
+      await finishAuth(idToken, '/verify-email')
     } catch (err: any) {
       const code: string = err?.code || ''
       if (code.includes('email-already-in-use')) {

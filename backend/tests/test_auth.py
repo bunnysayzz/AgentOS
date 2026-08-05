@@ -35,6 +35,60 @@ class TestFirebaseAuth:
         assert r1.status_code == 200 and r2.status_code == 200
         assert r1.json()["id"] == r2.json()["id"]
 
+    async def test_email_signup_starts_unverified(self, client: AsyncClient):
+        """Email/password signups stay unverified until the link is clicked."""
+        token = "firebase.unverified@example.com"
+        response = await client.get(
+            "/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["email"] == "unverified@example.com"
+        assert data["is_verified"] is False
+
+    async def test_email_verified_claim_reflected(self, client: AsyncClient):
+        """A token carrying email_verified=True keeps the account verified."""
+        token = "firebase.verified@example.com:V User~https://example.com/p.png"
+        response = await client.get(
+            "/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["email"] == "verified@example.com"
+        assert data["is_verified"] is True
+
+    async def test_login_does_not_overwrite_verification_with_true(self, client: AsyncClient, db_session):
+        """A second login with an unverified token must NOT re-verify the user.
+
+        This pins the fix for the old hardcoded ``updates["is_verified"] = True``:
+        an account that verifies then unverifies (email change) or never
+        verifies must keep the token's real state.
+        """
+        from app.core.db import now_iso
+
+        # Pre-existing user marked verified in the past.
+        user_id = "cccccccc-dddd-4eee-8fff-000000000000"
+        db_session.set("users", user_id, {
+            "id": user_id,
+            "email": "flip@example.com",
+            "username": "flip",
+            "full_name": "Flip",
+            "avatar_url": None,
+            "is_active": True,
+            "is_superuser": False,
+            "is_verified": True,
+            "last_login_at": None,
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+        })
+
+        token = "firebase.flip@example.com"
+        response = await client.get(
+            "/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}
+        )
+        assert response.status_code == 200
+        assert response.json()["is_verified"] is False
+
     async def test_invalid_token(self, client: AsyncClient):
         """Should reject an invalid token."""
         response = await client.get(

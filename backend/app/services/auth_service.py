@@ -158,7 +158,9 @@ def get_or_create_user_from_firebase(db: FirestoreDB, fb: dict) -> dict:
             updates["avatar_url"] = avatar_url
         if full_name and not user.get("full_name"):
             updates["full_name"] = full_name
-        updates["is_verified"] = True
+        # Reflect the token's real verification state: Google accounts are
+        # always verified; email signups aren't until they click the link.
+        updates["is_verified"] = bool(fb.get("email_verified"))
         # FIRST_SUPERUSER_EMAIL promotion is idempotent — re-apply on every
         # login so legacy accounts created before this rule get promoted.
         updates["is_superuser"] = is_superuser or bool(user.get("is_superuser"))
@@ -176,7 +178,7 @@ def get_or_create_user_from_firebase(db: FirestoreDB, fb: dict) -> dict:
         "avatar_url": _clean_str(avatar_url),
         "is_active": True,
         "is_superuser": is_superuser,
-        "is_verified": True,
+        "is_verified": bool(fb.get("email_verified")),
         "last_login_at": now_iso(),
         "failed_login_attempts": 0,
         "firebase_uid": fb.get("uid"),
