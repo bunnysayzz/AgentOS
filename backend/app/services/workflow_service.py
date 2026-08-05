@@ -181,6 +181,53 @@ async def delete_workflow(db: FirestoreDB, workflow: dict) -> None:
     db.set(WORKFLOWS, workflow["id"], workflow)
 
 
+# ─── Webhook triggers ────────────────────────────
+
+
+def _gen_webhook_token() -> str:
+    """Generate a URL-safe webhook secret."""
+    import secrets
+
+    return secrets.token_urlsafe(24)
+
+
+async def get_or_create_webhook_token(db: FirestoreDB, workflow: dict) -> str:
+    """Return the workflow's webhook token, generating + persisting one if absent.
+
+    The token is stored BOTH at the top level (``webhook_token`` — enables an
+    indexed Firestore lookup) and inside ``trigger_config`` for display.
+    """
+    token = workflow.get("webhook_token")
+    if not token:
+        token = _gen_webhook_token()
+        workflow["webhook_token"] = token
+        cfg = dict(workflow.get("trigger_config") or {})
+        cfg["webhook_token"] = token
+        workflow["trigger_config"] = cfg
+        db.set(WORKFLOWS, workflow["id"], workflow)
+    return token
+
+
+async def find_workflow_by_webhook_token(db: FirestoreDB, token: str) -> dict | None:
+    """Find an active workflow whose webhook token matches (used by the
+    unauthenticated inbound webhook route — the token IS the secret).
+
+    Uses an indexed top-level query; falls back to a scan for legacy rows that
+    only carry the token inside ``trigger_config``.
+    """
+    for wf in db.query(WORKFLOWS, "webhook_token", token):
+        if not wf.get("deleted_at") and wf.get("status") == WorkflowStatus.ACTIVE.value:
+            return wf
+    # Legacy fallback: rows created before the top-level field existed.
+    for wf in db.query(WORKFLOWS):
+        if wf.get("deleted_at") or wf.get("status") != WorkflowStatus.ACTIVE.value:
+            continue
+        cfg = wf.get("trigger_config") or {}
+        if cfg.get("webhook_token") == token and not wf.get("webhook_token"):
+            return wf
+    return None
+
+
 # ─── Execution Lifecycle ──────────────────────────
 
 

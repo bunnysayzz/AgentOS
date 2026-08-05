@@ -224,6 +224,25 @@ async def cancel_execution(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message)
 
 
+@router.get("/{workflow_id}/webhook-token")
+@router.post("/{workflow_id}/webhook-token")
+async def get_webhook_token(
+    workflow: Workflow = Depends(get_workflow_or_404),
+    workspace: Workspace = Depends(require_workspace_role(MembershipRole.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get (or lazily generate) the webhook token for a workflow (Admin+).
+
+    The inbound URL is ``POST /api/v1/webhooks/{token}``. The token is a secret —
+    treat it like a password.
+    """
+    token = await workflow_service.get_or_create_webhook_token(db, workflow)
+    return {
+        "token": token,
+        "webhook_path": f"/api/v1/webhooks/{token}",
+    }
+
+
 @router.post("/{workflow_id}/executions/{execution_id}/approve", response_model=WorkflowExecutionResponse)
 async def approve_execution(
     execution_id: UUID,

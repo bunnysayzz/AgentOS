@@ -17,6 +17,7 @@ from app.api.execution_graphs import router as execution_graphs_router
 from app.api.telemetry import router as telemetry_router
 from app.api.provider_configs import router as provider_configs_router
 from app.api.api_keys import router as api_keys_router
+from app.api.webhooks import router as webhooks_router
 
 router = APIRouter()
 
@@ -36,6 +37,7 @@ router.include_router(secrets_router)
 router.include_router(artifacts_router)
 router.include_router(execution_graphs_router)
 router.include_router(telemetry_router)
+router.include_router(webhooks_router)
 
 
 @router.get("/")

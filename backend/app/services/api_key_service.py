@@ -2,6 +2,7 @@
 
 import secrets
 import hashlib
+from datetime import datetime, timezone
 
 from app.core.db import FirestoreDB, stamp
 from app.schemas.user import ApiKeyCreate
@@ -77,6 +78,33 @@ async def get_api_key_by_id(db: FirestoreDB, key_id: str, user_id: str) -> dict 
     if api_key is None or str(api_key.get("user_id") or "") != str(user_id):
         return None
     return api_key
+
+
+def verify_api_key(db: FirestoreDB, full_key: str) -> dict | None:
+    """Validate a full API key (sync — used by the MCP auth middleware).
+
+    Returns the key record when the hash matches, the key is active and not
+    expired; otherwise None. Bumps ``last_used_at`` on success.
+    """
+    if not full_key or not full_key.startswith("agos_"):
+        return None
+
+    key_hash = hashlib.sha256(full_key.encode()).hexdigest()
+    now = datetime.now(timezone.utc)
+    for row in db.query(API_KEYS, "key_hash", key_hash):
+        if not row.get("is_active"):
+            continue
+        expires = row.get("expires_at")
+        if expires:
+            try:
+                if datetime.fromisoformat(expires.replace("Z", "+00:00")) < now:
+                    continue
+            except Exception:
+                continue
+        row["last_used_at"] = now.isoformat()
+        db.set(API_KEYS, row["id"], row)
+        return row
+    return None
 
 
 async def revoke_api_key(db: FirestoreDB, key_id: str, user_id: str) -> None:

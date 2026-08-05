@@ -65,5 +65,14 @@ class Settings(BaseSettings):
     RATE_LIMIT_CHAT_PER_MIN: int = 60
     RATE_LIMIT_DEFAULT_PER_MIN: int = 300
 
+    # Workflow scheduler (cron triggers, runs in-process while the service is up)
+    SCHEDULER_ENABLED: bool = True
+    SCHEDULER_INTERVAL_SECONDS: int = 60
+
+    # MCP protocol server (external MCP clients connect at /mcp)
+    MCP_ENABLED: bool = True
+    # Optional shared secret for MCP HTTP auth (when unset, API keys are used)
+    MCP_ACCESS_TOKEN: str = ""
+
 
 settings = Settings()

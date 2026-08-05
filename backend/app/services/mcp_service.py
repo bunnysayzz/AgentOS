@@ -162,7 +162,10 @@ def _clean_messages(messages: list[dict]) -> list[dict]:
         if not isinstance(m, dict):
             cleaned.append(m)
             continue
-        cleaned.append({k: v for k, v in m.items() if v is not None})
+        # Drop None and empty-string values (OpenAI tool-calling assistant
+        # messages carry ``content: null`` — an empty string can 400 on some
+        # providers like Groq).
+        cleaned.append({k: v for k, v in m.items() if v is not None and v != ""})
     return cleaned
 
 
@@ -176,11 +179,17 @@ async def _call_openai_compatible(
     temperature: float,
     max_tokens: int | None,
     base_url: str = "https://api.openai.com/v1",
+    tools: list[dict] | None = None,
+    tool_choice: str | dict | None = None,
 ) -> dict:
     """Call an OpenAI-compatible chat completions API."""
     body = {"model": model, "messages": messages, "temperature": temperature}
     if max_tokens:
         body["max_tokens"] = max_tokens
+    if tools:
+        body["tools"] = tools
+    if tool_choice:
+        body["tool_choice"] = tool_choice
 
     url = _pick_stream_url(base_url)
 
@@ -545,6 +554,154 @@ async def route_chat_completion(
     )
 
 
+def _detect_primary_provider(model_name: str) -> LLMProvider:
+    """Detect the primary provider from a model-name prefix."""
+    if model_name.startswith("claude"):
+        return LLMProvider.ANTHROPIC
+    if model_name.startswith("gemini"):
+        return LLMProvider.GOOGLE
+    if model_name.startswith("ollama"):
+        return LLMProvider.OLLAMA
+    if model_name.startswith("deepseek"):
+        return LLMProvider.DEEPSEEK
+    return LLMProvider.OPENAI
+
+
+async def _resolve_provider_chain(
+    db: FirestoreDB,
+    model_name: str,
+    preferred_provider: LLMProvider | None = None,
+) -> tuple[list[LLMProvider], LLMProvider]:
+    """Ordered providers to try (preferred → detected primary → priority chain)
+    plus the detected primary provider."""
+    primary_provider = _detect_primary_provider(model_name)
+    all_configs = await list_provider_configs(db)
+    configured_slugs = [c.get("provider") for c in all_configs if c.get("is_active")]
+
+    fallback_chain = get_fallback_chain(configured_slugs, model_name=model_name)
+    fallback_providers = [
+        LLMProvider(slug) for slug in fallback_chain if slug in configured_slugs
+    ]
+    if primary_provider.value in configured_slugs:
+        if primary_provider in fallback_providers:
+            fallback_providers.remove(primary_provider)
+        fallback_providers.insert(0, primary_provider)
+    if preferred_provider is not None and preferred_provider.value in configured_slugs:
+        if preferred_provider in fallback_providers:
+            fallback_providers.remove(preferred_provider)
+        fallback_providers.insert(0, preferred_provider)
+
+    return (fallback_providers or [primary_provider]), primary_provider
+
+
+async def route_chat_completion_raw(
+    db: FirestoreDB,
+    request: ChatCompletionRequest,
+    workspace_id: str | None = None,
+    agent_id: str | None = None,
+    execution_id: str | None = None,
+    preferred_provider: LLMProvider | None = None,
+    tools: list[dict] | None = None,
+) -> dict:
+    """Like ``route_chat_completion`` but returns the raw first-choice message
+    (content **and** ``tool_calls``) so callers can run a tool-calling loop.
+
+    Only OpenAI-compatible providers receive the ``tools`` array (Anthropic and
+    Google use different tool formats); those providers just answer without
+    tools. The call is recorded in the ledger, and a ``MCPError`` is raised if
+    every configured provider fails.
+    """
+    model_name = request.model
+    system_prompt = _build_system_message(request.messages)
+    temperature = request.temperature if request.temperature is not None else 0.7
+    messages_dict = _clean_messages([m.model_dump() for m in request.messages])
+
+    providers_to_try, _primary = await _resolve_provider_chain(db, model_name, preferred_provider)
+    last_error = None
+
+    for attempt_idx, provider in enumerate(providers_to_try):
+        provider_config = await get_provider_config(db, provider)
+        api_key = get_api_key_for_provider(provider_config)
+        is_fallback = attempt_idx > 0
+        if not api_key:
+            continue
+
+        start_time = time.monotonic()
+        actual_model = model_name
+        if is_fallback:
+            actual_model = _get_model_for_provider(provider) or model_name
+
+        try:
+            messages_dict = _clean_messages([m.model_dump() for m in request.messages])
+
+            if provider in (LLMProvider.OPENAI, LLMProvider.DEEPSEEK, LLMProvider.GROQ,
+                            LLMProvider.CEREBRAS, LLMProvider.OPENROUTER, LLMProvider.MISTRAL,
+                            LLMProvider.HUGGINGFACE, LLMProvider.OLLAMA):
+                base_url = provider_config.get("base_url") if provider_config else None
+                if not base_url:
+                    if provider == LLMProvider.DEEPSEEK:
+                        base_url = "https://api.deepseek.com"
+                    else:
+                        base_url = "https://api.openai.com/v1"
+                if provider == LLMProvider.OLLAMA:
+                    base_url = base_url or "http://localhost:11434/v1"
+                result = await _call_openai_compatible(
+                    api_key=api_key, messages=messages_dict, model=actual_model,
+                    temperature=temperature, max_tokens=request.max_tokens,
+                    base_url=base_url, tools=tools,
+                )
+            elif provider == LLMProvider.ANTHROPIC:
+                result = await _call_anthropic(api_key, messages_dict, actual_model, temperature, request.max_tokens)
+            elif provider == LLMProvider.GOOGLE:
+                result = await _call_google(api_key, messages_dict, actual_model, temperature, request.max_tokens)
+            else:
+                base_url = (provider_config.get("base_url") if provider_config else None) or ""
+                if not base_url:
+                    base_url = get_provider_metadata(provider).get("base_url") or ""
+                if not base_url:
+                    raise MCPError(f"Real API calls for {provider.value} are not yet implemented")
+                result = await _call_openai_compatible(
+                    api_key=api_key, messages=messages_dict, model=actual_model,
+                    temperature=temperature, max_tokens=request.max_tokens,
+                    base_url=base_url, tools=tools,
+                )
+
+            choice = (result.get("choices") or [{}])[0]
+            message = choice.get("message") or {}
+            usage = result.get("usage") or {}
+            prompt_tokens = usage.get("prompt_tokens") or 0
+            completion_tokens = usage.get("completion_tokens") or 0
+            cost_usd = calculate_cost(actual_model, prompt_tokens, completion_tokens)
+
+            _record_call(
+                db, workspace_id, agent_id, execution_id,
+                provider, actual_model, system_prompt, messages_dict,
+                temperature, request.max_tokens,
+                message.get("content") or "", choice.get("finish_reason") or "stop",
+                prompt_tokens, completion_tokens, cost_usd,
+                int((time.monotonic() - start_time) * 1000), False, None, False,
+            )
+
+            return {
+                "provider": provider.value,
+                "model": actual_model,
+                "message": message,
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens,
+                },
+                "cost_usd": cost_usd,
+            }
+        except Exception as e:
+            last_error = str(e)
+            if is_fallback or (is_rate_limit_error(str(e)) and len(providers_to_try) > 1):
+                continue
+            break
+
+    raise MCPError(last_error or "No configured providers", status_code=503)
+
+
 # ─── Streaming ──────────────────────────────────────
 
 
@@ -644,34 +801,9 @@ async def stream_chat_completion(
 
     # Provider resolution mirrors route_chat_completion: preferred provider →
     # model-prefix detection → configured fallback priority chain.
-    primary_provider = LLMProvider.OPENAI
-    if model_name.startswith("claude"):
-        primary_provider = LLMProvider.ANTHROPIC
-    elif model_name.startswith("gemini"):
-        primary_provider = LLMProvider.GOOGLE
-    elif model_name.startswith("ollama"):
-        primary_provider = LLMProvider.OLLAMA
-    elif model_name.startswith("deepseek"):
-        primary_provider = LLMProvider.DEEPSEEK
-
-    fallback_providers: list[LLMProvider] = []
-    all_configs = await list_provider_configs(db)
-    configured_slugs = [c.get("provider") for c in all_configs if c.get("is_active")]
-    fallback_chain = get_fallback_chain(configured_slugs, model_name=model_name)
-    fallback_providers = [
-        LLMProvider(slug) for slug in fallback_chain if slug in configured_slugs
-    ]
-    if primary_provider.value in configured_slugs:
-        if primary_provider in fallback_providers:
-            fallback_providers.remove(primary_provider)
-        fallback_providers.insert(0, primary_provider)
-
-    if preferred_provider is not None and preferred_provider.value in configured_slugs:
-        if preferred_provider in fallback_providers:
-            fallback_providers.remove(preferred_provider)
-        fallback_providers.insert(0, preferred_provider)
-
-    providers_to_try = fallback_providers or [primary_provider]
+    providers_to_try, primary_provider = await _resolve_provider_chain(
+        db, model_name, preferred_provider
+    )
     last_error = None
 
     for attempt_idx, provider in enumerate(providers_to_try):

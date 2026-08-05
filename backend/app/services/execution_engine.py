@@ -83,8 +83,138 @@ def _is_all_providers_error(content: str) -> bool:
     return bool(content) and content.startswith("⚠️ All providers unavailable")
 
 
+# ─── Autonomous tool use (function calling) ───────────
+
+
+async def _load_agent_tools(db: FirestoreDB, agent: dict) -> list[dict]:
+    """Resolve an agent's configured tools (active, not deleted)."""
+    tools: list[dict] = []
+    for tool_id in agent.get("tool_ids") or []:
+        tool = await tool_service.get_tool_by_id(db, tool_id)
+        if tool and tool.get("is_active") and not tool.get("deleted_at"):
+            tools.append(tool)
+    return tools
+
+
+def _find_tool_by_name(tools: list[dict], name: str) -> dict | None:
+    """Match a tool by slug, name, or id."""
+    return next(
+        (
+            t for t in tools
+            if (t.get("slug") or "") == name or (t.get("name") or "") == name or (t.get("id") or "") == name
+        ),
+        None,
+    )
+
+
+def _tool_to_openai_schema(tool: dict) -> dict:
+    """Convert a registered tool into an OpenAI function-calling schema.
+
+    Uses the tool's ``schema_definition.parameters`` when present; otherwise
+    derives the real arguments from the ``{placeholder}`` fields in the URL
+    template (never the implementation fields like ``method``/``url_template``).
+    """
+    import re
+
+    schema = tool.get("schema_definition") or {}
+    parameters = schema.get("parameters") or {}
+    if not isinstance(parameters, dict) or parameters.get("type") != "object":
+        properties: dict = {}
+        url_template = str((tool.get("parameters") or {}).get("url_template") or "")
+        for placeholder in re.findall(r"\{(\w+)\}", url_template):
+            properties.setdefault(
+                placeholder,
+                {"type": "string", "description": f"Parameter '{placeholder}'"},
+            )
+        if not properties:
+            properties = {
+                "input": {"type": "string", "description": "Input for the tool"}
+            }
+        parameters = {"type": "object", "properties": properties}
+
+    return {
+        "type": "function",
+        "function": {
+            "name": tool.get("slug") or tool["id"],
+            "description": (tool.get("description") or f"Call the '{tool.get('name')}' tool")[:1024],
+            "parameters": parameters,
+        },
+    }
+
+
+async def _run_agent_with_tools(
+    db: FirestoreDB,
+    agent: dict,
+    messages: list[ChatMessage],
+    execution_id: str,
+    tool_schemas: list[dict],
+    tools: list[dict],
+    preferred,
+) -> tuple[str, str, str, int, int, float, list[dict]]:
+    """Run the LLM in a function-calling loop until it answers or runs out of
+    iterations. Returns (content, provider, model, prompt, completion, cost, steps)."""
+    max_iter = int((agent.get("config") or {}).get("max_tool_iterations") or 5)
+    total_prompt = 0
+    total_completion = 0
+    total_cost = 0.0
+    tool_steps: list[dict] = []
+    final_content = ""
+    provider_used = ""
+    model_used = ""
+
+    for _ in range(max_iter):
+        raw = await mcp_service.route_chat_completion_raw(
+            db,
+            ChatCompletionRequest(
+                model=agent.get("model_name") or "gpt-4o",
+                messages=messages,
+                temperature=agent.get("temperature"),
+                max_tokens=agent.get("max_tokens"),
+            ),
+            workspace_id=agent.get("workspace_id"),
+            agent_id=agent["id"],
+            execution_id=execution_id,
+            preferred_provider=preferred,
+            tools=tool_schemas,
+        )
+        provider_used = raw.get("provider") or provider_used
+        model_used = raw.get("model") or model_used
+        total_prompt += raw["usage"].get("prompt_tokens", 0)
+        total_completion += raw["usage"].get("completion_tokens", 0)
+        total_cost += raw.get("cost_usd") or 0
+
+        message = raw.get("message") or {}
+        tool_calls = message.get("tool_calls") or []
+        if not tool_calls:
+            final_content = message.get("content") or ""
+            break
+
+        messages.append(ChatMessage(role="assistant", content=message.get("content") or "", tool_calls=tool_calls))
+        for tc in tool_calls:
+            fn = tc.get("function") or {}
+            fn_name = fn.get("name") or ""
+            tool = _find_tool_by_name(tools, fn_name)
+            try:
+                args = json.loads(fn.get("arguments") or "{}") or {}
+            except Exception:
+                args = {}
+
+            if tool is None:
+                result: dict = {"ok": False, "error": f"Unknown tool '{fn_name}'"}
+            else:
+                result = await run_tool(db, tool, params=args, execution_id=execution_id)
+
+            tool_steps.append({"tool": fn_name, "args": args, "ok": result.get("ok"), "output": result})
+            messages.append(ChatMessage(role="tool", content=json.dumps(result, default=str), tool_call_id=tc.get("id")))
+    else:
+        final_content = final_content or "(Agent reached the maximum tool iterations without a final answer)"
+
+    return final_content, provider_used, model_used, total_prompt, total_completion, total_cost, tool_steps
+
+
 async def run_agent_execution(db: FirestoreDB, execution_id: str) -> None:
-    """Execute a single agent: call the LLM, record graph node, finish."""
+    """Execute a single agent: call the LLM (with autonomous tool use when the
+    agent has tools), record graph node, finish."""
     execution = await agent_service.get_execution_by_id(db, execution_id)
     if execution is None or execution.get("status") != ExecutionStatus.RUNNING.value:
         return
@@ -119,50 +249,76 @@ async def run_agent_execution(db: FirestoreDB, execution_id: str) -> None:
         except ValueError:
             preferred = None
 
-        response = await mcp_service.route_chat_completion(
-            db,
-            ChatCompletionRequest(
-                model=agent.get("model_name") or "gpt-4o",
-                messages=messages,
-                temperature=agent.get("temperature"),
-                max_tokens=agent.get("max_tokens"),
-            ),
-            workspace_id=agent.get("workspace_id"),
-            agent_id=agent["id"],
-            execution_id=execution_id,
-            preferred_provider=preferred,
-        )
+        tools = await _load_agent_tools(db, agent)
+        tool_schemas = [_tool_to_openai_schema(t) for t in tools] if tools else None
 
-        content = response.choices[0]["message"]["content"] if response.choices else ""
-        prompt_tokens = response.usage.get("prompt_tokens", 0)
-        completion_tokens = response.usage.get("completion_tokens", 0)
+        if tool_schemas:
+            (
+                content,
+                provider_used,
+                model_used,
+                prompt_tokens,
+                completion_tokens,
+                cost_usd,
+                tool_steps,
+            ) = await _run_agent_with_tools(
+                db, agent, messages, execution_id, tool_schemas, tools, preferred
+            )
+            if _is_all_providers_error(content):
+                raise RuntimeError(content[:200])
+        else:
+            response = await mcp_service.route_chat_completion(
+                db,
+                ChatCompletionRequest(
+                    model=agent.get("model_name") or "gpt-4o",
+                    messages=messages,
+                    temperature=agent.get("temperature"),
+                    max_tokens=agent.get("max_tokens"),
+                ),
+                workspace_id=agent.get("workspace_id"),
+                agent_id=agent["id"],
+                execution_id=execution_id,
+                preferred_provider=preferred,
+            )
 
-        # The gateway returns a simulated error payload (not an exception) when
-        # no provider has a usable key. Treat that as a failure, not success.
-        if _is_all_providers_error(content):
-            raise RuntimeError(content[:200])
+            content = response.choices[0]["message"]["content"] if response.choices else ""
+            prompt_tokens = response.usage.get("prompt_tokens", 0)
+            completion_tokens = response.usage.get("completion_tokens", 0)
+            cost_usd = response.cost_usd
+            provider_used = response.provider.value
+            model_used = response.model
+            tool_steps = []
+
+            # The gateway returns a simulated error payload (not an exception) when
+            # no provider has a usable key. Treat that as a failure, not success.
+            if _is_all_providers_error(content):
+                raise RuntimeError(content[:200])
+
+        output_data: dict = {
+            "response": content,
+            "provider": provider_used,
+            "model": model_used,
+        }
+        if tool_steps:
+            output_data["tool_steps"] = tool_steps
 
         await agent_service.complete_execution(
             db,
             execution,
-            output_data={
-                "response": content,
-                "provider": response.provider.value,
-                "model": response.model,
-            },
+            output_data=output_data,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
-            cost_usd=response.cost_usd,
+            cost_usd=cost_usd,
         )
         await execution_graph_service.update_node_status(
             db,
             node,
             NodeStatus.COMPLETED,
-            output_data={"response": content},
+            output_data=output_data,
             duration_ms=int((time.monotonic() - started) * 1000),
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
-            cost_usd=response.cost_usd,
+            cost_usd=cost_usd,
         )
     except Exception as exc:
         error = str(exc)

@@ -1,5 +1,6 @@
 """AgentOS Studio - FastAPI Application Entry Point."""
 
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -59,7 +60,22 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"⚠️  Execution reaper skipped: {e}")
 
+    # Cron scheduler for schedule-triggered workflows (runs while the process
+    # is alive; cancelled cleanly on shutdown).
+    scheduler_task = None
+    if settings.SCHEDULER_ENABLED:
+        try:
+            from app.core.scheduler import run_scheduler
+            scheduler_task = asyncio.create_task(
+                run_scheduler(FirestoreDB(), settings.SCHEDULER_INTERVAL_SECONDS)
+            )
+        except Exception as e:
+            print(f"⚠️  Workflow scheduler skipped: {e}")
+
     yield
+
+    if scheduler_task:
+        scheduler_task.cancel()
 
 
 async def _reap_orphaned_executions(db: FirestoreDB | None = None) -> None:
@@ -125,6 +141,63 @@ app.add_middleware(
 # Rate limiting (per-IP sliding window; in-memory, single-instance safe)
 from app.core.rate_limit import RateLimitMiddleware
 app.add_middleware(RateLimitMiddleware)
+
+
+# ─── Real MCP protocol server ────────────────────────────────
+# External MCP clients (Claude Desktop, Cursor, MCP Inspector…) connect at
+# /mcp via the Streamable HTTP transport. Auth: Bearer API key, or the
+# configured MCP_ACCESS_TOKEN shared secret.
+
+
+def _mcp_auth_middleware(mcp_app):
+    """ASGI middleware: require a valid Bearer API key (or MCP_ACCESS_TOKEN)."""
+    from starlette.responses import JSONResponse
+
+    async def mcp_auth(scope, receive, send):
+        if scope["type"] != "http":
+            await mcp_app(scope, receive, send)
+            return
+
+        headers = {
+            k.decode("latin1").lower(): v.decode("latin1")
+            for k, v in scope.get("headers", [])
+        }
+        auth = headers.get("authorization", "")
+        token = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+
+        shared = (settings.MCP_ACCESS_TOKEN or "").strip()
+        if shared:
+            valid = bool(token) and token == shared
+        elif token.startswith("agos_"):  # cheap pre-check before touching Firestore
+            from app.services import api_key_service
+            db = FirestoreDB()
+            valid = api_key_service.verify_api_key(db, token) is not None
+        else:
+            valid = False
+
+        if not valid:
+            response = JSONResponse(
+                {
+                    "detail": (
+                        "Unauthorized — provide a valid API key "
+                        "or configure MCP_ACCESS_TOKEN"
+                    )
+                },
+                status_code=401,
+            )
+            await response(scope, receive, send)
+            return
+        await mcp_app(scope, receive, send)
+
+    return mcp_auth
+
+
+if settings.MCP_ENABLED:
+    try:
+        from app.services.mcp_server import mcp as agentos_mcp
+        app.mount("/mcp", _mcp_auth_middleware(agentos_mcp.streamable_http_app()), name="mcp")
+    except Exception as e:
+        print(f"⚠️  MCP server mount skipped: {e}")
 
 
 @app.middleware("http")

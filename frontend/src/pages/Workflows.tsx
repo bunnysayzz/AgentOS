@@ -8,9 +8,60 @@ import {
 import api from '@/services/api'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import WorkspaceSelector from '@/components/WorkspaceSelector'
+import { toast } from '@/components/Toast'
 import { cn } from '@/utils/cn'
 
-interface WF { id: string; name: string; description?: string; status: string; trigger_type?: string; created_at: string }
+interface WF { id: string; name: string; description?: string; status: string; trigger_type?: string; schedule_cron?: string; created_at: string }
+
+function WebhookPanel({ wsId, workflowId }: { wsId: string; workflowId: string }) {
+  const [token, setToken] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  const getToken = useMutation({
+    mutationFn: () => api.get(`/workspaces/${wsId}/workflows/${workflowId}/webhook-token`).then((r) => r.data),
+    onSuccess: (data: any) => setToken(data.webhook_path || ''),
+    onError: (err: any) => toast.error('Webhook token', err?.response?.data?.detail || 'Could not load webhook URL (Admin role required)'),
+  })
+
+  const copy = async () => {
+    if (!token) return
+    const url = `${window.location.origin}${token}`
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch { /* clipboard unavailable */ }
+  }
+
+  return (
+    <div className="glass-panel p-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium flex items-center gap-2">
+            <span className="text-[10px] font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-full px-2 py-0.5">WEBHOOK</span>
+            Inbound trigger URL
+          </p>
+          <p className="text-xs text-surface-500 mt-1 break-all font-mono">
+            {token ? `${window.location.origin}${token}` : 'Generate a token to get the URL. POST any JSON body to it to fire this workflow.'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {!token && (
+            <button onClick={() => getToken.mutate()} disabled={getToken.isPending} className="btn-primary text-xs py-1.5 px-3">
+              {getToken.isPending ? 'Generating…' : 'Generate URL'}
+            </button>
+          )}
+          {token && (
+            <button onClick={copy} className="btn-secondary text-xs py-1.5 px-3">
+              {copied ? '✓ Copied' : 'Copy URL'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 interface ExecNode { id: string; node_name?: string; node_type: string; status: string; duration_ms?: number; cost_usd?: number; prompt_tokens?: number; completion_tokens?: number; error_message?: string; created_at: string }
 
 export default function Workflows() {
@@ -21,7 +72,7 @@ export default function Workflows() {
   const [showCreate, setShowCreate] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [selectedExecId, setSelectedExecId] = useState<string | null>(null)
-  const [form, setForm] = useState({ name: '', description: '', trigger_type: 'manual' })
+  const [form, setForm] = useState({ name: '', description: '', trigger_type: 'manual', schedule_cron: '' })
 
   const { data: workflows, isLoading } = useQuery({
     queryKey: ['workflows', wsId],
@@ -52,7 +103,7 @@ export default function Workflows() {
 
   const { mutate: create, isPending: creating } = useMutation({
     mutationFn: (d: typeof form) => api.post(`/workspaces/${wsId}/workflows/`, d).then((r) => r.data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['workflows', wsId] }); setShowCreate(false); setForm({ name: '', description: '', trigger_type: 'manual' }) },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['workflows', wsId] }); setShowCreate(false); setForm({ name: '', description: '', trigger_type: 'manual', schedule_cron: '' }) },
   })
 
   const { mutate: execute } = useMutation({
@@ -220,6 +271,18 @@ export default function Workflows() {
           </div>
         </div>
 
+        {wf.trigger_type === 'webhook' && (
+          <WebhookPanel wsId={wsId} workflowId={detailId} />
+        )}
+        {wf.trigger_type === 'schedule' && (
+          <div className="glass-panel p-4 text-sm flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="text-[10px] font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-full px-2 py-0.5">SCHEDULE</span>
+            <span className="text-surface-500">Cron:</span>
+            <code className="font-mono text-primary-400">{wf.schedule_cron || '—'}</code>
+            <span className="text-xs text-surface-500">runs while the service is online (checked every 60s)</span>
+          </div>
+        )}
+
         {/* Execution stats */}
         {execList.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -376,6 +439,21 @@ export default function Workflows() {
             <div className="space-y-4">
               <div><label className="block text-sm font-medium text-surface-300 mb-1.5">Name</label><input type="text" placeholder="My Workflow" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input-field" /></div>
               <div><label className="block text-sm font-medium text-surface-300 mb-1.5">Description</label><textarea placeholder="What does this workflow do?" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="input-field min-h-[60px] resize-none" rows={2} /></div>
+              <div>
+                <label className="block text-sm font-medium text-surface-300 mb-1.5">Trigger</label>
+                <select value={form.trigger_type} onChange={(e) => setForm({ ...form, trigger_type: e.target.value })} className="input-field">
+                  <option value="manual">Manual — run from this page</option>
+                  <option value="webhook">Webhook — fire via HTTP POST</option>
+                  <option value="schedule">Schedule — run on a cron</option>
+                </select>
+              </div>
+              {form.trigger_type === 'schedule' && (
+                <div>
+                  <label className="block text-sm font-medium text-surface-300 mb-1.5">Cron Expression</label>
+                  <input type="text" placeholder="0 8 * * *" value={form.schedule_cron} onChange={(e) => setForm({ ...form, schedule_cron: e.target.value })} className="input-field font-mono" />
+                  <p className="text-xs text-surface-500 mt-1">5 fields: minute hour day-of-month month day-of-week (UTC)</p>
+                </div>
+              )}
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setShowCreate(false)} className="btn-secondary flex-1">Cancel</button>
                 <button onClick={() => create(form)} disabled={!form.name.trim() || creating} className="btn-primary flex-1 flex items-center justify-center gap-2">
