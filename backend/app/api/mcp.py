@@ -1,8 +1,10 @@
 """MCP Gateway API routes - LLM chat, model registry, cost governance."""
 
+import json
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -62,6 +64,50 @@ async def chat_completions(
         workspace_id=workspace_id,
     )
     return response
+
+
+@router.post("/mcp/chat/stream")
+async def chat_stream(
+    request: ChatCompletionRequest,
+    workspace_id: UUID | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_optional_user),
+):
+    """Stream a chat completion to an LLM model (Server-Sent Events).
+
+    Emits ``data: {json}`` frames: ``{"type":"delta","content":...}`` for each
+    token, optional ``{"type":"usage",...}``, then ``{"type":"done",...}`` or
+    ``{"type":"error",...}``. Same workspace auth as the non-streaming route.
+    """
+    if workspace_id:
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required for workspace-scoped chat",
+            )
+        from app.services import workspace_service
+        membership = await workspace_service.get_workspace_membership(
+            db, current_user.id, workspace_id
+        )
+        if membership is None and not current_user.is_superuser:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to workspace")
+
+    async def event_stream():
+        async for evt in mcp_service.stream_chat_completion(
+            db=db,
+            request=request,
+            workspace_id=workspace_id,
+        ):
+            yield f"data: {json.dumps(evt)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # ─── Models ─────────────────────────────────────────

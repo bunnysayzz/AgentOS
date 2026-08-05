@@ -1,9 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import api from '@/services/api'
+import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/utils/cn'
 import { SendIcon, BotIcon, UserIcon, Trash2Icon } from '@/components/Icons'
 import { toast } from '@/components/Toast'
+
+const API_BASE = import.meta.env.VITE_API_URL
 
 interface Message {
   id: string
@@ -57,6 +60,10 @@ export default function ChatInterface({
   const [selectedProvider, setSelectedProvider] = useState<string>('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const [streaming, setStreaming] = useState(false)
+  // Tracks the in-flight assistant bubble so mid-stream failures can mark it
+  // as an error instead of leaving it stuck (or double-appending error text).
+  const placeholderRef = useRef<string | null>(null)
 
   // Fetch available providers for the dropdown
   const { data: providers } = useQuery({
@@ -79,7 +86,8 @@ export default function ChatInterface({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Send message mutation
+  // Send message mutation — streams tokens via SSE when possible, with a
+  // non-streaming fallback (same shape) if the stream endpoint is unavailable.
   const sendMutation = useMutation({
     mutationFn: async (content: string) => {
       // Build messages array
@@ -96,48 +104,149 @@ export default function ChatInterface({
       // Add the new user message
       chatMessages.push({ role: 'user', content })
 
-      const response = await api.post('/mcp/chat/completions', {
+      const body: any = {
         model: selectedModel,
         messages: chatMessages,
         temperature: 0.7,
         max_tokens: 2048,
-        stream: false,
+        stream: true,
         ...(workspaceId ? { workspace_id: workspaceId } : {}),
-      })
-      return response.data
-    },
-    onSuccess: (data: any) => {
-      const responseContent = data.choices?.[0]?.message?.content || ''
-      const modelUsed = data.model || selectedModel
-      const providerUsed = data.provider || selectedProvider
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `resp-${Date.now()}`,
-          role: 'assistant',
-          content: responseContent || '(empty response)',
-          created_at: new Date().toISOString(),
-        },
-      ])
-
-      // Show token usage
-      if (data.usage) {
-        const { prompt_tokens, completion_tokens, total_tokens } = data.usage
-        console.log(`[${providerUsed}/${modelUsed}] Tokens: ${total_tokens} (${prompt_tokens}in + ${completion_tokens}out)`)
       }
+
+      // Placeholder assistant bubble we stream tokens into
+      const assistantId = `resp-${Date.now()}`
+      placeholderRef.current = assistantId
+      setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '' }])
+      setStreaming(false)
+
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      const token = useAuthStore.getState().accessToken
+      if (token) headers.Authorization = `Bearer ${token}`
+
+      let response: Response | null = null
+      try {
+        response = await fetch(`${API_BASE}/mcp/chat/stream`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        })
+      } catch {
+        response = null
+      }
+
+      // Fallback: stream endpoint unreachable → non-streaming chat completion
+      if (!response?.ok || !response.body) {
+        setMessages((prev) => prev.filter((m) => m.id !== assistantId))
+        placeholderRef.current = null
+        const fallback = await api.post('/mcp/chat/completions', { ...body, stream: false })
+        const data = fallback.data
+        const responseContent = data.choices?.[0]?.message?.content || '(empty response)'
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `resp-${Date.now()}`,
+            role: 'assistant',
+            content: responseContent,
+            created_at: new Date().toISOString(),
+          },
+        ])
+        if (data.usage) {
+          const { prompt_tokens, completion_tokens, total_tokens } = data.usage
+          console.log(`[${data.provider}/${data.model}] Tokens: ${total_tokens} (${prompt_tokens}in + ${completion_tokens}out)`)
+        }
+        return null
+      }
+
+      // Stream SSE frames
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let streamError: string | null = null
+
+      const appendToken = (tokenText: string) => {
+        setStreaming(true)
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId ? { ...m, content: m.content + tokenText } : m
+          )
+        )
+      }
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const frames = buffer.split('\n\n')
+          buffer = frames.pop() ?? ''
+          for (const frame of frames) {
+            const line = frame.split('\n').find((l) => l.startsWith('data:'))
+            if (!line) continue
+            const payloadStr = line.slice(5).trim()
+            if (!payloadStr) continue
+            try {
+              const payload = JSON.parse(payloadStr)
+              if (payload.type === 'delta') {
+                appendToken(payload.content)
+              } else if (payload.type === 'done') {
+                const usage = payload.usage || {}
+                const total = usage.total_tokens ?? (usage.prompt_tokens || 0) + (usage.completion_tokens || 0)
+                console.log(`[${payload.provider}/${payload.model}] Tokens: ${total} (${usage.prompt_tokens ?? 0}in + ${usage.completion_tokens ?? 0}out) · $${payload.cost_usd ?? 0}`)
+              } else if (payload.type === 'error') {
+                streamError = payload.message
+              }
+            } catch {
+              // malformed frame — ignore
+            }
+          }
+        }
+      } catch (e: any) {
+        // Network dropped mid-stream — mark the partial bubble as an error.
+        streamError = e?.message || 'Stream interrupted'
+      }
+
+      placeholderRef.current = null
+      if (streamError) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? { ...m, content: m.content || `⚠️ Error: ${streamError}`, is_error: !m.content }
+              : m
+          )
+        )
+        toast.error('Chat error', streamError)
+      }
+      return null
+    },
+    onSuccess: () => {
+      setStreaming(false)
     },
     onError: (err: any) => {
+      setStreaming(false)
       const errorMsg = err.response?.data?.detail || err.message || 'Request failed'
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `err-${Date.now()}`,
-          role: 'assistant',
-          content: `⚠️ Error: ${errorMsg}`,
-          is_error: true,
-        },
-      ])
+      // If the placeholder bubble is still in flight (e.g. the non-streaming
+      // fallback also failed), mark it as the error; otherwise append a new one.
+      const pid = placeholderRef.current
+      if (pid) {
+        placeholderRef.current = null
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === pid
+              ? { ...m, content: m.content || `⚠️ Error: ${errorMsg}`, is_error: !m.content }
+              : m
+          )
+        )
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `err-${Date.now()}`,
+            role: 'assistant',
+            content: `⚠️ Error: ${errorMsg}`,
+            is_error: true,
+          },
+        ])
+      }
       toast.error('Chat error', errorMsg)
     },
   })
@@ -240,7 +349,7 @@ export default function ChatInterface({
             )}
           </div>
         ))}
-        {sendMutation.isPending && (
+        {sendMutation.isPending && !streaming && (
           <div className="flex gap-3 justify-start">
             <div className="w-8 h-8 rounded-xl bg-surface-800 border border-surface-700/30 flex items-center justify-center">
               <BotIcon size={14} className="text-primary-400" />

@@ -169,6 +169,34 @@ async def consolidate_session_memory(
     return len(to_delete)
 
 
+async def consolidate_workspace_memory(
+    db: FirestoreDB,
+    workspace_id: str,
+    max_entries: int = 50,
+) -> int:
+    """Trim the oldest workspace memory entries once the workspace exceeds
+    ``max_entries`` (global consolidation). Higher-importance entries are kept."""
+    rows = [
+        r for r in db.query(MEMORY, "workspace_id", str(workspace_id))
+        if not r.get("deleted_at")
+    ]
+    if len(rows) <= max_entries:
+        return 0
+
+    # Delete the oldest, least-important overflow first: sort ascending by
+    # (importance with None treated as lowest, then created_at), and drop the
+    # head of the list. High-importance entries always survive trimming.
+    rows.sort(key=lambda r: (
+        r.get("importance_score") is not None,
+        r.get("importance_score") or 0,
+        r.get("created_at") or "",
+    ))
+    to_delete = rows[: len(rows) - max_entries]
+    for entry in to_delete:
+        db.delete(MEMORY, entry["id"])
+    return len(to_delete)
+
+
 async def update_importance(
     db: FirestoreDB,
     entry_id: str,

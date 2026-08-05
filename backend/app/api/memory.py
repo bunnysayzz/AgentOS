@@ -120,7 +120,9 @@ async def consolidate_memory(
             db, session_id, agent_id=agent_id, max_entries=max_entries
         )
     else:
-        count = 0  # Global consolidation not yet implemented
+        count = await memory_service.consolidate_workspace_memory(
+            db, workspace.id, max_entries=max_entries
+        )
     return {"consolidated": count}
 
 

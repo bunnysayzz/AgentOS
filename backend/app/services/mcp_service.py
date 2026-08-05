@@ -8,7 +8,7 @@ from app.core.db import FirestoreDB, stamp
 from app.models.mcp import LLMProvider
 from app.schemas.mcp import ChatCompletionRequest, ChatCompletionResponse
 from app.services.provider_service import get_api_key_for_provider, get_provider_config, list_provider_configs
-from app.services.provider_metadata import get_fallback_chain, is_rate_limit_error
+from app.services.provider_metadata import get_fallback_chain, is_rate_limit_error, get_provider_metadata
 
 LLM_CALLS = "llm_calls"
 MODEL_REGISTRY = "model_registry"
@@ -182,9 +182,7 @@ async def _call_openai_compatible(
     if max_tokens:
         body["max_tokens"] = max_tokens
 
-    url = base_url.rstrip("/")
-    if not url.endswith("chat/completions"):
-        url += "/chat/completions"
+    url = _pick_stream_url(base_url)
 
     async with httpx.AsyncClient(timeout=60) as client:
         r = await client.post(
@@ -305,7 +303,7 @@ def _get_model_for_provider(provider: LLMProvider) -> str | None:
     """Get the default model name for a provider."""
     model_map = {
         LLMProvider.OPENAI: "gpt-4o-mini",
-        LLMProvider.ANTHROPIC: "claude-3-haiku-20240307",
+        LLMProvider.ANTHROPIC: "claude-3-5-haiku-20241022",
         LLMProvider.GOOGLE: "gemini-2.0-flash",
         LLMProvider.GROQ: "llama-3.3-70b-versatile",
         LLMProvider.CEREBRAS: "gpt-oss-120b",
@@ -434,7 +432,12 @@ async def route_chat_completion(
                 finish_reason = result["choices"][0].get("finish_reason", "stop")
 
             else:
-                base_url = provider_config.get("base_url") if provider_config else None
+                # Every other provider is OpenAI-compatible. Fall back to the
+                # provider's metadata base URL when one wasn't stored (matches
+                # test_connection), so all 30+ providers can actually chat.
+                base_url = (provider_config.get("base_url") if provider_config else None) or ""
+                if not base_url:
+                    base_url = get_provider_metadata(provider).get("base_url") or ""
                 if base_url:
                     result = await _call_openai_compatible(
                         api_key=api_key,
@@ -453,7 +456,7 @@ async def route_chat_completion(
 
             duration_ms = int((time.monotonic() - start_time) * 1000)
             total_tokens = prompt_tokens + completion_tokens
-            cost_usd = calculate_cost(model_name, prompt_tokens, completion_tokens)
+            cost_usd = calculate_cost(actual_model, prompt_tokens, completion_tokens)
 
             llm_call = _record_call(
                 db, workspace_id, agent_id, execution_id,
@@ -540,6 +543,260 @@ async def route_chat_completion(
         cost_usd=cost_usd,
         created=datetime.now(timezone.utc),
     )
+
+
+# ─── Streaming ──────────────────────────────────────
+
+
+def _pick_stream_url(base_url: str) -> str:
+    """Append ``/chat/completions`` to an OpenAI-compatible base URL unless the
+    base URL already names a chat endpoint (e.g. API Free LLM's ``/chat``)."""
+    url = base_url.rstrip("/")
+    if not (url.endswith("chat/completions") or url.endswith("/chat")):
+        url += "/chat/completions"
+    return url
+
+
+async def _stream_openai_compatible(
+    api_key: str,
+    messages: list[dict],
+    model: str,
+    temperature: float,
+    max_tokens: int | None,
+    base_url: str,
+):
+    """Stream an OpenAI-compatible chat completion.
+
+    Yields ``{"type": "delta", "content": str}`` for each text token and
+    ``{"type": "usage", ...}`` when the provider reports token usage.
+    """
+    import json as _json
+
+    body = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+    if max_tokens:
+        body["max_tokens"] = max_tokens
+
+    async with httpx.AsyncClient(timeout=120) as client:
+        async with client.stream(
+            "POST",
+            _pick_stream_url(base_url),
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=body,
+        ) as resp:
+            if resp.status_code != 200:
+                raw = (await resp.aread()).decode(errors="replace")
+                raise MCPError(f"HTTP {resp.status_code}: {raw[:300]}", resp.status_code)
+
+            async for line in resp.aiter_lines():
+                if not line.startswith("data:"):
+                    continue
+                payload = line[5:].strip()
+                if not payload or payload == "[DONE]":
+                    continue
+                try:
+                    obj = _json.loads(payload)
+                except ValueError:
+                    continue
+
+                choices = obj.get("choices") or []
+                if choices:
+                    delta = choices[0].get("delta") or {}
+                    content = delta.get("content")
+                    if content:
+                        yield {"type": "delta", "content": content}
+
+                usage = obj.get("usage")
+                if usage and usage.get("total_tokens"):
+                    yield {
+                        "type": "usage",
+                        "prompt_tokens": usage.get("prompt_tokens", 0),
+                        "completion_tokens": usage.get("completion_tokens", 0),
+                        "total_tokens": usage.get("total_tokens", 0),
+                    }
+
+
+async def stream_chat_completion(
+    db: FirestoreDB,
+    request: ChatCompletionRequest,
+    workspace_id: str | None = None,
+    agent_id: str | None = None,
+    execution_id: str | None = None,
+    preferred_provider: LLMProvider | None = None,
+):
+    """Stream a chat completion to an LLM provider.
+
+    Yields SSE payload dicts: ``{"type": "delta", "content": ...}`` for text,
+    ``{"type": "usage", ...}`` for token counts (when reported), and finally
+    ``{"type": "done", "model", "provider", "usage", "cost_usd"}``. On total
+    failure yields ``{"type": "error", "message": ...}``. The call is recorded
+    in the LLM-call ledger exactly like the non-streaming path.
+    """
+    model_name = request.model
+    system_prompt = _build_system_message(request.messages)
+    temperature = request.temperature if request.temperature is not None else 0.7
+    messages_dict = _clean_messages([m.model_dump() for m in request.messages])
+
+    # Provider resolution mirrors route_chat_completion: preferred provider →
+    # model-prefix detection → configured fallback priority chain.
+    primary_provider = LLMProvider.OPENAI
+    if model_name.startswith("claude"):
+        primary_provider = LLMProvider.ANTHROPIC
+    elif model_name.startswith("gemini"):
+        primary_provider = LLMProvider.GOOGLE
+    elif model_name.startswith("ollama"):
+        primary_provider = LLMProvider.OLLAMA
+    elif model_name.startswith("deepseek"):
+        primary_provider = LLMProvider.DEEPSEEK
+
+    fallback_providers: list[LLMProvider] = []
+    all_configs = await list_provider_configs(db)
+    configured_slugs = [c.get("provider") for c in all_configs if c.get("is_active")]
+    fallback_chain = get_fallback_chain(configured_slugs, model_name=model_name)
+    fallback_providers = [
+        LLMProvider(slug) for slug in fallback_chain if slug in configured_slugs
+    ]
+    if primary_provider.value in configured_slugs:
+        if primary_provider in fallback_providers:
+            fallback_providers.remove(primary_provider)
+        fallback_providers.insert(0, primary_provider)
+
+    if preferred_provider is not None and preferred_provider.value in configured_slugs:
+        if preferred_provider in fallback_providers:
+            fallback_providers.remove(preferred_provider)
+        fallback_providers.insert(0, preferred_provider)
+
+    providers_to_try = fallback_providers or [primary_provider]
+    last_error = None
+
+    for attempt_idx, provider in enumerate(providers_to_try):
+        provider_config = await get_provider_config(db, provider)
+        api_key = get_api_key_for_provider(provider_config)
+        is_fallback = attempt_idx > 0
+        if not api_key:
+            continue  # Skip providers without a configured key
+        start_time = time.monotonic()
+
+        actual_model = model_name
+        if is_fallback:
+            actual_model = _get_model_for_provider(provider) or model_name
+
+        prompt_tokens = 0
+        completion_tokens = 0
+        chunks: list[str] = []
+
+        try:
+            if provider in (LLMProvider.OPENAI, LLMProvider.DEEPSEEK, LLMProvider.GROQ,
+                            LLMProvider.CEREBRAS, LLMProvider.OPENROUTER, LLMProvider.MISTRAL,
+                            LLMProvider.HUGGINGFACE, LLMProvider.OLLAMA):
+                base_url = (provider_config.get("base_url") if provider_config else None) or ""
+                if not base_url:
+                    base_url = get_provider_metadata(provider).get("base_url") or ""
+                if provider == LLMProvider.OLLAMA and not base_url:
+                    base_url = "http://localhost:11434/v1"
+
+                async for evt in _stream_openai_compatible(
+                    api_key=api_key, messages=messages_dict, model=actual_model,
+                    temperature=temperature, max_tokens=request.max_tokens, base_url=base_url,
+                ):
+                    if evt["type"] == "usage":
+                        prompt_tokens = evt["prompt_tokens"]
+                        completion_tokens = evt["completion_tokens"]
+                    elif evt["type"] == "delta":
+                        chunks.append(evt["content"])
+                        yield evt
+
+            elif provider == LLMProvider.ANTHROPIC:
+                # Anthropic SSE is a different format; do a single-shot call and
+                # emit its text as one delta (still token-streamed to the client
+                # in one chunk, with real usage recorded).
+                result = await _call_anthropic(api_key, messages_dict, actual_model, temperature, request.max_tokens)
+                prompt_tokens = result["usage"]["prompt_tokens"]
+                completion_tokens = result["usage"]["completion_tokens"]
+                content = result["choices"][0]["message"]["content"]
+                chunks.append(content)
+                yield {"type": "delta", "content": content}
+
+            elif provider == LLMProvider.GOOGLE:
+                result = await _call_google(api_key, messages_dict, actual_model, temperature, request.max_tokens)
+                prompt_tokens = result["usage"]["prompt_tokens"]
+                completion_tokens = result["usage"]["completion_tokens"]
+                content = result["choices"][0]["message"]["content"]
+                chunks.append(content)
+                yield {"type": "delta", "content": content}
+
+            else:
+                base_url = (provider_config.get("base_url") if provider_config else None) or ""
+                if not base_url:
+                    base_url = get_provider_metadata(provider).get("base_url") or ""
+                if not base_url:
+                    raise MCPError(f"Real API calls for {provider.value} are not yet implemented")
+                async for evt in _stream_openai_compatible(
+                    api_key=api_key, messages=messages_dict, model=actual_model,
+                    temperature=temperature, max_tokens=request.max_tokens, base_url=base_url,
+                ):
+                    if evt["type"] == "usage":
+                        prompt_tokens = evt["prompt_tokens"]
+                        completion_tokens = evt["completion_tokens"]
+                    elif evt["type"] == "delta":
+                        chunks.append(evt["content"])
+                        yield evt
+
+            duration_ms = int((time.monotonic() - start_time) * 1000)
+            # Some OpenAI-compatible endpoints ignore ``include_usage``; if we
+            # never got real usage, fall back to a rough token estimate (mirrors
+            # the non-streaming path) so cost tracking stays meaningful.
+            if prompt_tokens == 0 and completion_tokens == 0:
+                joined = "".join(chunks)
+                prompt_tokens = max(len(str([m.model_dump() for m in request.messages])) // 4, 10)
+                completion_tokens = max(len(joined) // 4, 10)
+            cost_usd = calculate_cost(actual_model, prompt_tokens, completion_tokens)
+
+            _record_call(
+                db, workspace_id, agent_id, execution_id,
+                provider, actual_model, system_prompt, messages_dict,
+                temperature, request.max_tokens,
+                "".join(chunks), "stop",
+                prompt_tokens, completion_tokens, cost_usd,
+                duration_ms, False, None, True,
+            )
+
+            yield {
+                "type": "done",
+                "model": actual_model,
+                "provider": provider.value,
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens,
+                },
+                "cost_usd": cost_usd,
+            }
+            return
+
+        except Exception as e:
+            error_str = str(e)
+            last_error = error_str
+            if is_fallback or (is_rate_limit_error(error_str) and len(providers_to_try) > 1):
+                continue
+            break
+
+    # Record the total failure in the ledger for observability.
+    try:
+        _record_call(
+            db, workspace_id, agent_id, execution_id,
+            primary_provider, model_name, system_prompt, messages_dict,
+            temperature, request.max_tokens, "", "error", 0, 0, 0.0,
+            0, True, f"Streaming failed: {last_error or 'No configured providers'}", True,
+        )
+    except Exception:
+        pass
+    yield {"type": "error", "message": last_error or "No configured providers"}
 
 
 # ─── Cost Tracking ─────────────────────────────────
