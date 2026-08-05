@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
-  ActivityIcon, ArchiveIcon, ArrowRightIcon, BotIcon, BrainIcon, CpuIcon,
-  FileTextIcon, KeyIcon, LogoIcon, PlusIcon, ServerIcon, UsersIcon, WorkflowIcon,
+  ActivityIcon, ArchiveIcon, ArrowRightIcon, BotIcon, BrainIcon, CheckCircleIcon,
+  CheckIcon, CpuIcon, FileTextIcon, KeyIcon, LogInIcon, LogoIcon, PlusIcon,
+  RocketIcon, ServerIcon, SparklesIcon, UsersIcon, WorkflowIcon,
   GlobeIcon, WrenchIcon, DollarSignIcon,
 } from '@/components/Icons'
 import api from '@/services/api'
@@ -31,6 +32,14 @@ const DOMAIN_LINKS = [
   { label: 'Memory', icon: BrainIcon, path: '/memory', desc: 'Conversation & session memory', color: 'text-pink-400' },
 ]
 
+// How-it-works pipeline shown to guests in the hero
+const PIPELINE = [
+  { label: 'Prompt', icon: FileTextIcon, color: 'text-amber-400' },
+  { label: 'Agent', icon: BotIcon, color: 'text-primary-400' },
+  { label: 'Tools', icon: WrenchIcon, color: 'text-sky-400' },
+  { label: 'Output', icon: CheckCircleIcon, color: 'text-emerald-400' },
+]
+
 export default function Dashboard() {
   const user = useAuthStore((s) => s.user)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -56,9 +65,9 @@ export default function Dashboard() {
 
       // Compute derived stats
       const callList = Array.isArray(calls) ? calls : []
-      const totalTokens = callList.reduce((s: number, c: any) => s + (c.prompt_tokens || 0) + (c.completion_tokens || 0), 0)
-      const totalCost = callList.reduce((s: number, c: any) => s + (c.cost_usd || 0), 0)
-      const configuredProviders = Array.isArray(providers) ? providers.filter((p: any) => p.is_configured).length : 0
+      const totalTokens = callList.reduce((s: number, c: { prompt_tokens?: number; completion_tokens?: number }) => s + (c.prompt_tokens || 0) + (c.completion_tokens || 0), 0)
+      const totalCost = callList.reduce((s: number, c: { cost_usd?: number }) => s + (c.cost_usd || 0), 0)
+      const configuredProviders = Array.isArray(providers) ? providers.filter((p: { is_configured?: boolean }) => p.is_configured).length : 0
       const firstWs = Array.isArray(workspaces) && workspaces.length > 0 ? workspaces[0].id : null
 
       return {
@@ -121,7 +130,42 @@ export default function Dashboard() {
   const wsStats = wsStatsQuery.data
   const isLoading = globalStatsQuery.isLoading || wsStatsQuery.isLoading
 
-  // ─── Stat cards ──────────────────────────────────────────────────
+  // ─── Onboarding state ─────────────────────────────────────────────
+  // Guests get the full "getting started" experience; authed users with
+  // no workspace yet get the same checklist so the zero-state feels
+  // intentional instead of broken.
+  const isNewUser = isAuthenticated && (stats?.workspaceCount ?? 0) === 0
+  const showGettingStarted = !isAuthenticated || isNewUser
+
+  const checklistSteps = [
+    {
+      key: 'workspace', label: 'Create a workspace',
+      desc: 'Your isolated home for agents, workflows & data',
+      icon: UsersIcon, color: 'text-primary-400', path: '/workspaces',
+      done: (stats?.workspaceCount ?? 0) > 0,
+    },
+    {
+      key: 'provider', label: 'Connect an AI provider',
+      desc: 'Add OpenAI, Anthropic or Gemini keys',
+      icon: GlobeIcon, color: 'text-sky-400', path: '/providers',
+      done: (stats?.configuredProviders ?? 0) > 0,
+    },
+    {
+      key: 'agent', label: 'Build your first agent',
+      desc: 'Give it a system prompt, tools & memory',
+      icon: BotIcon, color: 'text-emerald-400', path: '/agents',
+      done: (wsStats?.agentCount ?? 0) > 0,
+    },
+    {
+      key: 'workflow', label: 'Run your first workflow',
+      desc: 'Chain steps & approvals into automations',
+      icon: WorkflowIcon, color: 'text-violet-400', path: '/workflows',
+      done: (wsStats?.workflowCount ?? 0) > 0,
+    },
+  ]
+  const stepsDone = checklistSteps.filter((s) => s.done).length
+
+  // ─── Stat cards (authed users with data) ──────────────────────────
   const mainStatCards = [
     {
       label: 'Workspaces', icon: UsersIcon, color: 'from-primary-500 to-primary-600',
@@ -174,136 +218,237 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
-      {/* Welcome Header — guest-aware */}
-      <div className="relative overflow-hidden rounded-3xl border border-white/[0.06] bg-gradient-to-br from-white/[0.04] to-transparent p-6 sm:p-8">
+      {/* ── Welcome Header — guest-aware, single CTA ─────────────── */}
+      <div className="relative overflow-hidden rounded-3xl border border-white/[0.06] bg-gradient-to-br from-white/[0.04] to-transparent p-6 sm:p-10">
         <div className="absolute -top-24 -right-16 w-72 h-72 rounded-full bg-primary-500/10 blur-3xl pointer-events-none" aria-hidden />
-        <div className="flex items-center gap-5 justify-between flex-wrap relative">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#16151a] to-[#08080b] border border-primary-600/40 flex items-center justify-center shadow-lg shadow-primary-500/25 flex-shrink-0">
-              <LogoIcon size={24} />
+        <div className="absolute -bottom-32 -left-20 w-96 h-96 rounded-full bg-info/10 blur-3xl pointer-events-none" aria-hidden />
+        <div className="relative flex flex-col lg:flex-row lg:items-center gap-8">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#16151a] to-[#08080b] border border-primary-600/40 flex items-center justify-center shadow-lg shadow-primary-500/25 flex-shrink-0">
+                <LogoIcon size={22} />
+              </div>
+              <p className="microlabel">agent orchestration studio</p>
             </div>
-            <div>
-              <p className="microlabel mb-1">agent orchestration studio</p>
-              <h1 className="text-2xl sm:text-3xl font-light tracking-tight serif-display">
-                {isAuthenticated
-                  ? `Welcome back${user?.fullName ? `, ${user.fullName.split(' ')[0]}` : ''}`
-                  : 'Welcome to AgentOS Studio'}
-              </h1>
-              <p className="text-surface-400 mt-1.5 text-sm">
-                {isAuthenticated
-                  ? "Here's everything happening in your AgentOS Studio"
-                  : 'Explore everything freely — sign in to save your work.'}
-              </p>
-            </div>
+            {isAuthenticated ? (
+              <>
+                <h1 className="text-2xl sm:text-3xl font-light tracking-tight serif-display">
+                  Welcome back{user?.fullName ? `, ${user.fullName.split(' ')[0]}` : ''}
+                </h1>
+                <p className="text-surface-400 mt-2 text-sm">
+                  Here's everything happening in your AgentOS Studio
+                </p>
+              </>
+            ) : (
+              <>
+                <h1 className="text-3xl sm:text-4xl font-light tracking-tight serif-display leading-tight">
+                  Build agents that <span className="text-gradient">work while you sleep</span>.
+                </h1>
+                <p className="text-surface-400 mt-3 text-sm sm:text-base max-w-xl">
+                  Orchestrate AI agents, workflows, tools & memory in isolated workspaces.
+                  Explore everything — nothing is hidden, your data waits for you.
+                </p>
+                <div className="flex flex-wrap items-center gap-3 mt-6">
+                  <Link
+                    to="/login"
+                    className="btn-primary inline-flex items-center gap-2 px-5 py-2.5"
+                  >
+                    <LogInIcon size={16} />
+                    Sign in to save your work
+                  </Link>
+                  <Link
+                    to="/register"
+                    className="btn-secondary inline-flex items-center gap-2"
+                  >
+                    <RocketIcon size={16} />
+                    Create an account
+                  </Link>
+                </div>
+              </>
+            )}
           </div>
+
+          {/* How-it-works pipeline — guest only */}
           {!isAuthenticated && (
-            <Link
-              to="/login"
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-primary-500/20 transition-all duration-200 hover:shadow-primary-500/30 active:scale-[0.98]"
-              style={{ color: '#141007', background: 'linear-gradient(120deg, #b8842f, #e3b862)' }}
-            >
-              Sign in to save your work <ArrowRightIcon size={14} />
-            </Link>
+            <div className="hidden lg:block glass-panel p-5 w-72 flex-shrink-0">
+              <p className="microlabel mb-4">how it works</p>
+              <div className="space-y-0">
+                {PIPELINE.map((step, i) => (
+                  <div key={step.label}>
+                    <div className="flex items-center gap-3 py-1.5">
+                      <div className="w-9 h-9 rounded-xl bg-surface-800/80 border border-surface-700/40 flex items-center justify-center flex-shrink-0">
+                        <step.icon size={16} className={step.color} />
+                      </div>
+                      <span className="text-sm text-surface-300">{step.label}</span>
+                      {i === PIPELINE.length - 1 && (
+                        <CheckIcon size={14} className="text-emerald-400 ml-auto" />
+                      )}
+                    </div>
+                    {i < PIPELINE.length - 1 && (
+                      <div className="flex justify-center">
+                        <div className="w-px h-3.5 bg-gradient-to-b from-primary-500/50 to-transparent" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       </div>
 
-      {/* Workspace selector if multiple */}
-      {stats && stats.workspaces.length > 1 && (
-        <div className="flex flex-wrap gap-2 items-center">
-          <span className="text-sm text-surface-400">Workspace:</span>
-          {stats.workspaces.map((ws: any) => (
-            <button
-              key={ws.id}
-              onClick={() => setSelectedWsId(ws.id)}
-              className={cn(
-                'px-3 py-1.5 rounded-lg text-sm transition-all',
-                (selectedWsId || stats.firstWs) === ws.id
-                  ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30'
-                  : 'bg-surface-800/50 text-surface-400 hover:text-surface-200 border border-surface-700/30',
-              )}
-            >
-              {ws.name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Main Stats Grid */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="microlabel">Resources</h2>
-          <span className="h-px flex-1 mx-4 bg-white/[0.06]" />
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {mainStatCards.filter((c) => c.show).map((card) => (
-            <Link
-              key={card.label}
-              to={card.path}
-              className="card group relative overflow-hidden hover:border-primary-500/30 hover:-translate-y-0.5 hover:shadow-glass transition-all duration-200"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center shadow-lg shadow-black/20 group-hover:scale-105 transition-transform duration-200`}>
-                  <card.icon className="w-5 h-5 text-white" />
+      {/* ── Getting Started checklist — guests & new users ───────── */}
+      {showGettingStarted && (
+        <div className="glass-panel p-6">
+          <div className="flex items-center gap-2 mb-5">
+            <SparklesIcon size={16} className="text-primary-400" />
+            <h2 className="microlabel">Getting Started</h2>
+            {isAuthenticated ? (
+              <span className="ml-auto chip">
+                {stepsDone}/{checklistSteps.length} complete
+              </span>
+            ) : (
+              <span className="ml-auto text-[11px] text-surface-500">
+                Sign in to unlock creation
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {checklistSteps.map((step) => (
+              <Link
+                key={step.key}
+                to={step.path}
+                className="group flex items-start gap-3 p-4 rounded-xl bg-surface-800/50 border border-surface-700/30 hover:border-primary-500/30 hover:bg-surface-800 transition-all duration-200"
+              >
+                <div
+                  className={cn(
+                    'w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border transition-colors duration-200',
+                    step.done
+                      ? 'bg-emerald-500/10 border-emerald-500/30'
+                      : 'bg-surface-800/80 border-surface-700/40',
+                  )}
+                >
+                  {step.done
+                    ? <CheckIcon size={18} className="text-emerald-400" />
+                    : <step.icon size={18} className={step.color} />}
                 </div>
-                <ArrowRightIcon className="w-4 h-4 text-surface-500 group-hover:text-primary-400 group-hover:translate-x-0.5 transition-all duration-200" />
-              </div>
-              <p className="text-2xl font-semibold tracking-tight">
-                {isLoading ? (
-                  <span className="inline-block w-10 h-7 bg-surface-800 rounded animate-pulse" />
-                ) : (
-                  <span>{typeof card.value === 'number' ? card.value.toLocaleString() : card.value}</span>
-                )}
-              </p>
-              <p className="text-sm text-surface-400 mt-0.5">{card.label}</p>
-            </Link>
-          ))}
-        </div>
-      </div>
-
-      {/* Secondary Stats */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="microlabel">Platform Metrics</h2>
-          <span className="h-px flex-1 mx-4 bg-white/[0.06]" />
-        </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {secondaryStatCards.map((card) => (
-            <div key={card.label} className="card hover:border-primary-500/25 hover:-translate-y-0.5 transition-all duration-200">
-              <card.icon size={18} className={`${card.color} mb-2`} />
-              <p className="text-2xl font-semibold tracking-tight">{isLoading ? <span className="inline-block w-10 h-7 bg-surface-800 rounded animate-pulse" /> : card.value}</p>
-              <p className="text-xs text-surface-500 mt-0.5">{card.sub}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Telemetry Quick Summary (if available) */}
-      {wsStats && (wsStats.telemetryEvents > 0 || wsStats.telemetryErrors > 0) && (
-        <div className="glass-panel p-5">
-          <h3 className="font-medium mb-3 flex items-center gap-2">
-            <ActivityIcon size={16} className="text-emerald-400" />
-            Recent Activity (7 days)
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <p className="text-2xl font-bold text-surface-100">{wsStats.telemetryEvents}</p>
-              <p className="text-xs text-surface-500">Total Events</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-red-400">{wsStats.telemetryErrors}</p>
-              <p className="text-xs text-surface-500">Errors</p>
-            </div>
-            <div className="md:col-span-2 flex items-end justify-end">
-              <Link to="/telemetry" className="text-sm text-primary-400 hover:text-primary-300 transition-colors flex items-center gap-1">
-                View details <ArrowRightIcon size={12} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-surface-100 group-hover:text-primary-300 transition-colors duration-200">
+                    {step.label}
+                  </p>
+                  <p className="text-xs text-surface-500 mt-0.5">{step.desc}</p>
+                </div>
+                <ArrowRightIcon
+                  size={15}
+                  className="text-surface-600 group-hover:text-primary-400 group-hover:translate-x-0.5 transition-all duration-200 mt-1"
+                />
               </Link>
-            </div>
+            ))}
           </div>
         </div>
       )}
 
-      {/* Quick Actions */}
+      {/* ── Stats — only for authenticated users with a workspace ── */}
+      {isAuthenticated && !isNewUser && (
+        <>
+          {/* Workspace selector if multiple */}
+          {stats && stats.workspaces.length > 1 && (
+            <div className="flex flex-wrap gap-2 items-center">
+              <span className="text-sm text-surface-400">Workspace:</span>
+              {stats.workspaces.map((ws: { id: string; name: string }) => (
+                <button
+                  key={ws.id}
+                  onClick={() => setSelectedWsId(ws.id)}
+                  className={cn(
+                    'px-3 py-1.5 rounded-lg text-sm transition-all',
+                    (selectedWsId || stats.firstWs) === ws.id
+                      ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30'
+                      : 'bg-surface-800/50 text-surface-400 hover:text-surface-200 border border-surface-700/30',
+                  )}
+                >
+                  {ws.name}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Main Stats Grid */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="microlabel">Resources</h2>
+              <span className="h-px flex-1 mx-4 bg-white/[0.06]" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {mainStatCards.filter((c) => c.show).map((card) => (
+                <Link
+                  key={card.label}
+                  to={card.path}
+                  className="card group relative overflow-hidden hover:border-primary-500/30 hover:-translate-y-0.5 hover:shadow-glass transition-all duration-200"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center shadow-lg shadow-black/20 group-hover:scale-105 transition-transform duration-200`}>
+                      <card.icon className="w-5 h-5 text-white" />
+                    </div>
+                    <ArrowRightIcon className="w-4 h-4 text-surface-500 group-hover:text-primary-400 group-hover:translate-x-0.5 transition-all duration-200" />
+                  </div>
+                  <p className="text-2xl font-semibold tracking-tight">
+                    {isLoading ? (
+                      <span className="inline-block w-10 h-7 bg-surface-800 rounded animate-pulse" />
+                    ) : (
+                      <span>{typeof card.value === 'number' ? card.value.toLocaleString() : card.value}</span>
+                    )}
+                  </p>
+                  <p className="text-sm text-surface-400 mt-0.5">{card.label}</p>
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          {/* Secondary Stats */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="microlabel">Platform Metrics</h2>
+              <span className="h-px flex-1 mx-4 bg-white/[0.06]" />
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {secondaryStatCards.map((card) => (
+                <div key={card.label} className="card hover:border-primary-500/25 hover:-translate-y-0.5 transition-all duration-200">
+                  <card.icon size={18} className={`${card.color} mb-2`} />
+                  <p className="text-2xl font-semibold tracking-tight">{isLoading ? <span className="inline-block w-10 h-7 bg-surface-800 rounded animate-pulse" /> : card.value}</p>
+                  <p className="text-xs text-surface-500 mt-0.5">{card.sub}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Telemetry Quick Summary (if available) */}
+          {wsStats && (wsStats.telemetryEvents > 0 || wsStats.telemetryErrors > 0) && (
+            <div className="glass-panel p-5">
+              <h3 className="font-medium mb-3 flex items-center gap-2">
+                <ActivityIcon size={16} className="text-emerald-400" />
+                Recent Activity (7 days)
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <p className="text-2xl font-bold text-surface-100">{wsStats.telemetryEvents}</p>
+                  <p className="text-xs text-surface-500">Total Events</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-red-400">{wsStats.telemetryErrors}</p>
+                  <p className="text-xs text-surface-500">Errors</p>
+                </div>
+                <div className="md:col-span-2 flex items-end justify-end">
+                  <Link to="/telemetry" className="text-sm text-primary-400 hover:text-primary-300 transition-colors flex items-center gap-1">
+                    View details <ArrowRightIcon size={12} />
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Quick Actions ─────────────────────────────────────────── */}
       <div className="glass-panel p-6">
         <div className="flex items-center gap-2 mb-4">
           <h2 className="microlabel">Quick Actions</h2>
@@ -323,10 +468,12 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* All Domains */}
+      {/* ── All Domains / Explore the platform ─────────────────────── */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="microlabel">All Domains</h2>
+          <h2 className="microlabel">
+            {isAuthenticated ? 'All Domains' : 'Explore the platform'}
+          </h2>
           <span className="h-px flex-1 mx-4 bg-white/[0.06]" />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

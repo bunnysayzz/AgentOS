@@ -32,8 +32,8 @@ function useHasHydrated() {
  *
  * NOTE: guests are NOT redirected to /login. The app is fully browsable
  * without an account — Sign in / Create account live inside the UI (sidebar
- * and guest banner), so visitors land on the dashboard and can explore before
- * deciding to authenticate.
+ * and the dashboard hero), so visitors land on the dashboard and can explore
+ * before deciding to authenticate.
  */
 export default function ProtectedRoute() {
   const hydrated = useHasHydrated()

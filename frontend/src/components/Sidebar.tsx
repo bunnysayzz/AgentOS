@@ -151,7 +151,7 @@ export default function Sidebar() {
               <div className="px-3 py-2.5 rounded-xl bg-primary-500/5 border border-primary-500/15">
                 <p className="text-xs font-semibold text-primary-400">Guest mode</p>
                 <p className="text-[11px] text-surface-500 mt-0.5 leading-snug">
-                  Sign in to save your workspaces, agents & data.
+                  Explore freely. Sign in to save your work.
                 </p>
               </div>
             )}
