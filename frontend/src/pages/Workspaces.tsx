@@ -87,7 +87,11 @@ export default function Workspaces() {
                   </p>
                   <p className="text-sm text-surface-500 truncate">
                     {ws.description || `/${ws.slug}`}
-                    {ws.role && <span className="ml-2 chip">{ws.role}</span>}
+                    {ws.role && (
+                      <span className="ml-2 chip">
+                        {ws.role.charAt(0).toUpperCase() + ws.role.slice(1)}
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>
