@@ -59,6 +59,18 @@ class Settings(BaseSettings):
     # first Firebase authentication (no password stored server-side).
     FIRST_SUPERUSER_EMAIL: str = ""
 
+    # Error tracking (Sentry) — when set, unhandled exceptions are reported
+    # with stack traces. Leave empty to disable (no-op in local dev).
+    SENTRY_DSN: str = ""
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.1
+
+    # CSP extensions — extra hosts the SPA may need to reach (e.g. a
+    # self-hosted analytics script). The strict CSP defaults already allow
+    # Google Fonts, Firebase Auth/Storage and Sentry ingest; add any other
+    # first-party script/connect host here (space-separated).
+    CSP_EXTRA_SCRIPT_SRC: str = ""
+    CSP_EXTRA_CONNECT_SRC: str = ""
+
     # Rate limiting (per-IP sliding window)
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_AUTH_PER_MIN: int = 20

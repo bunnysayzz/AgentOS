@@ -4,8 +4,9 @@ import api from '@/services/api'
 import { useAuthStore } from '@/stores/authStore'
 import { toast } from '@/components/Toast'
 import { SkeletonPage } from '@/components/Skeleton'
-import { KeyIcon, SaveIcon, EyeIcon, EyeOffIcon, CameraIcon, RefreshCwIcon, MailIcon } from '@/components/Icons'
-import { uploadAvatar, changeFirebasePassword, firebaseAuth, resendVerificationEmail, reloadFirebaseUser } from '@/services/firebase'
+import { KeyIcon, SaveIcon, EyeIcon, EyeOffIcon, CameraIcon, RefreshCwIcon, MailIcon, DownloadIcon, TrashIcon, AlertTriangleIcon } from '@/components/Icons'
+import { uploadAvatar, changeFirebasePassword, firebaseAuth, resendVerificationEmail, reloadFirebaseUser, firebaseSignOut, deleteAvatar } from '@/services/firebase'
+import { confirm } from '@/components/ConfirmDialog'
 
 interface UserProfile {
   id: string
@@ -212,6 +213,53 @@ export default function Profile() {
     } finally {
       setVerifyBusy(false)
     }
+  }
+
+  // Danger Zone — export / delete (GDPR)
+  const [exporting, setExporting] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const handleExportData = async () => {
+    setExporting(true)
+    try {
+      const res = await api.get('/users/me/export', { responseType: 'blob' })
+      const blob = new Blob([res.data], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `agentos-export-${display?.id ?? 'me'}.json`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      toast.success('Export ready', 'Your data has been downloaded.')
+    } catch (err: any) {
+      toast.error('Export failed', err?.response?.data?.detail || err?.message || 'Could not export your data.')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const handleDeleteAccount = () => {
+    confirm.danger(
+      'Delete your account?',
+      'This permanently deletes your profile, the workspaces you own, and everything in them. This cannot be undone.',
+      async () => {
+        setDeleting(true)
+        try {
+          await api.delete('/users/me')
+          // Best-effort cleanup of the avatar file in Firebase Storage.
+          await deleteAvatar()
+          toast.success('Account deleted', 'Your account and data have been permanently removed.')
+          // Sign out of Firebase + clear local state, then land on the login page.
+          await firebaseSignOut(firebaseAuth)
+          window.location.href = '/login'
+        } catch (err: any) {
+          setDeleting(false)
+          toast.error('Delete failed', err?.response?.data?.detail || err?.message || 'Could not delete your account.')
+        }
+      },
+    )
   }
 
   if (isLoading && !storeUser) return <SkeletonPage />
@@ -474,6 +522,53 @@ export default function Profile() {
         <div className="flex items-center justify-between text-sm">
           <span className="text-surface-500">Account ID</span>
           <span className="text-surface-300 font-mono text-xs">{display?.id}</span>
+        </div>
+      </div>
+
+      {/* Danger Zone — GDPR: export your data or delete your account */}
+      <div className="glass-panel p-6 space-y-5 border-red-500/20">
+        <div className="flex items-center gap-3 pb-4 border-b border-surface-700/30">
+          <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+            <AlertTriangleIcon size={20} className="text-red-400" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-surface-100">Danger Zone</h2>
+            <p className="text-xs text-surface-500">Data portability & account deletion (GDPR/CCPA)</p>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-surface-900/50 border border-surface-800 p-4">
+          <div>
+            <p className="text-sm font-medium text-surface-200">Export your data</p>
+            <p className="text-xs text-surface-500 mt-0.5">
+              Download a JSON snapshot of your workspaces, agents, workflows, prompts, secrets, and more.
+            </p>
+          </div>
+          <button
+            onClick={handleExportData}
+            disabled={exporting}
+            className="btn-secondary flex items-center gap-2 text-xs px-4 py-2 flex-shrink-0"
+          >
+            <DownloadIcon size={14} />
+            {exporting ? 'Preparing…' : 'Export data'}
+          </button>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-red-500/5 border border-red-500/20 p-4">
+          <div>
+            <p className="text-sm font-medium text-red-300">Delete account</p>
+            <p className="text-xs text-surface-500 mt-0.5">
+              Permanently deletes your profile, workspaces you own, and everything in them. This cannot be undone.
+            </p>
+          </div>
+          <button
+            onClick={handleDeleteAccount}
+            disabled={deleting}
+            className="px-4 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 hover:text-red-300 text-xs font-semibold transition-colors flex items-center gap-2 flex-shrink-0 disabled:opacity-50"
+          >
+            <TrashIcon size={14} />
+            {deleting ? 'Deleting…' : 'Delete account'}
+          </button>
         </div>
       </div>
     </div>

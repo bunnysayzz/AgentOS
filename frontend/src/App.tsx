@@ -22,6 +22,8 @@ import ExecutionGraphs from '@/pages/ExecutionGraphs'
 import Providers from '@/pages/Providers'
 import Profile from '@/pages/Profile'
 import ApiKeys from '@/pages/ApiKeys'
+import Terms from '@/pages/Terms'
+import Privacy from '@/pages/Privacy'
 
 function App() {
   return (
@@ -31,6 +33,8 @@ function App() {
       <Route path="/register" element={<Register />} />
       <Route path="/verify-email" element={<VerifyEmail />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/terms" element={<Terms />} />
+      <Route path="/privacy" element={<Privacy />} />
 
       {/* Protected routes */}
       <Route element={<ProtectedRoute />}>

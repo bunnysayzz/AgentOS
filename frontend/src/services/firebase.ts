@@ -412,6 +412,26 @@ export async function uploadAvatar(file: File): Promise<string> {
 }
 
 /**
+ * Best-effort delete of the user's avatar from Firebase Storage.
+ * Called during account deletion so the file doesn't outlive the account.
+ * Failures are swallowed — the profile doc is the source of truth.
+ */
+export async function deleteAvatar(): Promise<void> {
+  if (!app || !auth?.currentUser) return
+  try {
+    const storage = getStorage(app)
+    const uid = auth.currentUser.uid
+    // Avatar files live at avatars/<uid>-<timestamp>.<ext>. Listing the uid
+    // prefix and deleting each child removes them all.
+    const { listAll, deleteObject } = await import('firebase/storage')
+    const items = await listAll(ref(storage, `avatars/${uid}`))
+    await Promise.all(items.items.map((item) => deleteObject(item)))
+  } catch {
+    // Best-effort only — never block account deletion on storage cleanup.
+  }
+}
+
+/**
  * Change the user's password. Passwords are owned by Firebase Auth — the
  * backend no longer stores them. Requires the current password to re-auth.
  */

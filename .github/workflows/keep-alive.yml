@@ -1,18 +1,20 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Keep Alive — prevents Render free-tier cold starts
+# Keep Alive + Uptime Alerting — prevents Render free-tier cold starts and
+# notifies you when the site goes down.
 # ─────────────────────────────────────────────────────────────────────────────
 # Render free-tier instances spin down after ~15 minutes without traffic, and
-# the first request after idle takes 30–60 s to boot (migrations + uvicorn).
+# the first request after idle takes 30–60 s to boot.
 #
-# This workflow pings the service every 10 minutes so it never idles out.
-# The repo is public, so GitHub Actions runs for free. Cost: ~6 minutes of
-# runner time per day, well within free limits.
+# Every 10 minutes this workflow pings /health so the instance never idles out.
+# If the site stays unhealthy across retries (transient blips don't alert),
+# the job FAILS — GitHub Actions emails the repo owner about failed scheduled
+# workflows, giving you free uptime alerting. You can also add a Discord/Slack
+# webhook to on:schedule failure via the Actions UI.
 #
-# Alternative (no GitHub minutes at all): add this URL to a free uptime
-# monitor like UptimeRobot (https://uptimerobot.com) with a 5-minute interval.
+# Cost: ~6 minutes of runner time per day, well within free limits.
 # ─────────────────────────────────────────────────────────────────────────────
 
-name: Keep Alive
+name: Keep Alive + Uptime
 
 on:
   schedule:
@@ -25,10 +27,20 @@ jobs:
     name: Ping Render service
     runs-on: ubuntu-latest
     steps:
-      - name: Ping /health
+      - name: Ping /health (3 retries to ignore transient blips)
         run: |
-          code=$(curl -sS -o /dev/null -w '%{http_code}' -m 30 https://letsagentos.onrender.com/health)
-          echo "health check → HTTP $code"
-          if [ "$code" != "200" ]; then
-            echo "::warning::Service health check returned HTTP $code"
+          ok=0
+          for attempt in 1 2 3; do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -m 30 https://letsagentos.onrender.com/health || echo 000)
+            echo "attempt $attempt → HTTP $code"
+            if [ "$code" = "200" ]; then
+              ok=1
+              break
+            fi
+            sleep 20
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::error::AgentOS health check failed after 3 attempts — the site may be DOWN."
+            exit 1
           fi
+          echo "✅ Service is healthy"

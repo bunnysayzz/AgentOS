@@ -1,12 +1,13 @@
 """User management API routes (Firestore-backed, Firebase auth)."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 
 from app.core.db import FirestoreDB
 from app.core.database import get_db
 from app.api.deps import get_current_user, get_current_active_user, require_superuser
 from app.schemas.user import UserResponse, UserUpdate, UserListResponse, UserLookupResponse, PasswordChange
-from app.services import auth_service
+from app.services import auth_service, account_service
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -18,6 +19,36 @@ async def get_current_user_profile(
 ):
     """Get the current user's profile."""
     return current_user
+
+
+@router.get("/me/export")
+async def export_my_data(
+    db: FirestoreDB = Depends(get_db),
+    current_user: dict = Depends(get_current_active_user),
+):
+    """GDPR data-portability export: JSON snapshot of everything the user
+    owns or participates in (workspaces, agents, workflows, secrets…)."""
+    data = await account_service.export_user_data(db, current_user)
+    return JSONResponse(
+        content=data,
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="agentos-export-{current_user["id"]}.json"'
+            )
+        },
+    )
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_my_account(
+    db: FirestoreDB = Depends(get_db),
+    current_user: dict = Depends(get_current_active_user),
+):
+    """GDPR right-to-be-forgotten: permanently delete all of the current
+    user's data (owned workspaces and their contents, memberships, API keys,
+    profile). The Firebase Auth credential is handled client-side."""
+    await account_service.delete_user_data(db, current_user)
+    return None
 
 
 @router.get("/lookup", response_model=UserLookupResponse)

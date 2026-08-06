@@ -14,6 +14,22 @@ from app.core.db import FirestoreDB
 from app.api import router as api_router
 
 
+# ─── Sentry error tracking (env-gated) ────────────────────────────────
+# Unhandled exceptions in production get reported with full stack traces;
+# local dev (no SENTRY_DSN) is untouched. Toggle via env, never hardcoded.
+if settings.SENTRY_DSN:
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
+        environment="production" if not settings.DEBUG else "development",
+        release=settings.VERSION,
+        # Don't send raw API keys / secrets stored in request bodies.
+        send_default_pii=False,
+    )
+
+
 def _frontend_dist_dir() -> Path | None:
     """Resolve the built frontend directory, if it exists.
 
@@ -141,6 +157,10 @@ app.add_middleware(
 # Rate limiting (per-IP sliding window; in-memory, single-instance safe)
 from app.core.rate_limit import RateLimitMiddleware
 app.add_middleware(RateLimitMiddleware)
+
+# Security hardening headers (CSP, X-Frame-Options, HSTS, nosniff, …)
+from app.core.security_headers import SecurityHeadersMiddleware
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 # ─── Real MCP protocol server ────────────────────────────────
