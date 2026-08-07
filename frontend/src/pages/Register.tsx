@@ -114,6 +114,16 @@ export default function Register() {
         setGoogleLoading(false)
         return
       }
+      // auth/internal-error is the SDK's generic popup-plumbing failure (the
+      // popup↔iframe handshake broke). loginWithGoogle handles it via the
+      // redirect flow, but if one escapes (e.g. the redirect itself failed
+      // mid-flight) never show the raw "Firebase: Error (auth/internal-error)."
+      // text — give a clear, actionable message instead.
+      if (err?.code === 'auth/internal-error') {
+        setGoogleLoading(false)
+        setError('Google sign-in hit a temporary browser issue. Please try again, or register with email below.')
+        return
+      }
       setError(err.message || 'Google Sign-In failed. Please try again.')
       setGoogleLoading(false)
     }

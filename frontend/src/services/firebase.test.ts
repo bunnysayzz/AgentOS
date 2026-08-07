@@ -207,6 +207,47 @@ describe('loginWithGoogle', () => {
     expect(sessionStorage.getItem('agentos_google_redirect')).toBe('1')
   })
 
+  it('skips the popup entirely and goes straight to the redirect flow on Safari', async () => {
+    // Desktop Safari (esp. fullscreen) breaks the popup↔iframe handshake
+    // deterministically — the SDK wraps it as auth/internal-error, and no
+    // retry can fix a broken handshake. The same-tab redirect stores the
+    // result on OUR origin (ITP-safe), so Safari must never attempt a popup.
+    const originalUA = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
+      configurable: true,
+    })
+    try {
+      const result = await loginWithGoogle()
+
+      expect(result).toBeNull()
+      expect(mocks.signInWithPopup).not.toHaveBeenCalled()
+      expect(mocks.signInWithRedirect).toHaveBeenCalledTimes(1)
+      expect(sessionStorage.getItem('agentos_google_redirect')).toBe('1')
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', { value: originalUA, configurable: true })
+    }
+  })
+
+  it('uses the redirect flow for iOS in-app browsers (WKWebView)', async () => {
+    // In-app browsers (Instagram/Facebook/DuckDuckGo) wrap WKWebView, which
+    // has no reliable popup support — straight to the same-tab redirect.
+    const originalUA = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
+      configurable: true,
+    })
+    try {
+      const result = await loginWithGoogle()
+
+      expect(result).toBeNull()
+      expect(mocks.signInWithPopup).not.toHaveBeenCalled()
+      expect(mocks.signInWithRedirect).toHaveBeenCalledTimes(1)
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', { value: originalUA, configurable: true })
+    }
+  })
+
   it('rethrows the original benign error if starting the redirect also fails', async () => {
     // The popup throws the hidden-tab error AND the redirect fallback fails
     // (e.g. the browser is still mid-flight with the just-opened popup). The

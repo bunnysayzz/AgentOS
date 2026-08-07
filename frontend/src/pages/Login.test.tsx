@@ -121,6 +121,25 @@ describe('Login', () => {
     expect(useAuthStore.getState().isAuthenticated).toBe(false)
   })
 
+  it('shows a friendly message instead of the raw SDK text for auth/internal-error', async () => {
+    // Safari fullscreen can surface the SDK's generic popup-plumbing error.
+    // The raw "Firebase: Error (auth/internal-error)." text must never be
+    // shown to users — a clear, actionable message takes its place.
+    ;(loginWithGoogle as any).mockRejectedValueOnce({
+      code: 'auth/internal-error',
+      message: 'Firebase: Error (auth/internal-error).',
+    })
+
+    const user = userEvent.setup()
+    renderLogin()
+
+    await user.click(await screen.findByRole('button', { name: /sign in with google/i }))
+
+    expect(await screen.findByTestId('auth-error')).toHaveTextContent(/temporary browser issue/i)
+    expect(screen.queryByText(/auth\/internal-error/)).not.toBeInTheDocument()
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
+  })
+
   it('returns to the page the guest was headed to after sign-in', async () => {
     ;(loginWithFirebaseEmail as any).mockResolvedValueOnce({
       user: { email: 'a@b.com', displayName: 'A B', photoURL: null, emailVerified: true },

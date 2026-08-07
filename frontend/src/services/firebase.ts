@@ -82,6 +82,24 @@ function notConfiguredError(what: string): Error {
 // distinguish "returning from a Google redirect" from a normal page load.
 const REDIRECT_FLAG = 'agentos_google_redirect'
 
+/**
+ * Browsers where the popup↔iframe postMessage handshake is unreliable, so
+ * Google sign-in must use the same-tab redirect flow instead:
+ * - Safari (desktop + iOS): fullscreen Safari opens the popup in a NEW
+ *   window and the handshake fails, which the SDK wraps as the generic
+ *   auth/internal-error. The redirect result is stored on OUR origin, which
+ *   Safari's ITP never blocks, so the redirect flow is deterministic there.
+ * - iOS WKWebView (in-app browsers: Instagram, Facebook, etc.): no real
+ *   popup support at all.
+ */
+function isRedirectOnlyBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent
+  if (/^((?!chrome|crios|android|fxios|edg|opr|samsung).)*safari/i.test(ua)) return true
+  // iOS in-app browser: AppleWebKit-based, mobile, and no Chrome/Edge markers.
+  return !/chrome|crios|fxios|edg|opr/i.test(ua) && /applewebkit/i.test(ua) && /mobile/i.test(ua)
+}
+
 // ─── Benign SDK rejection guard ─────────────────────────────────────────
 // The Firebase SDK rejects promises with "Database is closing/hidden" from
 // its IndexedDB layer whenever a background write races with the tab being
@@ -121,12 +139,24 @@ export async function loginWithGoogle(): Promise<{ user: FirebaseUser; idToken: 
     throw notConfiguredError('Google Sign-In')
   }
 
-  // Safari (esp. fullscreen) intermittently fails the popup↔iframe postMessage
-  // handshake, which the SDK wraps as the generic auth/internal-error — a
-  // popup-plumbing failure, never a credential problem. The first attempt
-  // warms the auth iframe, so retry ONCE before falling back to the redirect
-  // flow: this converts many one-off Safari failures into instant successes
-  // (and avoids the redirect return-trip entirely).
+  // Safari (desktop fullscreen especially) and iOS in-app browsers break the
+  // popup↔iframe handshake deterministically — the SDK wraps it as the
+  // generic auth/internal-error, and no retry can fix a broken handshake.
+  // The same-tab redirect flow is reliable there (the result lives on OUR
+  // origin, safe from Safari's ITP), so go straight to it: no popup attempt.
+  if (isRedirectOnlyBrowser()) {
+    sessionStorage.setItem(REDIRECT_FLAG, '1')
+    await signInWithRedirect(auth, googleProvider)
+    return null
+  }
+
+  // Chrome/Firefox/Edge: popup-first. Safari (esp. fullscreen) intermittently
+  // fails the popup↔iframe postMessage handshake, which the SDK wraps as the
+  // generic auth/internal-error — a popup-plumbing failure, never a
+  // credential problem. The first attempt warms the auth iframe, so retry
+  // ONCE before falling back to the redirect flow: this converts many
+  // one-off failures into instant successes (and avoids the redirect
+  // return-trip entirely).
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
       const result = await signInWithPopup(auth, googleProvider)
