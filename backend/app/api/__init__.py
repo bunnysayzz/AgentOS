@@ -17,6 +17,7 @@ from app.api.execution_graphs import router as execution_graphs_router
 from app.api.telemetry import router as telemetry_router
 from app.api.provider_configs import router as provider_configs_router
 from app.api.api_keys import router as api_keys_router
+from app.api.gallery import router as gallery_router
 from app.api.webhooks import router as webhooks_router
 
 router = APIRouter()
@@ -24,6 +25,7 @@ router = APIRouter()
 # Include sub-routers
 router.include_router(auth_router)
 router.include_router(api_keys_router)
+router.include_router(gallery_router)
 router.include_router(users_router)
 router.include_router(workspaces_router)
 router.include_router(agents_router)

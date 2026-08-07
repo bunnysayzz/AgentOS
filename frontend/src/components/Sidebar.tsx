@@ -1,7 +1,7 @@
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { cn } from '@/utils/cn'
-import { ActivityIcon, ArchiveIcon, BotIcon, BrainIcon, ChevronLeftIcon, ChevronRightIcon, CpuIcon, DashboardIcon, FileTextIcon, GitBranchIcon, KeyIcon, LogInIcon, LogoIcon, LogOutIcon, SettingsIcon, UserPlusIcon, UsersIcon, WorkflowIcon, WrenchIcon, XIcon } from '@/components/Icons'
+import { ActivityIcon, ArchiveIcon, BotIcon, BrainIcon, ChevronLeftIcon, ChevronRightIcon, CpuIcon, DashboardIcon, FileTextIcon, GitBranchIcon, GlobeIcon, KeyIcon, LogInIcon, LogoIcon, LogOutIcon, SettingsIcon, UserPlusIcon, UsersIcon, WorkflowIcon, WrenchIcon, XIcon } from '@/components/Icons'
 import { useAuthStore } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
 import { firebaseAuth, firebaseSignOut } from '@/services/firebase'
@@ -10,6 +10,7 @@ const navItems = [
   { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon },
   { label: 'Workspaces', path: '/workspaces', icon: UsersIcon },
   { label: 'Agents', path: '/agents', icon: BotIcon },
+  { label: 'Gallery', path: '/gallery', icon: GlobeIcon },
   { label: 'Workflows', path: '/workflows', icon: WorkflowIcon },
   { label: 'Memory', path: '/memory', icon: BrainIcon },
   { label: 'Tools', path: '/tools', icon: WrenchIcon },

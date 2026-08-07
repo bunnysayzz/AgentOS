@@ -1,85 +1,76 @@
 <div align="center">
 
-<img src="assets/banner.svg" alt="AgentOS Studio | Production-grade IDE for Agentic AI Systems" width="100%" />
+[<img src="assets/banner.svg" alt="AgentOS Studio | Self-hosted agent studio. Your keys. Your data." width="100%" />](https://letsagentos.onrender.com)
 
 <br />
 
+[![Live demo](https://img.shields.io/badge/Try%20the%20live%20demo-letsagentos.onrender.com-e3b862.svg)](https://letsagentos.onrender.com)
 [![CI](https://github.com/bunnysayzz/AgentOS/actions/workflows/ci.yml/badge.svg)](https://github.com/bunnysayzz/AgentOS/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python 3.12](https://img.shields.io/badge/Python-3.12-blue.svg)](backend/pyproject.toml)
-[![React 18](https://img.shields.io/badge/React-18-61dafb.svg)](frontend/package.json)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688.svg)](backend/requirements.txt)
-[![Firestore](https://img.shields.io/badge/Firestore-FFCA28.svg)](#database)
-[![Tests](https://img.shields.io/badge/tests-267%20passing-22c55e.svg)](#-testing)
 
 </div>
 
-AgentOS Studio is a full-stack AI agent orchestration platform. It gives you a unified workspace to create, manage, version, and monitor **AI agents, workflows, tools, prompts, secrets, artifacts, and memory** — with multi-tenant workspace isolation, MCP gateway routing, telemetry, and execution tracing.
+## Self-hosted agent studio. Your keys. Your data.
+
+AgentOS Studio is a **bring-your-own-key** control plane for AI agents — the part of the stack that OpenAI's ChatGPT and hosted platforms keep locked in. Run it on your own infrastructure, connect your own LLM API keys, and get chat, agents, workflows, tools, secrets, and execution tracing in one deploy.
+
+No per-seat pricing. No inference markup. No data leaving your infrastructure.
+
+> ### 🔗 Try it live — no signup required
+> [letsagentos.onrender.com](https://letsagentos.onrender.com) runs the real thing in guest mode. Explore every page, chat with a model, build an agent — nothing is locked behind a login wall.
+> [Browse the community agent gallery](https://letsagentos.onrender.com/gallery) and clone a proven agent into your workspace with one click.
 
 ---
 
-## ✨ Features
+## The problem it solves
+
+Building real AI agents means juggling a pile of disconnected pieces:
+
+- **Scattered LLM keys** across developers, environments, and `.env` files nobody can audit
+- **Prompt drift** — nobody knows which version of a prompt an agent ran last week
+- **No visibility** into what an agent actually *did* (which tool, which call, how much it cost)
+- **Reinventing the wheel** — every team rebuilds the same chat + agent + workflow plumbing
+- **No safe way to share** an agent that works with someone else
+
+AgentOS Studio turns that pile into one self-hosted control plane: **workspaces with real roles, versioned agents and prompts, an execution engine with approval gates, encrypted secrets, tool bindings, node-level tracing, and cost telemetry.**
+
+## What's inside
 
 | | |
 |---|---|
-| 🤖 **Agent Management** | Create agents with configurable models & system prompts; full lifecycle (start / pause / resume / cancel) |
-| ⚡ **Workflow Automation** | Sequential & approval-based workflows with manual/triggered execution |
-| 🧠 **Memory Engine** | Session-based persistent memory with search, consolidation & importance scoring |
-| 🔧 **Tool Registry** | Versioned tool definitions (functions, APIs, code) with public/workspace visibility |
-| 📝 **Prompt Registry** | Version-controlled prompts with variable rendering & rollback |
-| 🔐 **Secrets Manager** | Encrypted credential storage, per workspace & environment-scoped |
-| 📦 **Artifact Store** | Versioned binary/structured asset tracking with content-type filtering |
-| 🔌 **MCP Gateway** | LLM model routing with cost tracking, usage analytics & live chat completions |
-| 📊 **Telemetry & Audit** | Event logging, audit trails, cost dashboards & duration analytics |
-| 🔀 **Execution Graphs** | Node-level execution tracing & debugging for agent/workflow runs |
-| 👥 **Workspace Isolation** | Multi-tenant workspaces with role-based access (Owner / Admin / Member / Viewer) |
+| 🤖 **Agents** | Configurable models, system prompts, tool bindings, full lifecycle (start / pause / resume / cancel) |
+| ⚡ **Workflows** | Sequential & approval-gated flows with manual / webhook / cron triggers |
+| 💬 **Chat** | LLM chat completions through your own providers (OpenAI-compatible) |
+| 🧠 **Memory** | Session-based persistent memory with search, consolidation & importance scoring |
+| 🔧 **Tools** | Versioned tool definitions with per-agent binding |
+| 📝 **Prompts** | Version-controlled prompt templates with variables & rollback |
+| 🔐 **Secrets** | Encrypted credential storage, workspace & environment-scoped |
+| 🔌 **MCP Gateway** | Model routing, usage analytics, and live completions |
+| 🔀 **Execution Graphs** | Node-level execution tracing & debugging |
+| 📊 **Telemetry** | Event logging, audit trails, cost & duration dashboards |
+| 🌐 **Community Gallery** | Publish an agent, or clone one someone else built, with one click |
+| 👥 **Workspaces** | Multi-tenant isolation with Owner / Admin / Member / Viewer roles |
 
 > 📖 Full architecture walkthrough (API map, data model, state machines, auth flow): **[ARCHITECTURE.md](ARCHITECTURE.md)**
 
 ---
 
-## 🧱 Tech Stack
+## Quick start (local dev)
 
-- **Backend:** Python 3.12 · FastAPI · JWT auth · OpenTelemetry
-- **Frontend:** React 18 · TypeScript · Vite · Tailwind CSS · Zustand · TanStack Query · Axios
-- **Database:** Cloud Firestore (Firebase) — no SQL database required
-- **Testing:** pytest (224 tests) · Vitest (38 tests) · Playwright E2E (5 tests) · GitHub Actions CI
-- **Infra:** Docker · Render Blueprint (render.yaml)
-
----
-
-## 🚀 Quick Start (Local Development)
-
-### Prerequisites
-
-- Python 3.11+
-- Node.js 20+
-- A Firebase project (Firestore + Auth) — no SQL database needed
-
-### 1. Backend
+**Prereqs:** Python 3.11+, Node 20+, and a Firebase project (Firestore + Auth). No SQL database needed — all data lives in Cloud Firestore.
 
 ```bash
+# 1. Backend
 cd backend
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env          # fill in SECRET_KEY, ENCRYPTION_KEY, Firebase keys
+uvicorn app.main:app --reload --port 8000
 
-# Configure environment
-cp .env.example .env          # then fill in SECRET_KEY, ENCRYPTION_KEY, Firebase keys
-
-# No database migrations — all data lives in Cloud Firestore.
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-### 2. Frontend
-
-```bash
+# 2. Frontend (in a second terminal)
 cd frontend
 npm install
-
-# Configure environment
-cp .env.example .env          # then fill in VITE_API_URL and Firebase web config
-
+cp .env.example .env          # fill in VITE_API_URL + Firebase web config
 npm run dev                   # → http://localhost:5173
 ```
 
@@ -87,17 +78,38 @@ npm run dev                   # → http://localhost:5173
 
 ---
 
-## 🗄️ Environment Variables
+## Deploy on Render (one service, one URL)
+
+The repo ships a [Render Blueprint](render.yaml) **and** a root [Dockerfile](Dockerfile). Either deploys in one click — the backend serves the built frontend, so **everything lives on a single URL**:
+
+| Path | What it serves |
+|---|---|
+| `/` | The app (React frontend) |
+| `/gallery` | Public community agent gallery |
+| `/admin` | Backend admin console (interactive API docs) |
+| `/api/v1/*` | The backend API |
+| `/health` | Health check |
+
+1. Push this repo to GitHub (already at `bunnysayzz/AgentOS`).
+2. In Render: **New + → Blueprint** (recommended) and select the repo — or **New + → Web Service** and let it pick up the root `Dockerfile`.
+3. Set the env vars: `SECRET_KEY`, `ENCRYPTION_KEY`, Firebase credentials, and the `VITE_FIREBASE_*` web config if you want Google Sign-In.
+4. Deploy. **No database migrations** — everything is Cloud Firestore.
+
+> **Free-tier note:** Render spins down free web services after ~15 min of inactivity; the first request after idle takes ~30–50 s to wake up.
+
+---
+
+## Environment variables
 
 ### Backend (`backend/.env`)
 
 | Variable | Required | Description |
 |---|---|---|
-| `SECRET_KEY` | ✅ | JWT signing secret (generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"`) |
+| `SECRET_KEY` | ✅ | JWT signing secret (`python -c "import secrets; print(secrets.token_urlsafe(32))"`) |
 | `ENCRYPTION_KEY` | ✅ | Secret-encryption key (32+ bytes) |
 | `CORS_ORIGINS` | | JSON list of allowed frontend origins |
-| `FIREBASE_PROJECT_ID` | | Firebase project (defaults to `agentos-7f01e`) |
-| `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` | | Firebase service-account (production Firestore access) |
+| `FIREBASE_PROJECT_ID` | | Firebase project |
+| `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` | | Firebase service account (production Firestore access) |
 | `FIREBASE_REFRESH_TOKEN` / `FIREBASE_CLIENT_ID` | | Firebase CLI OAuth fallback (local dev) |
 | `FIRST_SUPERUSER_EMAIL` | | Email promoted to admin on first sign-in |
 
@@ -105,127 +117,66 @@ npm run dev                   # → http://localhost:5173
 
 | Variable | Required | Description |
 |---|---|---|
-| `VITE_API_URL` | ✅ | Backend base URL, e.g. `http://localhost:8000/api/v1` (dev) or `/api/v1` (prod — same-origin) |
-| `VITE_FIREBASE_API_KEY` | ⬜ | Firebase web API key — **optional**; only for Google Sign-In |
+| `VITE_API_URL` | ✅ | Backend base URL (`http://localhost:8000/api/v1` dev, `/api/v1` prod) |
+| `VITE_FIREBASE_API_KEY` | ⬜ | Firebase web API key — **optional**, only for Google Sign-In |
 | `VITE_FIREBASE_AUTH_DOMAIN` | ⬜ | e.g. `your-project.firebaseapp.com` |
 | `VITE_FIREBASE_PROJECT_ID` | ⬜ | Firebase project ID |
-| `VITE_FIREBASE_STORAGE_BUCKET` | ⬜ | e.g. `your-project.appspot.com` |
+| `VITE_FIREBASE_STORAGE_BUCKET` | ⬜ | Firebase storage bucket |
 | `VITE_FIREBASE_MESSAGING_SENDER_ID` | ⬜ | Firebase sender ID |
 | `VITE_FIREBASE_APP_ID` | ⬜ | Firebase web app ID |
 
-> Firebase is **optional**. Email/password login & registration run through the backend API (`/auth/login`, `/auth/register`) and work with zero Firebase config. Google Sign-In only activates when the `VITE_FIREBASE_*` vars are present — otherwise the app degrades gracefully.
+> Firebase is **optional**: email/password auth and the full agent engine work with zero Firebase config beyond Firestore itself. Google Sign-In activates only when the `VITE_FIREBASE_*` vars are present.
 
 ---
 
-## 🧪 Testing
-
-Run the **entire** pipeline (backend + frontend + E2E) with one command:
+## Testing
 
 ```bash
-make test            # or: ./scripts/run_all_tests.sh
+make test   # backend + frontend + E2E
 ```
 
 | Suite | Command | Count |
 |---|---|---|
-| Backend (pytest) | `cd backend && pytest -q` | 224 tests |
+| Backend (pytest) | `cd backend && pytest -q` | 291 tests |
+| Frontend unit (Vitest) | `cd frontend && npm test` | 98 tests |
 | Frontend typecheck | `cd frontend && npm run typecheck` | — |
 | Frontend lint | `cd frontend && npm run lint` | — |
-| Frontend unit (Vitest) | `cd frontend && npm test` | 38 tests |
-| E2E (Playwright) | `cd frontend && npx playwright test` | 5 tests |
 
-> Backend tests run against an in-memory SQLite database — they never touch your real data. The full pipeline is also enforced in CI (`.github/workflows/ci.yml`).
+Backend tests run against an in-memory fake Firestore — they never touch your real data. The full pipeline is enforced in CI (`.github/workflows/ci.yml`).
 
 ---
 
-## ☁️ Deploy on Render
+## Tech stack (for contributors)
 
-The repo ships with a [**Render Blueprint**](render.yaml) **and** a root [**Dockerfile**](Dockerfile) — either deploys in one click, and **everything lives on a single URL**:
+- **Backend:** Python 3.12 · FastAPI · Firebase Auth · Cloud Firestore (no SQL)
+- **Frontend:** React 18 · TypeScript · Vite · Tailwind CSS · Zustand · TanStack Query
+- **Infra:** Docker · Render Blueprint · GitHub Actions CI
+- **Observability:** Sentry (optional, env-gated) · privacy-friendly analytics (optional)
 
-| Path | What it serves |
-|---|---|
-| `/` | The main React app (frontend) |
-| `/admin` | Backend admin console — interactive API docs (Swagger UI) |
-| `/api/v1/*` | The backend API |
-| `/health` | Health check |
-
-### Option A — Blueprint (recommended)
-
-1. Push this repo to GitHub (it already is: `bunnysayzz/AgentOS`).
-2. In [Render](https://render.com), click **New + → Blueprint** and select the repo.
-3. Render auto-detects `render.yaml` and creates **one web service** (`agentos`) using the native Python runtime. The build command installs the backend deps **and** builds the frontend (`npm ci && npm run build`); FastAPI serves the SPA at the root.
-4. Fill in the secret env vars the blueprint asks for (`sync: false` fields):
-   - `SECRET_KEY`, `ENCRYPTION_KEY` → generate strong random values
-   - `FIREBASE_REFRESH_TOKEN`, `FIREBASE_CLIENT_ID` → Firebase credentials (data store)
-   - `VITE_FIREBASE_*` → your Firebase web config (for Google Sign-In)
-5. Deploy. No database migrations — all data lives in Cloud Firestore.
-
-### Option B — Web Service (Docker)
-
-If you create a plain **New + → Web Service** instead of a Blueprint, Render auto-detects the root `Dockerfile` (no manual Docker config needed):
-
-1. **New + → Web Service** → select the repo (leave root directory as repo root).
-2. Render detects the `Dockerfile` and builds the single-service image (frontend + backend).
-3. In **Environment**, add: `SECRET_KEY`, `ENCRYPTION_KEY`, the Firebase credential vars, and `VITE_FIREBASE_*` if you want Google Sign-In (for Docker deploys these are build-time args, see the `Dockerfile`).
-4. **Deploy** — done. One service, one URL.
-
-### Notes for Render
-
-- **Free tier** spins down web services after 15 min of inactivity (first request after idle takes ~30–50 s).
-- Because the SPA is served same-origin with the API, `VITE_API_URL=/api/v1` needs no CORS configuration.
-- The backend needs no Redis to run — Redis/Celery are optional and only used when configured.
-- If you previously created a Web Service and it failed with `Dockerfile: no such file or directory`, just **redeploy** — the root `Dockerfile` (and `.dockerignore`) is now in the repo.
-
-### Deploy with Docker instead
-
-```bash
-docker-compose up --build    # backend + frontend (data lives in Cloud Firestore)
-```
-
----
-
-## 📁 Project Structure
+## Project structure
 
 ```
 AgentOS/
-├── backend/                    # FastAPI backend
-│   ├── app/
-│   │   ├── api/                # Route handlers (auth, workspaces, agents, workflows, …)
-│   │   ├── core/               # Config, database, security, firebase
-│   │   ├── models/             # Legacy ORM model definitions (unused at runtime)
-│   │   ├── schemas/            # Pydantic request/response models
-│   │   ├── services/           # Business logic
-│   │   └── main.py             # App entry point
-│   ├── alembic/                # Legacy migration tooling (unused — Firestore only)
-│   └── tests/                  # 224 pytest tests
-├── frontend/                   # React + Vite frontend
-│   ├── src/
-│   │   ├── components/         # Shared UI components
-│   │   ├── pages/              # 15 route pages
-│   │   ├── services/           # Axios API client + Firebase
-│   │   ├── stores/             # Zustand stores (auth, ui, workspace)
-│   │   └── utils/
-│   ├── e2e/                    # Playwright smoke tests
-│   └── src/**/*.test.*         # Vitest suites (38 tests)
-├── .github/workflows/ci.yml    # CI pipeline
-├── Dockerfile                  # Single-service image (Render Web Service deploys)
-├── .dockerignore               # Keeps .env secrets out of Docker builds
-├── render.yaml                 # Render Blueprint
-├── docker-compose.yml
-├── Makefile
-└── scripts/run_all_tests.sh    # Full test orchestrator
+├── backend/                 # FastAPI backend (api/, core/, schemas/, services/, tests/)
+├── frontend/                # React + Vite frontend (components/, pages/, services/, stores/)
+├── .github/workflows/ci.yml # CI pipeline
+├── Dockerfile               # Single-service image (frontend + backend)
+├── render.yaml              # Render Blueprint (one-click deploy)
+├── assets/banner.svg        # Brand banner
+└── Makefile                 # Dev & test shortcuts
 ```
 
 ---
 
-## 🤝 Contributing
+## Roadmap
 
-1. Fork the repo.
-2. Create a feature branch (`git checkout -b feat/my-feature`).
-3. Run the full test suite (`make test`) and make sure everything is green.
-4. Open a pull request.
+- [x] Agents, workflows, memory, tools, prompts, secrets, artifacts, MCP gateway, tracing, telemetry
+- [x] Guest mode (no login wall) + community agent gallery
+- [x] GDPR: account data export & deletion
+- [ ] Agent evals & regression testing (trace-level scoring)
+- [ ] Shared agent templates & one-click provider presets
+- [ ] MCP server marketplace
 
----
-
-## 📄 License
+## License
 
 [MIT](LICENSE) © bunnysayzz

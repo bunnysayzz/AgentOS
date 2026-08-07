@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { EyeIcon, EyeOffIcon, LockIcon, LogInIcon, LogoIcon, MailIcon, GoogleIcon } from '@/components/Icons'
+import { ArrowRightIcon, EyeIcon, EyeOffIcon, LockIcon, LogInIcon, LogoIcon, MailIcon, GoogleIcon } from '@/components/Icons'
 import { useAuthStore } from '@/stores/authStore'
 import { loginWithGoogle, checkGoogleRedirect, loginWithFirebaseEmail, firebaseUserToStoreUser, type FirebaseUser } from '@/services/firebase'
 import axios from 'axios'
@@ -284,6 +284,16 @@ export default function Login() {
             {' '}and{' '}
             <Link to="/privacy" className="text-surface-500 hover:text-surface-300 transition-colors">Privacy Policy</Link>
           </p>
+
+          <div className="pt-2">
+            <Link
+              to="/dashboard"
+              className="text-center block text-xs text-surface-500 hover:text-primary-400 transition-colors"
+            >
+              Just exploring? Try the live demo as a guest{' '}
+              <ArrowRightIcon size={11} className="inline" />
+            </Link>
+          </div>
         </div>
       </div>
     </div>

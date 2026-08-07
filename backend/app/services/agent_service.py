@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from app.core.db import FirestoreDB, now_iso, stamp
 from app.models.agent import AgentStatus, ExecutionStatus
 from app.schemas.agent import AgentCreate, AgentUpdate, AgentExecutionCreate
+from app.services import auth_service, workspace_service
 
 AGENTS = "agents"
 EXECUTIONS = "agent_executions"
@@ -80,6 +81,10 @@ async def create_agent(db: FirestoreDB, workspace_id: str, agent_in: AgentCreate
         "tool_ids": agent_in.tool_ids,
         "status": AgentStatus.DRAFT.value,
         "version": 1,
+        # Gallery fields — nothing starts published.
+        "published": False,
+        "published_at": None,
+        "cloned_from": None,
     })
     db.add(AGENTS, agent)
     return agent
@@ -126,7 +131,104 @@ async def delete_agent(db: FirestoreDB, agent: dict) -> None:
     """Soft-delete an agent."""
     agent["deleted_at"] = now_iso()
     agent["status"] = AgentStatus.ARCHIVED.value
+    agent["published"] = False
+    agent["published_at"] = None
     db.set(AGENTS, agent["id"], agent)
+
+
+# ─── Gallery (publish / unpublish / clone) ─────────────
+
+
+async def set_published(db: FirestoreDB, agent: dict, published: bool) -> dict:
+    """Publish or unpublish an agent in the public community gallery.
+
+    Only ACTIVE agents can be published — a draft/paused agent has no place
+    in a public gallery.
+    """
+    if published and agent.get("status") != AgentStatus.ACTIVE.value:
+        raise AgentError(
+            "Only active agents can be published. Activate the agent first.",
+            status_code=400,
+        )
+    agent["published"] = published
+    agent["published_at"] = now_iso() if published else None
+    db.set(AGENTS, agent["id"], agent)
+    return agent
+
+
+def _enrich_gallery_agent(db: FirestoreDB, agent: dict) -> dict:
+    """Attach public metadata (author username, workspace name) to an agent."""
+    ws = None
+    if agent.get("workspace_id"):
+        ws = db.get(workspace_service.WORKSPACES, str(agent["workspace_id"]))
+    owner = None
+    if ws and ws.get("owner_id"):
+        owner = auth_service.get_user_by_id(db, ws["owner_id"]) or {}
+    enriched = dict(agent)
+    enriched["author_username"] = (owner or {}).get("username") or "anonymous"
+    enriched["workspace_name"] = (ws or {}).get("name") or "Unknown workspace"
+    enriched["tool_count"] = len(agent.get("tool_ids") or [])
+    return enriched
+
+
+async def list_published_agents(
+    db: FirestoreDB, page: int = 1, page_size: int = 24
+) -> tuple[list[dict], int]:
+    """List all published agents (newest first) with author info.
+
+    The single equality filter (published == True) is pushed to Firestore;
+    soft-deletes are filtered out in Python.
+    """
+    rows = [r for r in db.query(AGENTS, "published", True) if not r.get("deleted_at")]
+    rows.sort(key=lambda r: r.get("published_at") or "", reverse=True)
+    total = len(rows)
+    start = (page - 1) * page_size
+    return [_enrich_gallery_agent(db, r) for r in rows[start : start + page_size]], total
+
+
+async def get_published_agent_by_id(db: FirestoreDB, agent_id: str) -> dict | None:
+    """Get a single published agent (public gallery view)."""
+    agent = await get_agent_by_id(db, agent_id)
+    if agent is None or not agent.get("published"):
+        return None
+    return _enrich_gallery_agent(db, agent)
+
+
+async def clone_agent(db: FirestoreDB, source: dict, target_workspace_id: str) -> dict:
+    """Clone a published agent into another workspace.
+
+    Safety: secrets are workspace-scoped and encrypted, and tool bindings are
+    workspace-scoped — neither is copied. The clone starts as a DRAFT so the
+    user reviews and activates it before it can run.
+    """
+    config = dict(source.get("config") or {})
+    config.pop("injected_secrets", None)
+
+    source_desc = (source.get("description") or "").strip()
+    description = source_desc + (
+        "\n\nCloned from the AgentOS community gallery." if source_desc
+        else "Cloned from the AgentOS community gallery."
+    )
+
+    agent = stamp({
+        "workspace_id": str(target_workspace_id),
+        "name": source.get("name", "Untitled agent"),
+        "description": description,
+        "system_prompt": source.get("system_prompt"),
+        "model_provider": source.get("model_provider", "openai"),
+        "model_name": source.get("model_name", "gpt-4o"),
+        "temperature": source.get("temperature", 0.7),
+        "max_tokens": source.get("max_tokens", 4096),
+        "config": config,
+        "tool_ids": [],
+        "status": AgentStatus.DRAFT.value,
+        "version": 1,
+        "published": False,
+        "published_at": None,
+        "cloned_from": source.get("id"),
+    })
+    db.add(AGENTS, agent)
+    return agent
 
 
 # ─── Execution Lifecycle ────────────────────────────

@@ -99,6 +99,34 @@ async def delete_agent(
     return None
 
 
+# ─── Gallery publishing ───────────────────────────────
+
+
+@router.post("/{agent_id}/publish", response_model=AgentResponse)
+async def publish_agent(
+    agent: Agent = Depends(get_agent_or_404),
+    workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Publish an agent to the public community gallery (Member+)."""
+    try:
+        agent = await agent_service.set_published(db, agent, True)
+        return AgentResponse.model_validate(agent)
+    except agent_service.AgentError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+
+
+@router.delete("/{agent_id}/publish", response_model=AgentResponse)
+async def unpublish_agent(
+    agent: Agent = Depends(get_agent_or_404),
+    workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove an agent from the public community gallery (Member+)."""
+    agent = await agent_service.set_published(db, agent, False)
+    return AgentResponse.model_validate(agent)
+
+
 # ─── Agent Execution ────────────────────────────────
 
 

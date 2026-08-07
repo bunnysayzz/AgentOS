@@ -45,6 +45,9 @@ class AgentResponse(AgentBase):
     version: int
     created_at: datetime
     updated_at: datetime | None
+    # Gallery visibility (agent published to the public community gallery).
+    published: bool = False
+    published_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

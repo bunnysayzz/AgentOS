@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  ActivityIcon, ArrowLeftIcon, BotIcon, ChevronRightIcon, MessageSquareIcon,
+  ActivityIcon, ArrowLeftIcon, BotIcon, ChevronRightIcon, GlobeIcon, MessageSquareIcon,
   PauseIcon, PlayIcon, PlusIcon, StopIcon, WrenchIcon, KeyIcon,
   Trash2Icon, CheckIcon, XIcon, RefreshCwIcon,
 } from '@/components/Icons'
@@ -16,7 +16,8 @@ import { cn } from '@/utils/cn'
 interface Agent {
   id: string; name: string; description?: string; system_prompt?: string;
   status: string; model_name: string; model_provider?: string;
-  tool_ids?: string[]; config?: Record<string, any>; created_at: string
+  tool_ids?: string[]; config?: Record<string, any>; created_at: string;
+  published?: boolean
 }
 
 interface Tool {
@@ -63,6 +64,20 @@ export default function Agents() {
     queryKey: ['secrets', wsId],
     queryFn: () => api.get(`/workspaces/${wsId}/secrets/`).then((r) => r.data),
     enabled: !!wsId,
+  })
+
+  // ── Gallery publish / unpublish ──
+  const { mutate: togglePublish } = useMutation({
+    mutationFn: ({ id, publish }: { id: string; publish: boolean }) =>
+      (publish ? api.post : api.delete)(`/workspaces/${wsId}/agents/${id}/publish`).then((r) => r.data),
+    onSuccess: (_data, { publish }) => {
+      qc.invalidateQueries({ queryKey: ['agents', wsId] })
+      toast.success('Gallery updated', publish
+        ? 'The agent was published to the community gallery.'
+        : 'The agent was removed from the community gallery.')
+    },
+    onError: (err: any) =>
+      toast.error('Could not update gallery', err?.response?.data?.detail || 'Failed to update the gallery.'),
   })
 
   const { mutate: create, isPending: creating } = useMutation({
@@ -399,10 +414,24 @@ export default function Agents() {
                 </div>
                 <div>
                   <p className="font-medium group-hover:text-emerald-400 transition-colors">{agent.name}</p>
-                  <p className="text-sm text-surface-500">{agent.model_name} · {agent.status}{agent.tool_ids?.length ? ` · ${agent.tool_ids.length} tools` : ''}</p>
+                  <p className="text-sm text-surface-500">{agent.model_name} · {agent.status}{agent.tool_ids?.length ? ` · ${agent.tool_ids.length} tools` : ''}{agent.published ? ' · published' : ''}</p>
                 </div>
               </div>
-              <ChevronRightIcon size={16} className="text-surface-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={(e) => { e.stopPropagation(); togglePublish({ id: agent.id, publish: !agent.published }) }}
+                  className={cn(
+                    'p-2 rounded-lg transition-all',
+                    agent.published
+                      ? 'text-primary-300 bg-primary-500/10 border border-primary-500/25'
+                      : 'text-surface-500 hover:text-primary-400 hover:bg-surface-800 border border-transparent',
+                  )}
+                  title={agent.published ? 'Unpublish from gallery' : 'Publish to community gallery'}
+                >
+                  <GlobeIcon size={15} />
+                </button>
+                <ChevronRightIcon size={16} className="text-surface-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
             </div>
           ))}
         </div>

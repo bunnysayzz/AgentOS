@@ -24,6 +24,7 @@ import Profile from '@/pages/Profile'
 import ApiKeys from '@/pages/ApiKeys'
 import Terms from '@/pages/Terms'
 import Privacy from '@/pages/Privacy'
+import Gallery from '@/pages/Gallery'
 
 function App() {
   return (
@@ -35,6 +36,7 @@ function App() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/terms" element={<Terms />} />
       <Route path="/privacy" element={<Privacy />} />
+      <Route path="/gallery" element={<Gallery />} />
 
       {/* Protected routes */}
       <Route element={<ProtectedRoute />}>
