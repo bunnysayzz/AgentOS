@@ -170,6 +170,24 @@ describe('loginWithGoogle', () => {
     expect(mocks.signInWithRedirect).toHaveBeenCalledTimes(1)
   })
 
+  it('falls back to the same-tab redirect on auth/internal-error (Safari fullscreen popup handshake failure)', async () => {
+    // Desktop Safari fullscreen: the popup opens in a NEW window and the
+    // popup↔iframe postMessage handshake fails, which the Firebase SDK wraps
+    // as the generic auth/internal-error. loginWithGoogle must NOT surface it
+    // as an error banner — it must start the same-tab redirect flow, which
+    // completes the identical sign-in.
+    mocks.signInWithPopup.mockRejectedValue({
+      code: 'auth/internal-error',
+      message: 'Firebase: Error (auth/internal-error).',
+    })
+
+    const result = await loginWithGoogle()
+
+    expect(result).toBeNull()
+    expect(mocks.signInWithRedirect).toHaveBeenCalledTimes(1)
+    expect(sessionStorage.getItem('agentos_google_redirect')).toBe('1')
+  })
+
   it('rethrows the original benign error if starting the redirect also fails', async () => {
     // The popup throws the hidden-tab error AND the redirect fallback fails
     // (e.g. the browser is still mid-flight with the just-opened popup). The

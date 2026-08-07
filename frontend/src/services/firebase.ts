@@ -132,6 +132,11 @@ export async function loginWithGoogle(): Promise<{ user: FirebaseUser; idToken: 
       'auth/popup-blocked',
       'auth/operation-not-supported-in-this-environment',
       'auth/cancelled-popup-request',
+      // Safari (esp. fullscreen) intermittently fails the popup↔iframe
+      // postMessage handshake and the SDK wraps it as this generic code.
+      // It's a popup-plumbing failure, never a credential problem — the
+      // same-tab redirect flow completes the identical sign-in.
+      'auth/internal-error',
     ]
     // The Firebase SDK's IndexedDB layer throws "Database is closing/hidden"
     // (a message-only error with NO code) when a background storage write
