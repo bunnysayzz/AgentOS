@@ -442,9 +442,9 @@ export default function Workflows() {
               <div>
                 <label className="block text-sm font-medium text-surface-300 mb-1.5">Trigger</label>
                 <select value={form.trigger_type} onChange={(e) => setForm({ ...form, trigger_type: e.target.value })} className="input-field">
-                  <option value="manual">Manual — run from this page</option>
-                  <option value="webhook">Webhook — fire via HTTP POST</option>
-                  <option value="schedule">Schedule — run on a cron</option>
+                  <option value="manual">Manual | run from this page</option>
+                  <option value="webhook">Webhook | fire via HTTP POST</option>
+                  <option value="schedule">Schedule | run on a cron</option>
                 </select>
               </div>
               {form.trigger_type === 'schedule' && (

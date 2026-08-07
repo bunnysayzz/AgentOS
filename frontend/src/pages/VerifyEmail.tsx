@@ -110,7 +110,7 @@ export default function VerifyEmail() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-[#16151a] to-[#08080b] border border-primary-600/40 shadow-lg shadow-primary-500/25 mb-5">
             <LogoIcon size={30} />
           </div>
-          <p className="microlabel mb-3">AgentOS Studio — one last step</p>
+          <p className="microlabel mb-3">AgentOS Studio | one last step</p>
           <h1 className="text-4xl font-light tracking-tight serif-display text-surface-100">
             {verified ? 'Email verified!' : 'Verify your email'}
           </h1>
@@ -157,7 +157,7 @@ export default function VerifyEmail() {
                   <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-400" />
                 </span>
                 <p className="text-sm text-amber-200">
-                  Waiting for verification — open the link in the email and this page updates automatically.
+                  Waiting for verification. Open the link in the email and this page updates automatically.
                 </p>
               </div>
 

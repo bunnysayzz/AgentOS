@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/banner.svg" alt="AgentOS Studio — Production-grade IDE for Agentic AI Systems" width="100%" />
+<img src="assets/banner.svg" alt="AgentOS Studio | Production-grade IDE for Agentic AI Systems" width="100%" />
 
 <br />
 

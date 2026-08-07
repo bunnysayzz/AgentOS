@@ -66,7 +66,7 @@ export default function ForgotPassword() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-[#16151a] to-[#08080b] border border-primary-600/40 shadow-lg shadow-primary-500/25 mb-5">
             <LogoIcon size={30} />
           </div>
-          <p className="microlabel mb-3">AgentOS Studio — account recovery</p>
+          <p className="microlabel mb-3">AgentOS Studio | account recovery</p>
           <h1 className="text-4xl font-light tracking-tight serif-display text-surface-100">
             {submitted ? 'Check your inbox' : 'Reset your password'}
           </h1>
@@ -85,7 +85,7 @@ export default function ForgotPassword() {
               </div>
               <p className="text-sm text-surface-300 text-center leading-relaxed">
                 If an account exists for <span className="font-medium text-surface-100">{email.trim() || 'your email'}</span>,
-                a reset link has been sent to it. It expires in about an hour — check your spam folder if you don't see it.
+                a reset link has been sent to it. It expires in about an hour. Check your spam folder if you don't see it.
               </p>
               <button
                 type="button"

@@ -169,7 +169,7 @@ export default function Register() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-[#16151a] to-[#08080b] border border-primary-600/40 shadow-lg shadow-primary-500/25 mb-5">
             <LogoIcon size={30} />
           </div>
-          <p className="microlabel mb-3">AgentOS Studio — agent orchestration</p>
+          <p className="microlabel mb-3">AgentOS Studio | agent orchestration</p>
           <h1 className="text-4xl font-light tracking-tight serif-display text-surface-100">
             Create Account
           </h1>

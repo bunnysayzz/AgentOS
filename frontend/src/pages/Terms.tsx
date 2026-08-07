@@ -23,7 +23,7 @@ const SECTIONS = [
   },
   {
     title: '6. Third-Party Providers & AI Output',
-    body: 'The Service acts as an intermediary between you and third-party AI providers. We do not control the output of those models and make no guarantees about its accuracy, safety, or suitability. AI output may be incorrect, biased, or harmful — you are responsible for reviewing and validating any output before relying on it. Provider outages or policy changes may affect availability.',
+    body: 'The Service acts as an intermediary between you and third-party AI providers. We do not control the output of those models and make no guarantees about its accuracy, safety, or suitability. AI output may be incorrect, biased, or harmful. You are responsible for reviewing and validating any output before relying on it. Provider outages or policy changes may affect availability.',
   },
   {
     title: '7. API Keys & Secrets',

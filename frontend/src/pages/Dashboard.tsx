@@ -246,7 +246,7 @@ export default function Dashboard() {
                 </h1>
                 <p className="text-surface-400 mt-3 text-sm sm:text-base max-w-xl">
                   Orchestrate AI agents, workflows, tools & memory in isolated workspaces.
-                  Explore everything — nothing is hidden, your data waits for you.
+                  Explore everything. Nothing is hidden; your data waits for you.
                 </p>
                 <div className="flex flex-wrap items-center gap-3 mt-6">
                   <Link

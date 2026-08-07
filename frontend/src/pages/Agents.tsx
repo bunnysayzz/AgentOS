@@ -289,7 +289,7 @@ export default function Agents() {
               )}
               {unassignedTools.length > 0 && (
                 <>
-                  <p className="text-xs text-surface-500 mb-2">Available tools — click to assign:</p>
+                  <p className="text-xs text-surface-500 mb-2">Available tools | click to assign:</p>
                   <div className="flex flex-wrap gap-2">
                     {unassignedTools.map((tool) => (
                       <button
@@ -344,7 +344,7 @@ export default function Agents() {
               )}
               {unassignedSecrets.length > 0 && (
                 <>
-                  <p className="text-xs text-surface-500 mb-2">Available secrets — click to inject:</p>
+                  <p className="text-xs text-surface-500 mb-2">Available secrets | click to inject:</p>
                   <div className="flex flex-wrap gap-2">
                     {unassignedSecrets.map((sec: any) => (
                       <button

@@ -192,7 +192,7 @@ export default function Profile() {
     setVerifyBusy(true)
     try {
       await resendVerificationEmail()
-      setVerifyMessage({ kind: 'success', text: 'Verification email sent — check your inbox (and spam).' })
+      setVerifyMessage({ kind: 'success', text: 'Verification email sent. Check your inbox (and spam).' })
     } catch (err: any) {
       setVerifyMessage({ kind: 'error', text: err?.message || 'Could not send the verification email.' })
     } finally {
@@ -279,7 +279,7 @@ export default function Profile() {
       {isError && (
         <div className="flex flex-wrap items-center gap-3 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-300 text-sm">
           <span className="flex-1 min-w-0">
-            Couldn't refresh your profile from the server. Showing your saved info — changes you make here will still be applied.
+            Couldn't refresh your profile from the server. Showing your saved info. Changes you make here will still be applied.
           </span>
           <button
             type="button"

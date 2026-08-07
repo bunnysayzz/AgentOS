@@ -39,7 +39,7 @@ export default function ApiKeys() {
     mutationFn: (name: string) => api.post<ApiKeyCreated>('/api-keys/', { name }),
     onSuccess: (res) => {
       setCreatedKey(res.data)
-      toast.success('API key created', 'Copy your key now — it won\'t be shown again.')
+      toast.success('API key created', 'Copy your key now. It won\'t be shown again.')
       qc.invalidateQueries({ queryKey: ['api-keys'] })
       setKeyName('')
       setShowCreate(false)
