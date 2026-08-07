@@ -43,6 +43,11 @@ from app.core.config import settings
 # frame-src must include the authDomain because signInWithPopup uses a
 # popup PLUS an invisible auth iframe hosted on the authDomain
 # (https://<authDomain>/__/auth/iframe). Blocking it breaks Google sign-in.
+# worker-src must include it too: signInWithRedirect registers the auth
+# service worker from the authDomain (https://<authDomain>/__/auth/
+# firebase-auth-sw.js) so the redirect result survives Safari ITP. Without
+# worker-src, the SW can't register, the result is lost on return, and the
+# user is bounced back to the login page ("login never confirms").
 _CSP_CONNECT_EXTRA = [
     # Sentry error tracking ingest (only reached when SENTRY_DSN is set).
     "https://*.ingest.sentry.io",
@@ -68,6 +73,7 @@ _CSP = (
     + (" " + " ".join(_CSP_CONNECT_EXTRA) if _CSP_CONNECT_EXTRA else "")
     + "; "
     "frame-src https://accounts.google.com https://*.firebaseapp.com https://*.web.app; "
+    "worker-src https://*.firebaseapp.com https://*.web.app; "
     "object-src 'none'; "
     "base-uri 'self'; "
     "form-action 'self'; "

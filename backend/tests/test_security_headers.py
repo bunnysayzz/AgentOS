@@ -27,6 +27,13 @@ async def test_security_headers_present_on_api_response(
     assert "frame-src https://accounts.google.com" in csp
     assert "frame-src" in csp and "https://*.firebaseapp.com" in csp
 
+    # The Firebase Auth service worker (signInWithRedirect, hosted on the
+    # authDomain) MUST be worker-allowed. Without worker-src it falls back to
+    # default-src 'self', the SW can't register, the redirect result is lost
+    # on Safari (ITP), and the user is bounced back to the login page forever.
+    assert "worker-src https://*.firebaseapp.com" in csp
+    assert "worker-src" in csp and "https://*.web.app" in csp
+
     # Sentry ingest must be reachable via connect-src (env-gated feature).
     assert "https://*.ingest.sentry.io" in csp
 
