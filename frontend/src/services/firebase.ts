@@ -120,49 +120,61 @@ export async function loginWithGoogle(): Promise<{ user: FirebaseUser; idToken: 
   if (!auth || !googleProvider) {
     throw notConfiguredError('Google Sign-In')
   }
-  try {
-    const result = await signInWithPopup(auth, googleProvider)
-    const idToken = await result.user.getIdToken()
-    return { user: result.user, idToken }
-  } catch (err: unknown) {
-    const e = err as { code?: string; message?: string } | undefined
-    const code = e?.code || ''
-    const message = e?.message || ''
-    const popupUnavailable = [
-      'auth/popup-blocked',
-      'auth/operation-not-supported-in-this-environment',
-      'auth/cancelled-popup-request',
-      // Safari (esp. fullscreen) intermittently fails the popup↔iframe
-      // postMessage handshake and the SDK wraps it as this generic code.
-      // It's a popup-plumbing failure, never a credential problem — the
-      // same-tab redirect flow completes the identical sign-in.
-      'auth/internal-error',
-    ]
-    // The Firebase SDK's IndexedDB layer throws "Database is closing/hidden"
-    // (a message-only error with NO code) when a background storage write
-    // races with the tab being hidden — exactly what happens when a sign-in
-    // popup steals focus on desktop Safari/fullscreen. It is never a real
-    // failure: fall back to the same-tab redirect flow instead of surfacing
-    // it. checkGoogleRedirect() completes the sign-in when the user returns.
-    const hiddenTabStorageError = !code && /Database is (closing|hidden)/i.test(message)
-    if (popupUnavailable.includes(code) || hiddenTabStorageError) {
-      // Popup not possible → same-tab redirect. checkGoogleRedirect()
-      // completes the sign-in when the user returns.
-      sessionStorage.setItem(REDIRECT_FLAG, '1')
-      try {
-        await signInWithRedirect(auth, googleProvider)
-      } catch (redirectErr) {
-        // Starting the redirect can fail while the browser is still mid-flight
-        // with the popup it just opened. When the root cause was the benign
-        // hidden-tab error, rethrow THAT so the UI takes the graceful "show
-        // the form again" path instead of a confusing redirect banner.
-        if (hiddenTabStorageError) throw err
-        throw redirectErr
+
+  // Safari (esp. fullscreen) intermittently fails the popup↔iframe postMessage
+  // handshake, which the SDK wraps as the generic auth/internal-error — a
+  // popup-plumbing failure, never a credential problem. The first attempt
+  // warms the auth iframe, so retry ONCE before falling back to the redirect
+  // flow: this converts many one-off Safari failures into instant successes
+  // (and avoids the redirect return-trip entirely).
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const result = await signInWithPopup(auth, googleProvider)
+      const idToken = await result.user.getIdToken()
+      return { user: result.user, idToken }
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string } | undefined
+      const code = e?.code || ''
+      const message = e?.message || ''
+
+      // The Firebase SDK's IndexedDB layer throws "Database is closing/hidden"
+      // (a message-only error with NO code) when a background storage write
+      // races with the tab being hidden — exactly what happens when a sign-in
+      // popup steals focus on desktop Safari/fullscreen. Never a real failure.
+      const hiddenTabStorageError = !code && /Database is (closing|hidden)/i.test(message)
+
+      // Transient popup-plumbing failures: retry once, then fall back below.
+      if (attempt === 1 && (code === 'auth/internal-error' || hiddenTabStorageError)) {
+        continue
       }
-      return null
+
+      const popupUnavailable = [
+        'auth/popup-blocked',
+        'auth/operation-not-supported-in-this-environment',
+        'auth/cancelled-popup-request',
+        'auth/internal-error',
+      ]
+      if (popupUnavailable.includes(code) || hiddenTabStorageError) {
+        // Popup not possible → same-tab redirect. checkGoogleRedirect()
+        // completes the sign-in when the user returns.
+        sessionStorage.setItem(REDIRECT_FLAG, '1')
+        try {
+          await signInWithRedirect(auth, googleProvider)
+        } catch (redirectErr) {
+          // Starting the redirect can fail while the browser is still mid-flight
+          // with the popup it just opened. When the root cause was the benign
+          // hidden-tab error, rethrow THAT so the UI takes the graceful "show
+          // the form again" path instead of a confusing redirect banner.
+          if (hiddenTabStorageError) throw err
+          throw redirectErr
+        }
+        return null
+      }
+      throw err
     }
-    throw err
   }
+  // Unreachable: every path above returns or throws.
+  return null
 }
 
 /**

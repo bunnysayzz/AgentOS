@@ -171,7 +171,25 @@ describe('loginWithGoogle', () => {
     expect(mocks.signInWithRedirect).toHaveBeenCalledTimes(1)
   })
 
-  it('falls back to the same-tab redirect on auth/internal-error (Safari fullscreen popup handshake failure)', async () => {
+  it('retries the popup once after auth/internal-error and succeeds on the warmed-up attempt', async () => {
+    // Safari fullscreen: the first popup handshake can fail with the generic
+    // auth/internal-error, but the attempt warms the auth iframe and the
+    // retry very often completes inline. loginWithGoogle must retry before
+    // ever falling back to the slower redirect flow.
+    const user = { uid: 'u1', getIdToken: vi.fn().mockResolvedValue('token-123') }
+    mocks.signInWithPopup
+      .mockRejectedValueOnce({ code: 'auth/internal-error', message: 'Firebase: Error (auth/internal-error).' })
+      .mockResolvedValueOnce({ user })
+
+    const result = await loginWithGoogle()
+
+    expect(result).toEqual({ user, idToken: 'token-123' })
+    expect(mocks.signInWithPopup).toHaveBeenCalledTimes(2)
+    expect(mocks.signInWithRedirect).not.toHaveBeenCalled()
+    expect(sessionStorage.getItem('agentos_google_redirect')).toBeNull()
+  })
+
+  it('falls back to the same-tab redirect when auth/internal-error persists across the retry', async () => {
     // Desktop Safari fullscreen: the popup opens in a NEW window and the
     // popup↔iframe postMessage handshake fails, which the Firebase SDK wraps
     // as the generic auth/internal-error. loginWithGoogle must NOT surface it
