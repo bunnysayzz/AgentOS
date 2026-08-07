@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { EyeIcon, EyeOffIcon, LockIcon, LogoIcon, MailIcon, UserIcon, UserPlusIcon, GoogleIcon } from '@/components/Icons'
 import axios from 'axios'
 import { useAuthStore } from '@/stores/authStore'
-import { loginWithGoogle, signupWithFirebaseEmail, checkGoogleRedirect } from '@/services/firebase'
+import { loginWithGoogle, signupWithFirebaseEmail, checkGoogleRedirect, firebaseUserToStoreUser, type FirebaseUser } from '@/services/firebase'
 
 const API_BASE = import.meta.env.VITE_API_URL
 
@@ -32,32 +32,34 @@ export default function Register() {
    * verified yet); Google accounts are already verified → back to where the
    * user was headed, or the dashboard.
    */
-  const finishAuth = async (idToken: string, dest = '/dashboard') => {
+  const finishAuth = async (idToken: string, user: FirebaseUser, dest = '/dashboard') => {
+    // Navigate immediately — never block the spinner on a backend round trip
+    // (the free Render instance cold-starts slowly). The Firestore user is
+    // auto-created by the backend on the first authenticated call; the
+    // authoritative profile is applied in the background when it responds.
+    setAuth(idToken, '', firebaseUserToStoreUser(user))
+    navigate(dest, { replace: true })
     try {
       const { data: u } = await axios.post(`${API_BASE}/auth/firebase`, { id_token: idToken })
-      setAuth(idToken, '', {
-        id: u.id, email: u.email, username: u.username,
-        fullName: u.full_name, avatarUrl: u.avatar_url, isSuperuser: u.is_superuser,
-      })
-    } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || 'Account creation failed.')
-      setGoogleLoading(false)
-      throw err
+      const state = useAuthStore.getState()
+      if (state.accessToken === idToken) {
+        state.setUser({
+          id: u.id, email: u.email, username: u.username,
+          fullName: u.full_name, avatarUrl: u.avatar_url, isSuperuser: u.is_superuser,
+        })
+      }
+    } catch {
+      // Optimistic profile stays — backend calls still authenticate via token.
     }
-    navigate(dest, { replace: true })
   }
 
   // On mount: check if we're returning from a Google redirect
   useEffect(() => {
     const cleanup = checkGoogleRedirect(
-      async (_user, idToken) => {
-        try {
-          // Redirect-return path (popup unavailable): land back on the page
-          // the guest was headed to, same as the inline popup path.
-          await finishAuth(idToken, safeRedirect ?? '/dashboard')
-        } catch {
-          // error already surfaced via setError
-        }
+      async (user, idToken) => {
+        // Redirect-return path (popup unavailable): land back on the page
+        // the guest was headed to, same as the inline popup path.
+        await finishAuth(idToken, user, safeRedirect ?? '/dashboard')
       },
       () => { setGoogleLoading(false) },
     )
@@ -67,15 +69,40 @@ export default function Register() {
   const handleGoogleLogin = async () => {
     setError('')
     setGoogleLoading(true)
+    // Last-resort guard: if the popup/redirect flow hangs (Safari storage
+    // blocked, in-app browser, slow cold start), never leave the user stuck
+    // on the full-screen spinner — restore the form so they can retry or
+    // use email. Cleared once the flow resolves one way or the other.
+    let settled = false
+    const hangGuard = setTimeout(() => {
+      if (!settled) {
+        setGoogleLoading(false)
+        setError('Google sign-in is taking too long. Please try again, or register with email below.')
+      }
+    }, 15000)
     try {
       const result = await loginWithGoogle()
+      settled = true
+      clearTimeout(hangGuard)
       // Popup path: sign-in completed inline → finish auth now.
-      // Redirect path (result === null): page navigated away to Google; the
+      // Redirect path (result === null): page navigates away to Google; the
       // mount effect's checkGoogleRedirect finishes auth on return.
       if (result) {
-        await finishAuth(result.idToken, safeRedirect ?? '/dashboard')
+        await finishAuth(result.idToken, result.user, safeRedirect ?? '/dashboard')
+        return
       }
+      // The redirect was initiated, but the browser can silently swallow the
+      // navigation (popup blockers, Safari ITP, in-app browsers). If we're
+      // still mounted after a moment, the user never left: restore the form
+      // and let them retry — late redirect results are still consumed by
+      // checkGoogleRedirect on a subsequent mount.
+      setTimeout(() => {
+        setGoogleLoading(false)
+        setError('Google sign-in didn\u2019t complete in this window. Please try again, or register with email below.')
+      }, 6000)
     } catch (err: any) {
+      settled = true
+      clearTimeout(hangGuard)
       // User closing the popup is not an error — just show the form again.
       if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/user-cancelled') {
         setGoogleLoading(false)
@@ -87,11 +114,7 @@ export default function Register() {
         setGoogleLoading(false)
         return
       }
-      // finishAuth already surfaced API errors (response detail); only show
-      // our own message for popup-level failures so the detail isn't lost.
-      if (!err?.response) {
-        setError(err.message || 'Google Sign-In failed. Please try again.')
-      }
+      setError(err.message || 'Google Sign-In failed. Please try again.')
       setGoogleLoading(false)
     }
   }
@@ -102,11 +125,11 @@ export default function Register() {
     setLoading(true)
     try {
       // Create the account in Firebase Auth (email verification is sent).
-      const { idToken } = await signupWithFirebaseEmail(form.email, form.password)
+      const { user, idToken } = await signupWithFirebaseEmail(form.email, form.password)
       // Backend auto-creates the Firestore user from the verified token.
       // Redirect to the verification screen — the session is live, the
       // account just isn't verified yet.
-      await finishAuth(idToken, '/verify-email')
+      await finishAuth(idToken, user, '/verify-email')
     } catch (err: any) {
       const code: string = err?.code || ''
       if (code.includes('email-already-in-use')) {

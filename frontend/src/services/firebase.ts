@@ -309,12 +309,14 @@ export function checkGoogleRedirect(
     }
   })
 
-  // Slow connections / cold starts can exceed a few seconds. If nothing has
-  // completed after 20s, show the form — but KEEP the listener alive so the
-  // sign-in result is still consumed if it lands later (no lost logins).
+  // The redirect return trip is normally fast (IndexedDB + token restore).
+  // If nothing has completed after 8s, show the form — but KEEP the listener
+  // alive so a late sign-in result is still consumed (no lost logins). 8s is
+  // long enough for real returns and short enough that users never stare at
+  // the spinner for a lost/blocked redirect (Safari ITP etc.).
   const timeout = setTimeout(() => {
     if (!handled) onNoRedirect()
-  }, 20000)
+  }, 8000)
 
   return () => {
     handled = true

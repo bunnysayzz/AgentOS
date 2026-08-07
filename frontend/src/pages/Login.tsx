@@ -80,15 +80,40 @@ export default function Login() {
   const handleGoogleLogin = async () => {
     setError('')
     setGoogleLoading(true)
+    // Last-resort guard: if the popup/redirect flow hangs (Safari storage
+    // blocked, in-app browser, slow cold start), never leave the user stuck
+    // on the full-screen spinner — restore the form so they can retry or
+    // use email. Cleared once the flow resolves one way or the other.
+    let settled = false
+    const hangGuard = setTimeout(() => {
+      if (!settled) {
+        setGoogleLoading(false)
+        setError('Google sign-in is taking too long. Please try again, or sign in with email below.')
+      }
+    }, 15000)
     try {
       const result = await loginWithGoogle()
+      settled = true
+      clearTimeout(hangGuard)
       // Popup path: sign-in completed inline → finish auth now.
-      // Redirect path (result === null): page navigated away to Google; the
+      // Redirect path (result === null): page navigates away to Google; the
       // mount effect's checkGoogleRedirect finishes auth on return.
       if (result) {
         await finishAuth(result.idToken, result.user)
+        return
       }
+      // The redirect was initiated, but the browser can silently swallow the
+      // navigation (popup blockers, Safari ITP, in-app browsers). If we're
+      // still mounted after a moment, the user never left: restore the form
+      // and let them retry — late redirect results are still consumed by
+      // checkGoogleRedirect on a subsequent mount.
+      setTimeout(() => {
+        setGoogleLoading(false)
+        setError('Google sign-in didn\u2019t complete in this window. Please try again, or sign in with email below.')
+      }, 6000)
     } catch (err: any) {
+      settled = true
+      clearTimeout(hangGuard)
       // User closing the popup is not an error — just show the form again.
       if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/user-cancelled') {
         setGoogleLoading(false)

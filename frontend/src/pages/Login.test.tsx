@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 // axios and firebase are mocked centrally in src/test/setup.ts
@@ -169,5 +169,30 @@ describe('Login', () => {
 
     expect(await screen.findByText('verify-marker')).toBeInTheDocument()
     expect(screen.queryByText('profile-marker')).not.toBeInTheDocument()
+  })
+
+  it('restores the form instead of hanging when the redirect flow silently fails to navigate', async () => {
+    // loginWithGoogle resolves null = the same-tab redirect was initiated.
+    // If the browser silently swallows the navigation (Safari ITP, popup
+    // blockers, in-app browsers), the user must not be stuck on the
+    // "Signing you in…" spinner forever: the safety net restores the form
+    // and explains what happened.
+    vi.useFakeTimers()
+    try {
+      ;(loginWithGoogle as any).mockResolvedValueOnce(null)
+      renderLogin()
+
+      fireEvent.click(screen.getByRole('button', { name: /sign in with google/i }))
+      // Let loginWithGoogle resolve (sets the 6s navigation-safety timer)…
+      await vi.advanceTimersByTimeAsync(0)
+      // …then fire it: form restored + friendly message, no infinite spinner.
+      await vi.advanceTimersByTimeAsync(6000)
+
+      expect(screen.getByPlaceholderText('you@example.com')).toBeInTheDocument()
+      expect(screen.getByTestId('auth-error')).toHaveTextContent(/didn.t complete/i)
+      expect(useAuthStore.getState().isAuthenticated).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

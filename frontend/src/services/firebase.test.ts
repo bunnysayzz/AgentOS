@@ -123,6 +123,7 @@ vi.mock('firebase/storage', () => ({
 import {
   loginWithGoogle,
   attachAuthStateSync,
+  checkGoogleRedirect,
   sendPasswordResetEmailWrapper,
   resendVerificationEmail,
   reloadFirebaseUser,
@@ -205,6 +206,38 @@ describe('loginWithGoogle', () => {
 
     await expect(loginWithGoogle()).rejects.toBe(realError)
     expect(mocks.signInWithRedirect).not.toHaveBeenCalled()
+  })
+})
+
+describe('checkGoogleRedirect', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+    vi.clearAllMocks()
+  })
+
+  it('shows the form after a bounded wait when the redirect result never lands', async () => {
+    // Safari ITP can swallow the redirect result: getRedirectResult returns
+    // null and onAuthStateChanged never fires. The page must not leave the
+    // user staring at the spinner — onNoRedirect (shows the form) fires
+    // within a bounded time (8s), while the listener stays alive for late
+    // results.
+    vi.useFakeTimers()
+    try {
+      sessionStorage.setItem('agentos_google_redirect', '1')
+      mocks.getRedirectResult.mockResolvedValue(null)
+      mocks.onAuthStateChanged.mockImplementation(() => () => {})
+      const onSuccess = vi.fn()
+      const onNoRedirect = vi.fn()
+
+      const cleanup = checkGoogleRedirect(onSuccess, onNoRedirect)
+      await vi.advanceTimersByTimeAsync(8000)
+
+      expect(onNoRedirect).toHaveBeenCalledTimes(1)
+      expect(onSuccess).not.toHaveBeenCalled()
+      cleanup()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
