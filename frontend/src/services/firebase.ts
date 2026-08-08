@@ -26,36 +26,28 @@ import { useAuthStore } from '@/stores/authStore'
 /**
  * Resolve the Firebase authDomain.
  *
- * Google sign-in is delivered through helper code on the authDomain. When
- * that domain is a DIFFERENT site from the app (Render/Vercel/your server),
- * browsers that block third-party storage (Safari ITP, Chrome 115+,
- * Firefox 109+) break sign-in. The backend reverse-proxies /__/auth and
- * /__/firebase on the app origin (see backend app/core/auth_proxy.py), which
- * makes the app origin a fully valid auth domain — so when the config still
- * carries the default <project>.firebaseapp.com value (or nothing), we adopt
- * the app's own hostname and the helper becomes same-origin (ITP-safe),
- * with no env change or redeploy needed.
+ * Google sign-in is delivered through helper code on the authDomain, and the
+ * OAuth popup asks Google to redirect back to
+ * ``https://<authDomain>/__/auth/handler``. That redirect URI must be
+ * REGISTERED on the project's OAuth web client in Google Cloud Console — the
+ * default Firebase setup only registers the ``<project>.firebaseapp.com``
+ * one. A live end-to-end browser probe (headless Chrome against the Render
+ * site) proved that using the app's own hostname here makes Google reject
+ * the popup with ``redirect_uri_mismatch`` (Error 400, "Access blocked: this
+ * app's request is invalid") because the Render domain's handler URI is not
+ * on the allow-list — login fails on EVERY browser, not just Safari.
  *
- * - Explicit custom authDomain (e.g. auth.mycompany.com) → trusted as-is.
- * - Local dev (localhost, no proxy) → keep the Firebase auth domain.
- * - Deployed elsewhere → use window.location.hostname.
+ * So we use exactly the value configured in VITE_FIREBASE_AUTH_DOMAIN and
+ * never invent an origin. The backend still reverse-proxies /__/auth and
+ * /__/firebase on the app origin (backend app/core/auth_proxy.py); once the
+ * handler URI for the custom origin is added to the OAuth client in GCP
+ * (Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client
+ * IDs → Authorized redirect URIs), pointing VITE_FIREBASE_AUTH_DOMAIN at the
+ * app's own domain makes the helper same-origin (ITP-safe) with no further
+ * code changes.
  */
 function resolveAuthDomain(): string {
-  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID
-  const envAuthDomain = (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined)?.trim()
-  const isLocalhost =
-    typeof window !== 'undefined' &&
-    /^localhost$|^127\.0\.0\.1$|^0\.0\.0\.0$|\.local$/.test(window.location.hostname)
-  const isDefaultFirebaseDomain =
-    Boolean(projectId) && envAuthDomain === `${projectId}.firebaseapp.com`
-
-  if (envAuthDomain && !isDefaultFirebaseDomain) {
-    return envAuthDomain
-  }
-  if (typeof window !== 'undefined' && window.location.hostname && !isLocalhost) {
-    return window.location.hostname
-  }
-  return envAuthDomain || ''
+  return (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined)?.trim() || ''
 }
 
 const firebaseConfig = {
