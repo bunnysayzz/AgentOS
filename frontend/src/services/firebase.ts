@@ -129,6 +129,16 @@ function isInAppBrowser(): boolean {
   return /applewebkit/i.test(ua) && /mobile/i.test(ua) && !/safari\//i.test(ua)
 }
 
+/**
+ * Real Safari (desktop + iOS) — distinguishable from Chrome/Firefox/Edge
+ * (whose UAs also carry a Safari/ token) and from iOS in-app browsers.
+ */
+function isRealSafari(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent
+  return /safari\//i.test(ua) && !/chrome\/|crios|fxios|edg\/|chromium|headless/i.test(ua)
+}
+
 // ─── Benign SDK rejection guard ─────────────────────────────────────────
 // The Firebase SDK rejects promises with "Database is closing/hidden" from
 // its IndexedDB layer whenever a background write races with the tab being
@@ -228,6 +238,22 @@ export async function loginWithGoogle(): Promise<{ user: FirebaseUser; idToken: 
         'auth/redirect-operation-pending',
       ]
       if (popupUnavailable.includes(code) || hiddenTabStorageError) {
+        // Real Safari: NEVER fall back to the same-tab redirect. Safari's ITP
+        // blocks the cross-origin result exchange (auth domain ≠ app origin),
+        // so the redirect return never completes and leaves a poisoned
+        // pending-redirect state behind — the "stuck on the login page"
+        // symptom. The popup DOES work in normal Safari windows/tabs; when it
+        // fails (fullscreen opens the popup in a separate window that Apple
+        // blocks), surface a clear actionable message instead of starting a
+        // broken redirect. This matches the project's Firebase docs guidance:
+        // non-Firebase hosting must use the popup, and the permanent fix is
+        // the same-origin auth-helper proxy (backend /__/auth) + the OAuth
+        // client redirect URI.
+        if (isRealSafari()) {
+          throw new Error(
+            'Google sign-in was blocked by Safari. Please try again in a smaller Safari window, use Chrome, Firefox or Edge, or sign in with email & password below.',
+          )
+        }
         // Popup not possible → same-tab redirect. checkGoogleRedirect()
         // completes the sign-in when the user returns.
         sessionStorage.setItem(REDIRECT_FLAG, '1')

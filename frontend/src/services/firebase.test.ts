@@ -250,6 +250,47 @@ describe('loginWithGoogle', () => {
     }
   })
 
+  it('on real Safari NEVER starts the ITP-broken redirect when the popup fails — throws an actionable message', async () => {
+    // Safari fullscreen: the popup opens in a separate window and the SDK
+    // wraps the broken handshake as auth/internal-error. Safari's ITP then
+    // swallows the redirect return (auth domain ≠ app origin), so the old
+    // redirect fallback stranded users with a poisoned pending-redirect
+    // state. Real Safari must show a clear message instead.
+    const originalUA = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
+      configurable: true,
+    })
+    try {
+      mocks.signInWithPopup.mockRejectedValue({
+        code: 'auth/internal-error',
+        message: 'Firebase: Error (auth/internal-error).',
+      })
+
+      await expect(loginWithGoogle()).rejects.toThrow(/blocked by Safari/)
+      expect(mocks.signInWithRedirect).not.toHaveBeenCalled()
+      expect(sessionStorage.getItem('agentos_google_redirect')).toBeNull()
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', { value: originalUA, configurable: true })
+    }
+  })
+
+  it('on real Safari the hidden-tab storage error also surfaces the actionable message, never the redirect', async () => {
+    const originalUA = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
+      configurable: true,
+    })
+    try {
+      mocks.signInWithPopup.mockRejectedValue(new Error('Database is closing/hidden'))
+
+      await expect(loginWithGoogle()).rejects.toThrow(/blocked by Safari/)
+      expect(mocks.signInWithRedirect).not.toHaveBeenCalled()
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', { value: originalUA, configurable: true })
+    }
+  })
+
   it('self-heals a stale pending redirect: consumes it and returns the waiting user', async () => {
     // A previous redirect return never completed (Safari ITP), leaving the
     // SDK's pending-redirect state. The next popup attempt throws
