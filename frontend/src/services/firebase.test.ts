@@ -207,23 +207,25 @@ describe('loginWithGoogle', () => {
     expect(sessionStorage.getItem('agentos_google_redirect')).toBe('1')
   })
 
-  it('skips the popup entirely and goes straight to the redirect flow on Safari', async () => {
-    // Desktop Safari (esp. fullscreen) breaks the popup↔iframe handshake
-    // deterministically — the SDK wraps it as auth/internal-error, and no
-    // retry can fix a broken handshake. The same-tab redirect stores the
-    // result on OUR origin (ITP-safe), so Safari must never attempt a popup.
+  it('attempts the popup first on Safari (it works in normal windows), falling back to redirect only on failure', async () => {
+    // Safari is popup-first: the popup completes in normal windows/tabs (the
+    // user's own evidence), so going redirect-only would throw away the
+    // working path. Fullscreen-window failures surface as auth/internal-error
+    // and are handled by the retry + redirect fallback in other tests.
     const originalUA = navigator.userAgent
     Object.defineProperty(navigator, 'userAgent', {
       value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
       configurable: true,
     })
     try {
+      const user = { uid: 'u1', getIdToken: vi.fn().mockResolvedValue('token-123') }
+      mocks.signInWithPopup.mockResolvedValue({ user })
+
       const result = await loginWithGoogle()
 
-      expect(result).toBeNull()
-      expect(mocks.signInWithPopup).not.toHaveBeenCalled()
-      expect(mocks.signInWithRedirect).toHaveBeenCalledTimes(1)
-      expect(sessionStorage.getItem('agentos_google_redirect')).toBe('1')
+      expect(result).toEqual({ user, idToken: 'token-123' })
+      expect(mocks.signInWithPopup).toHaveBeenCalledTimes(1)
+      expect(mocks.signInWithRedirect).not.toHaveBeenCalled()
     } finally {
       Object.defineProperty(navigator, 'userAgent', { value: originalUA, configurable: true })
     }
@@ -246,6 +248,60 @@ describe('loginWithGoogle', () => {
     } finally {
       Object.defineProperty(navigator, 'userAgent', { value: originalUA, configurable: true })
     }
+  })
+
+  it('self-heals a stale pending redirect: consumes it and returns the waiting user', async () => {
+    // A previous redirect return never completed (Safari ITP), leaving the
+    // SDK's pending-redirect state. The next popup attempt throws
+    // auth/redirect-operation-pending — loginWithGoogle must consume the
+    // stale state; if a valid result IS waiting, the sign-in already
+    // completed and we return it inline (no re-prompting the user).
+    const user = { uid: 'u1', getIdToken: vi.fn().mockResolvedValue('token-123') }
+    mocks.signInWithPopup.mockRejectedValueOnce({
+      code: 'auth/redirect-operation-pending',
+      message: 'A redirect is already in progress',
+    })
+    mocks.getRedirectResult.mockResolvedValue({ user })
+
+    const result = await loginWithGoogle()
+
+    expect(result).toEqual({ user, idToken: 'token-123' })
+    expect(mocks.getRedirectResult).toHaveBeenCalledTimes(1)
+    expect(mocks.signInWithPopup).toHaveBeenCalledTimes(1)
+    expect(mocks.signInWithRedirect).not.toHaveBeenCalled()
+  })
+
+  it('self-heals a stale pending redirect: clears it and retries the popup once', async () => {
+    // No valid result waiting — getRedirectResult clears the stale state and
+    // returns null. The popup was never really attempted, so retry it once.
+    const user = { uid: 'u1', getIdToken: vi.fn().mockResolvedValue('token-123') }
+    mocks.signInWithPopup
+      .mockRejectedValueOnce({ code: 'auth/redirect-operation-pending', message: 'pending' })
+      .mockResolvedValueOnce({ user })
+    mocks.getRedirectResult.mockResolvedValue(null)
+
+    const result = await loginWithGoogle()
+
+    expect(result).toEqual({ user, idToken: 'token-123' })
+    expect(mocks.getRedirectResult).toHaveBeenCalledTimes(1)
+    expect(mocks.signInWithPopup).toHaveBeenCalledTimes(2)
+    expect(mocks.signInWithRedirect).not.toHaveBeenCalled()
+  })
+
+  it('self-heals a stale pending redirect that blocks the redirect fallback start', async () => {
+    // The popup is blocked AND the redirect fallback start is blocked by the
+    // same stale pending state — consume it, then retry the redirect once.
+    mocks.signInWithPopup.mockRejectedValue({ code: 'auth/popup-blocked', message: 'blocked' })
+    mocks.signInWithRedirect
+      .mockRejectedValueOnce({ code: 'auth/redirect-operation-pending', message: 'pending' })
+      .mockResolvedValueOnce(undefined)
+    mocks.getRedirectResult.mockResolvedValue(null)
+
+    const result = await loginWithGoogle()
+
+    expect(result).toBeNull()
+    expect(mocks.getRedirectResult).toHaveBeenCalledTimes(1)
+    expect(mocks.signInWithRedirect).toHaveBeenCalledTimes(2)
   })
 
   it('rethrows the original benign error if starting the redirect also fails', async () => {
@@ -272,6 +328,60 @@ describe('checkGoogleRedirect', () => {
   beforeEach(() => {
     sessionStorage.clear()
     vi.clearAllMocks()
+  })
+
+  it('shows the form immediately on a normal page load (no redirect flag, no pending result)', async () => {
+    // A plain visit to /login (not a redirect return) must show the form
+    // right away — and the always-on getRedirectResult call also clears any
+    // stale pending-redirect state in the SDK as a side effect.
+    mocks.getRedirectResult.mockResolvedValue(null)
+    mocks.onAuthStateChanged.mockImplementation(() => () => {})
+    const onSuccess = vi.fn()
+    const onNoRedirect = vi.fn()
+
+    const cleanup = checkGoogleRedirect(onSuccess, onNoRedirect)
+
+    await vi.waitFor(() => expect(onNoRedirect).toHaveBeenCalledTimes(1))
+    expect(onSuccess).not.toHaveBeenCalled()
+    cleanup()
+  })
+
+  it('completes an orphaned redirect result even without our flag (page reloaded before it landed)', async () => {
+    // If the page reloaded between the redirect return and result processing,
+    // our custom flag is gone but the SDK result may still be pending.
+    const user = { uid: 'u1', getIdToken: vi.fn().mockResolvedValue('token-orphan') }
+    mocks.getRedirectResult.mockResolvedValue({ user })
+    mocks.onAuthStateChanged.mockImplementation(() => () => {})
+    const onSuccess = vi.fn()
+    const onNoRedirect = vi.fn()
+
+    const cleanup = checkGoogleRedirect(onSuccess, onNoRedirect)
+
+    await vi.waitFor(() => expect(onSuccess).toHaveBeenCalledWith(user, 'token-orphan'))
+    expect(onNoRedirect).not.toHaveBeenCalled()
+    cleanup()
+  })
+
+  it('fires onTimeout (not just onNoRedirect) when a redirect return never completes', async () => {
+    // Safari ITP swallowing the cross-origin result: the page restores the
+    // form AND explains what happened via onTimeout.
+    vi.useFakeTimers()
+    try {
+      sessionStorage.setItem('agentos_google_redirect', '1')
+      mocks.getRedirectResult.mockResolvedValue(null)
+      mocks.onAuthStateChanged.mockImplementation(() => () => {})
+      const onNoRedirect = vi.fn()
+      const onTimeout = vi.fn()
+
+      const cleanup = checkGoogleRedirect(vi.fn(), onNoRedirect, onTimeout)
+      await vi.advanceTimersByTimeAsync(8000)
+
+      expect(onTimeout).toHaveBeenCalledTimes(1)
+      expect(onNoRedirect).not.toHaveBeenCalled()
+      cleanup()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('shows the form after a bounded wait when the redirect result never lands', async () => {

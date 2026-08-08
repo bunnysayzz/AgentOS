@@ -83,21 +83,23 @@ function notConfiguredError(what: string): Error {
 const REDIRECT_FLAG = 'agentos_google_redirect'
 
 /**
- * Browsers where the popup↔iframe postMessage handshake is unreliable, so
- * Google sign-in must use the same-tab redirect flow instead:
- * - Safari (desktop + iOS): fullscreen Safari opens the popup in a NEW
- *   window and the handshake fails, which the SDK wraps as the generic
- *   auth/internal-error. The redirect result is stored on OUR origin, which
- *   Safari's ITP never blocks, so the redirect flow is deterministic there.
- * - iOS WKWebView (in-app browsers: Instagram, Facebook, etc.): no real
- *   popup support at all.
+ * Browsers with NO popup support at all: iOS in-app browsers (Instagram,
+ * Facebook, DuckDuckGo…) wrap WKWebView, which blocks window.open entirely,
+ * so Google sign-in must use the same-tab redirect flow there.
+ *
+ * Real Safari (desktop + iOS) is deliberately NOT matched — it carries a
+ * "Safari/" UA token, and the popup flow DOES work there (the popup opens in
+ * a tab in small windows; in fullscreen it can open a separate window and
+ * fail with auth/internal-error, which the popup retry + redirect fallback
+ * below handle). Going redirect-only on Safari is strictly worse: Safari's
+ * ITP blocks the cross-origin result exchange (auth domain ≠ app origin), so
+ * the redirect return never completes and the user is stuck on the login
+ * page with a poisoned pending-redirect state.
  */
-function isRedirectOnlyBrowser(): boolean {
+function isInAppBrowser(): boolean {
   if (typeof navigator === 'undefined') return false
   const ua = navigator.userAgent
-  if (/^((?!chrome|crios|android|fxios|edg|opr|samsung).)*safari/i.test(ua)) return true
-  // iOS in-app browser: AppleWebKit-based, mobile, and no Chrome/Edge markers.
-  return !/chrome|crios|fxios|edg|opr/i.test(ua) && /applewebkit/i.test(ua) && /mobile/i.test(ua)
+  return /applewebkit/i.test(ua) && /mobile/i.test(ua) && !/safari\//i.test(ua)
 }
 
 // ─── Benign SDK rejection guard ─────────────────────────────────────────
@@ -139,12 +141,11 @@ export async function loginWithGoogle(): Promise<{ user: FirebaseUser; idToken: 
     throw notConfiguredError('Google Sign-In')
   }
 
-  // Safari (desktop fullscreen especially) and iOS in-app browsers break the
-  // popup↔iframe handshake deterministically — the SDK wraps it as the
-  // generic auth/internal-error, and no retry can fix a broken handshake.
-  // The same-tab redirect flow is reliable there (the result lives on OUR
-  // origin, safe from Safari's ITP), so go straight to it: no popup attempt.
-  if (isRedirectOnlyBrowser()) {
+  // iOS in-app browsers (WKWebView) block popups entirely — go straight to
+  // the same-tab redirect flow there. Every other browser (including Safari)
+  // is popup-first: Safari's popup works in normal windows/tabs, and the
+  // retry + redirect fallback below covers the fullscreen-window failure.
+  if (isInAppBrowser()) {
     sessionStorage.setItem(REDIRECT_FLAG, '1')
     await signInWithRedirect(auth, googleProvider)
     return null
@@ -173,6 +174,20 @@ export async function loginWithGoogle(): Promise<{ user: FirebaseUser; idToken: 
       // popup steals focus on desktop Safari/fullscreen. Never a real failure.
       const hiddenTabStorageError = !code && /Database is (closing|hidden)/i.test(message)
 
+      // Stale pending-redirect self-heal: a previous redirect return that
+      // never completed (Safari ITP swallowing the cross-origin result) leaves
+      // the SDK's "firebase:redirect_user:<apiKey>" sessionStorage key behind.
+      // EVERY subsequent sign-in attempt — popup included — then throws
+      // auth/redirect-operation-pending, which is exactly the "stuck on the
+      // login page" symptom. Consume the stale state; if a valid result is
+      // actually waiting, the sign-in already completed and we return it.
+      if (code === 'auth/redirect-operation-pending') {
+        const pending = await consumePendingRedirect(auth)
+        if (pending) return pending
+        // State cleared — the popup was never really attempted; retry once.
+        if (attempt === 1) continue
+      }
+
       // Transient popup-plumbing failures: retry once, then fall back below.
       if (attempt === 1 && (code === 'auth/internal-error' || hiddenTabStorageError)) {
         continue
@@ -183,6 +198,7 @@ export async function loginWithGoogle(): Promise<{ user: FirebaseUser; idToken: 
         'auth/operation-not-supported-in-this-environment',
         'auth/cancelled-popup-request',
         'auth/internal-error',
+        'auth/redirect-operation-pending',
       ]
       if (popupUnavailable.includes(code) || hiddenTabStorageError) {
         // Popup not possible → same-tab redirect. checkGoogleRedirect()
@@ -191,6 +207,14 @@ export async function loginWithGoogle(): Promise<{ user: FirebaseUser; idToken: 
         try {
           await signInWithRedirect(auth, googleProvider)
         } catch (redirectErr) {
+          const redirectCode = (redirectErr as { code?: string })?.code || ''
+          // Another stale pending redirect blocked the START of this one —
+          // consume it, then retry the redirect once.
+          if (redirectCode === 'auth/redirect-operation-pending') {
+            await consumePendingRedirect(auth)
+            await signInWithRedirect(auth, googleProvider)
+            return null
+          }
           // Starting the redirect can fail while the browser is still mid-flight
           // with the popup it just opened. When the root cause was the benign
           // hidden-tab error, rethrow THAT so the UI takes the graceful "show
@@ -288,22 +312,52 @@ export function attachAuthStateSync(): (() => void) | null {
 }
 
 /**
+ * Consume the SDK's pending-redirect state.
+ *
+ * A redirect return that never completed (Safari ITP swallowing the
+ * cross-origin result) leaves "firebase:redirect_user:<apiKey>" in
+ * sessionStorage. Every later sign-in attempt — popup or redirect — then
+ * throws auth/redirect-operation-pending, stranding the user on the login
+ * page with no way forward. Calling getRedirectResult() clears that state,
+ * and returns the user when a valid result IS waiting.
+ */
+async function consumePendingRedirect(
+  authRef: ReturnType<typeof getAuth>,
+): Promise<{ user: FirebaseUser; idToken: string } | null> {
+  try {
+    const result = await getRedirectResult(authRef)
+    if (result) {
+      const idToken = await result.user.getIdToken()
+      return { user: result.user, idToken }
+    }
+  } catch {
+    // Stale/expired — getRedirectResult already cleared it.
+  }
+  return null
+}
+
+/**
  * Check if we're returning from a Google redirect (the popup fallback path).
  * Call this on login/register page mount.
  *
  * Strategy:
- * 1. No redirect flag → normal page load. Show the form. (Never signs out a
- *    live session — that previously destroyed logged-in users' sessions.)
- * 2. Flag set → try getRedirectResult() first (works in Chrome/Firefox).
- * 3. If getRedirectResult() returns null (Safari ITP) → fall back to
- *    onAuthStateChanged.
- * 4. Clear the flag after processing.
+ * 1. Always call getRedirectResult() — even when our redirect flag is
+ *    absent. This (a) completes the normal return trip in Chrome/FF/Edge,
+ *    (b) self-heals a stale pending-redirect left by a broken Safari return
+ *    (the "stuck on login page" state), and (c) completes an orphaned result
+ *    (page reloaded before the result landed).
+ * 2. Redirect flag set → keep showing the spinner while getRedirectResult /
+ *    onAuthStateChanged resolve, bounded by 8s; on timeout show the form and
+ *    (when provided) fire onTimeout with a helpful message.
+ * 3. No flag → normal page load: show the form immediately once
+ *    getRedirectResult settles empty.
  *
  * @returns an unsubscribe/cleanup function for the effect.
  */
 export function checkGoogleRedirect(
   onSuccess: (user: FirebaseUser, idToken: string) => void,
   onNoRedirect: () => void,
+  onTimeout?: () => void,
 ): () => void {
   // Firebase not configured → Google auth isn't possible; just show the form.
   if (!auth) {
@@ -314,18 +368,16 @@ export function checkGoogleRedirect(
   // below (a module-level `let` is not narrowed inside callbacks).
   const authRef = auth
 
-  // No flag = normal page load, not a redirect return
-  if (!sessionStorage.getItem(REDIRECT_FLAG)) {
-    onNoRedirect()
-    return () => {}
+  const returningFromRedirect = sessionStorage.getItem(REDIRECT_FLAG)
+  if (returningFromRedirect) {
+    sessionStorage.removeItem(REDIRECT_FLAG)
   }
-
-  // Flag is set — we ARE returning from a Google redirect
-  sessionStorage.removeItem(REDIRECT_FLAG)
 
   let handled = false
 
-  // Try getRedirectResult first (works in Chrome/Firefox/Edge)
+  // Always call getRedirectResult: normal return trip in Chrome/Firefox/Edge,
+  // self-heal of stale pending-redirect state (Safari ITP), and completion of
+  // orphaned results — see the function docstring.
   getRedirectResult(authRef)
     .then(async (result) => {
       if (handled) return
@@ -333,14 +385,25 @@ export function checkGoogleRedirect(
         handled = true
         const idToken = await result.user.getIdToken()
         onSuccess(result.user, idToken)
+      } else if (!returningFromRedirect) {
+        // Normal page load with no pending result → show the form right away.
+        handled = true
+        onNoRedirect()
       }
-      // If result is null, Safari ITP blocked it — fall through to onAuthStateChanged below
+      // returningFromRedirect + null result → Safari ITP likely swallowed it;
+      // wait for the onAuthStateChanged fallback below (or the timeout).
     })
     .catch(() => {
-      // getRedirectResult error (Safari ITP) — fall through to onAuthStateChanged
+      // getRedirectResult error — the onAuthStateChanged fallback handles the
+      // redirect-return case; a normal load just shows the form.
+      if (!returningFromRedirect && !handled) {
+        handled = true
+        onNoRedirect()
+      }
     })
 
-  // Fallback: onAuthStateChanged (catches Safari ITP case)
+  // Fallback: onAuthStateChanged (catches the Safari ITP case where
+  // getRedirectResult returns null but the session actually exists).
   const unsubscribe = onAuthStateChanged(authRef, async (user) => {
     if (handled) return
     if (user) {
@@ -355,15 +418,25 @@ export function checkGoogleRedirect(
   // If nothing has completed after 8s, show the form — but KEEP the listener
   // alive so a late sign-in result is still consumed (no lost logins). 8s is
   // long enough for real returns and short enough that users never stare at
-  // the spinner for a lost/blocked redirect (Safari ITP etc.).
-  const timeout = setTimeout(() => {
-    if (!handled) onNoRedirect()
-  }, 8000)
+  // the spinner for a lost/blocked redirect (Safari ITP etc.). onTimeout lets
+  // the page explain WHAT went wrong instead of silently restoring the form.
+  let timeout: ReturnType<typeof setTimeout> | null = null
+  if (returningFromRedirect) {
+    timeout = setTimeout(() => {
+      if (!handled) {
+        if (onTimeout) {
+          onTimeout()
+        } else {
+          onNoRedirect()
+        }
+      }
+    }, 8000)
+  }
 
   return () => {
     handled = true
     unsubscribe()
-    clearTimeout(timeout)
+    if (timeout) clearTimeout(timeout)
   }
 }
 

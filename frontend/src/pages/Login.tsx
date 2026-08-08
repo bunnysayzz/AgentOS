@@ -72,7 +72,14 @@ export default function Login() {
         await finishAuth(idToken, user)
       },
       // onNoRedirect: normal page load, just show the form
-      () => { setGoogleLoading(false) }
+      () => { setGoogleLoading(false) },
+      // onTimeout: the return trip never completed (Safari ITP blocks the
+      // cross-site sign-in exchange). Restore the form AND explain what
+      // happened, so the user is never silently stuck on the spinner.
+      () => {
+        setGoogleLoading(false)
+        setError('Google sign-in didn\u2019t complete. Your browser may be blocking the sign-in window. Use email & password below, or try Chrome, Firefox or Edge.')
+      },
     )
     return cleanup
   }, [])
