@@ -61,12 +61,25 @@ def _get_client() -> httpx.AsyncClient:
 
 
 def _clean_headers(headers: httpx.Headers) -> dict[str, str]:
-    """Drop hop-by-hop + Host headers before forwarding upstream."""
-    return {
+    """Prepare headers for the upstream request.
+
+    - Drop hop-by-hop + Host headers (the proxy's own vhost must not leak).
+    - Drop content-length (httpx recomputes it from the body).
+    - Force ``Accept-Encoding: identity``: the helper responses are tiny, and
+      forwarding the client's gzip/br preference makes the upstream compress,
+      which then breaks the double-decode path (Google's CDN stream failed to
+      decompress in httpx with ``DecodingError: incorrect header check``).
+      With identity, the upstream returns plain bytes and we relay them
+      verbatim.
+    """
+    cleaned = {
         k: v
         for k, v in headers.items()
-        if k.lower() not in _HOP_BY_HOP and k.lower() not in {"host", "content-length"}
+        if k.lower() not in _HOP_BY_HOP
+        and k.lower() not in {"host", "content-length", "accept-encoding"}
     }
+    cleaned["Accept-Encoding"] = "identity"
+    return cleaned
 
 
 async def _proxy(request: Request) -> Response:
@@ -85,9 +98,15 @@ async def _proxy(request: Request) -> Response:
         content=body or None,
     )
 
+    # Relay the upstream headers, minus hop-by-hop and any content-encoding/
+    # content-length (the body is relayed verbatim; wrong length/encoding
+    # headers would corrupt the response in the browser).
     response_headers = {}
     for k, v in upstream.headers.items():
-        if k.lower() not in _HOP_BY_HOP:
+        if (
+            k.lower() not in _HOP_BY_HOP
+            and k.lower() not in {"content-encoding", "content-length", "transfer-encoding"}
+        ):
             response_headers[k] = v
 
     # The proxied helper responses must NOT inherit the app's frame-blocking
