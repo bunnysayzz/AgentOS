@@ -219,6 +219,15 @@ if settings.MCP_ENABLED:
     except Exception as e:
         print(f"⚠️  MCP server mount skipped: {e}")
 
+# ─── Firebase auth-helper proxy (same-origin Google sign-in) ──────────────
+# Transparently serves /__/auth and /__/firebase from <project>.firebaseapp.com
+# ON OUR OWN origin. Browsers that block third-party storage (Safari ITP,
+# Chrome 115+, Firefox 109+) break cross-origin Google sign-in; proxying makes
+# the auth iframe same-origin so sign-in works everywhere. MUST be registered
+# before the SPA /{full_path:path} catch-all below.
+from app.core.auth_proxy import register_auth_proxy
+register_auth_proxy(app)
+
 
 @app.middleware("http")
 async def cache_control_headers(request: Request, call_next):
@@ -278,7 +287,7 @@ async def admin_console():
 @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
 async def spa_fallback(full_path: str):
     """Serve the SPA for client-side routes (only when the build exists)."""
-    if full_path.startswith(("api/", "docs", "redoc", "openapi.json")):
+    if full_path.startswith(("api/", "docs", "redoc", "openapi.json", "__/")):
         raise HTTPException(status_code=404, detail="Not found")
     if frontend_dist is None:
         raise HTTPException(status_code=404, detail="Frontend build not present")

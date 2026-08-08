@@ -23,9 +23,44 @@ import {
 } from 'firebase/auth'
 import { useAuthStore } from '@/stores/authStore'
 
+/**
+ * Resolve the Firebase authDomain.
+ *
+ * Google sign-in is delivered through helper code on the authDomain. When
+ * that domain is a DIFFERENT site from the app (Render/Vercel/your server),
+ * browsers that block third-party storage (Safari ITP, Chrome 115+,
+ * Firefox 109+) break sign-in. The backend reverse-proxies /__/auth and
+ * /__/firebase on the app origin (see backend app/core/auth_proxy.py), which
+ * makes the app origin a fully valid auth domain — so when the config still
+ * carries the default <project>.firebaseapp.com value (or nothing), we adopt
+ * the app's own hostname and the helper becomes same-origin (ITP-safe),
+ * with no env change or redeploy needed.
+ *
+ * - Explicit custom authDomain (e.g. auth.mycompany.com) → trusted as-is.
+ * - Local dev (localhost, no proxy) → keep the Firebase auth domain.
+ * - Deployed elsewhere → use window.location.hostname.
+ */
+function resolveAuthDomain(): string {
+  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID
+  const envAuthDomain = (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined)?.trim()
+  const isLocalhost =
+    typeof window !== 'undefined' &&
+    /^localhost$|^127\.0\.0\.1$|^0\.0\.0\.0$|\.local$/.test(window.location.hostname)
+  const isDefaultFirebaseDomain =
+    Boolean(projectId) && envAuthDomain === `${projectId}.firebaseapp.com`
+
+  if (envAuthDomain && !isDefaultFirebaseDomain) {
+    return envAuthDomain
+  }
+  if (typeof window !== 'undefined' && window.location.hostname && !isLocalhost) {
+    return window.location.hostname
+  }
+  return envAuthDomain || ''
+}
+
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  authDomain:        resolveAuthDomain(),
   projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
   storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,

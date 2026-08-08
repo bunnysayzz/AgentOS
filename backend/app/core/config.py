@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     FIREBASE_PRIVATE_KEY: str = ""
     GOOGLE_APPLICATION_CREDENTIALS: str = ""
 
+    # Transparent reverse-proxy target for the Firebase auth sign-in helpers
+    # (/__/auth, /__/firebase). Defaults to <project>.firebaseapp.com. Serving
+    # them SAME-origin on the app domain is Firebase's documented fix for
+    # browsers that block third-party storage (Safari ITP etc.) breaking
+    # Google sign-in — see app/core/auth_proxy.py.
+    FIREBASE_AUTH_PROXY_TARGET: str = ""
+
     # Security
     SECRET_KEY: str = "change-me-in-production-use-a-real-secret"
     JWT_ALGORITHM: str = "HS256"

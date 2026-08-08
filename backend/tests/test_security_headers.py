@@ -23,15 +23,17 @@ async def test_security_headers_present_on_api_response(
 
     # The Firebase Auth hidden iframe + Google sign-in window MUST be frame-
     # allowed — blocking them breaks Google sign-in (the popup flow uses an
-    # invisible iframe hosted on the authDomain).
-    assert "frame-src https://accounts.google.com" in csp
+    # invisible iframe hosted on the authDomain). 'self' covers the same-origin
+    # auth-helper proxy (/__/auth); the rest covers the direct firebaseapp.com
+    # authDomain used in local dev.
+    assert "frame-src 'self' https://accounts.google.com" in csp
     assert "frame-src" in csp and "https://*.firebaseapp.com" in csp
 
     # The Firebase Auth service worker (signInWithRedirect, hosted on the
     # authDomain) MUST be worker-allowed. Without worker-src it falls back to
     # default-src 'self', the SW can't register, the redirect result is lost
     # on Safari (ITP), and the user is bounced back to the login page forever.
-    assert "worker-src https://*.firebaseapp.com" in csp
+    assert "worker-src 'self' https://*.firebaseapp.com" in csp
     assert "worker-src" in csp and "https://*.web.app" in csp
 
     # Sentry ingest must be reachable via connect-src (env-gated feature).

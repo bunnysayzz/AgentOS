@@ -72,8 +72,8 @@ _CSP = (
     "https://firebasestorage.googleapis.com https://storage.googleapis.com"
     + (" " + " ".join(_CSP_CONNECT_EXTRA) if _CSP_CONNECT_EXTRA else "")
     + "; "
-    "frame-src https://accounts.google.com https://*.firebaseapp.com https://*.web.app; "
-    "worker-src https://*.firebaseapp.com https://*.web.app; "
+    "frame-src 'self' https://accounts.google.com https://*.firebaseapp.com https://*.web.app; "
+    "worker-src 'self' https://*.firebaseapp.com https://*.web.app; "
     "object-src 'none'; "
     "base-uri 'self'; "
     "form-action 'self'; "
@@ -83,6 +83,19 @@ _CSP = (
 
 
 def _security_headers(request: Request) -> dict[str, str]:
+    # The Firebase auth-helper proxy (/__/auth, /__/firebase) serves Google's
+    # sign-in helper code on OUR origin. Those responses must NOT inherit the
+    # app's frame-blocking headers — the auth iframe has to be frameable by
+    # the app page (X-Frame-Options: DENY / frame-ancestors 'none' would break
+    # Google sign-in). Serve them exactly as upstream does (only HSTS added).
+    if request.url.path.startswith("/__/"):
+        headers: dict[str, str] = {}
+        if not settings.DEBUG and request.url.scheme == "https":
+            headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains; preload"
+            )
+        return headers
+
     headers = {
         "Content-Security-Policy": _CSP,
         "X-Frame-Options": "DENY",
