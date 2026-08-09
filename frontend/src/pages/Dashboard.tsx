@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   ActivityIcon, ArchiveIcon, ArrowRightIcon, BotIcon, BrainIcon, CheckCircleIcon,
@@ -10,6 +10,7 @@ import {
 } from '@/components/Icons'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/authStore'
+import { useWorkspaceStore } from '@/stores/workspaceStore'
 import { cn } from '@/utils/cn'
 
 const QUICK_ACTIONS = [
@@ -44,7 +45,28 @@ const PIPELINE = [
 export default function Dashboard() {
   const user = useAuthStore((s) => s.user)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const setSelectedWorkspace = useWorkspaceStore((s) => s.setSelectedWorkspace)
   const [selectedWsId, setSelectedWsId] = useState<string | null>(null)
+
+  // One-click demo workspace for first-run users.
+  const { mutate: seedDemo, isPending: seeding } = useMutation({
+    mutationFn: () => api.post('/demo/seed').then((r) => r.data),
+    onSuccess: (data: { id: string; name: string }) => {
+      // Invalidate the workspace + stats queries AND the per-domain list
+      // caches so the freshly seeded agents/workflows/prompts/tools appear
+      // immediately instead of stale empty lists.
+      queryClient.invalidateQueries({ queryKey: ['workspaces'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+      for (const key of ['agents', 'workflows', 'prompts', 'tools', 'memory', 'secrets', 'artifacts']) {
+        queryClient.invalidateQueries({ queryKey: [key, data.id] })
+        queryClient.invalidateQueries({ queryKey: [key] })
+      }
+      setSelectedWorkspace(data.id, data.name)
+      navigate(`/workspaces/${data.id}`)
+    },
+  })
 
   // ─── Dashboard stats — ONE aggregate endpoint ─────────────────────
   // The server computes every count (workspaces, models, calls, keys,
@@ -268,15 +290,32 @@ export default function Dashboard() {
           <div className="flex items-center gap-2 mb-5">
             <SparklesIcon size={16} className="text-primary-400" />
             <h2 className="microlabel">Getting Started</h2>
-            {isAuthenticated ? (
-              <span className="ml-auto chip">
-                {stepsDone}/{checklistSteps.length} complete
-              </span>
-            ) : (
-              <span className="ml-auto text-[11px] text-surface-500">
-                Sign in to unlock creation
-              </span>
-            )}
+            <div className="ml-auto flex items-center gap-2">
+              {isAuthenticated ? (
+                <span className="chip">
+                  {stepsDone}/{checklistSteps.length} complete
+                </span>
+              ) : (
+                <span className="text-[11px] text-surface-500">
+                  Sign in to unlock creation
+                </span>
+              )}
+              {isAuthenticated && (
+                <button
+                  onClick={() => seedDemo()}
+                  disabled={seeding}
+                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-primary-500/10 text-primary-400 border border-primary-500/20 hover:bg-primary-500/20 transition-all duration-200 disabled:opacity-50"
+                  title="Load a pre-built workspace with a support agent, workflow, prompts and tools"
+                >
+                  {seeding ? (
+                    <div className="w-3 h-3 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+                  ) : (
+                    <RocketIcon size={13} />
+                  )}
+                  {seeding ? 'Loading…' : 'Load demo workspace'}
+                </button>
+              )}
+            </div>
           </div>
           <motion.div
             className="grid grid-cols-1 md:grid-cols-2 gap-3"

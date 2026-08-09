@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     FIREBASE_PRIVATE_KEY: str = ""
     GOOGLE_APPLICATION_CREDENTIALS: str = ""
 
+    # Production-grade Firebase auth: paste the entire service-account JSON
+    # (Firebase Console → Project settings → Service accounts → Generate new
+    # private key). When set, it is used FIRST — above the refresh-token path.
+    FIREBASE_SERVICE_ACCOUNT_JSON: str = ""
+
     # Transparent reverse-proxy target for the Firebase auth sign-in helpers
     # (/__/auth, /__/firebase). Defaults to <project>.firebaseapp.com. Serving
     # them SAME-origin on the app domain is Firebase's documented fix for

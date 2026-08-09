@@ -461,7 +461,11 @@ async def route_chat_completion(
                     completion_tokens = result["usage"].get("completion_tokens", 10)
                     finish_reason = result["choices"][0].get("finish_reason", "stop")
                 else:
-                    raise MCPError(f"Real API calls for {provider.value} are not yet implemented")
+                    raise MCPError(
+                        f"Provider '{provider.value}' has no base URL configured. "
+                        "Set a base URL in the Providers page, or choose a different provider.",
+                        status_code=400,
+                    )
 
             duration_ms = int((time.monotonic() - start_time) * 1000)
             total_tokens = prompt_tokens + completion_tokens
@@ -659,7 +663,11 @@ async def route_chat_completion_raw(
                 if not base_url:
                     base_url = get_provider_metadata(provider).get("base_url") or ""
                 if not base_url:
-                    raise MCPError(f"Real API calls for {provider.value} are not yet implemented")
+                    raise MCPError(
+                        f"Provider '{provider.value}' has no base URL configured. "
+                        "Set a base URL in the Providers page, or choose a different provider.",
+                        status_code=400,
+                    )
                 result = await _call_openai_compatible(
                     api_key=api_key, messages=messages_dict, model=actual_model,
                     temperature=temperature, max_tokens=request.max_tokens,
@@ -867,7 +875,11 @@ async def stream_chat_completion(
                 if not base_url:
                     base_url = get_provider_metadata(provider).get("base_url") or ""
                 if not base_url:
-                    raise MCPError(f"Real API calls for {provider.value} are not yet implemented")
+                    raise MCPError(
+                        f"Provider '{provider.value}' has no base URL configured. "
+                        "Set a base URL in the Providers page, or choose a different provider.",
+                        status_code=400,
+                    )
                 async for evt in _stream_openai_compatible(
                     api_key=api_key, messages=messages_dict, model=actual_model,
                     temperature=temperature, max_tokens=request.max_tokens, base_url=base_url,

@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { GlobeIcon, LockIcon, PlusIcon, SettingsIcon, UsersIcon } from '@/components/Icons'
+import { GlobeIcon, LockIcon, PlusIcon, RocketIcon, SettingsIcon, UsersIcon } from '@/components/Icons'
 import api from '@/services/api'
+import { useWorkspaceStore } from '@/stores/workspaceStore'
 
 interface Workspace {
   id: string
@@ -16,8 +17,24 @@ interface Workspace {
 
 export default function Workspaces() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const setSelectedWorkspace = useWorkspaceStore((s) => s.setSelectedWorkspace)
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState({ name: '', description: '' })
+
+  const { mutate: seedDemo, isPending: seeding } = useMutation({
+    mutationFn: () => api.post('/demo/seed').then((r) => r.data),
+    onSuccess: (data: { id: string; name: string }) => {
+      queryClient.invalidateQueries({ queryKey: ['workspaces'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+      for (const key of ['agents', 'workflows', 'prompts', 'tools', 'memory', 'secrets', 'artifacts']) {
+        queryClient.invalidateQueries({ queryKey: [key, data.id] })
+        queryClient.invalidateQueries({ queryKey: [key] })
+      }
+      setSelectedWorkspace(data.id, data.name)
+      navigate(`/workspaces/${data.id}`)
+    },
+  })
 
   const { data: workspaces, isLoading } = useQuery({
     queryKey: ['workspaces'],
@@ -65,10 +82,25 @@ export default function Workspaces() {
           <div className="glass-panel p-12 text-center">
             <GlobeIcon className="w-12 h-12 text-surface-600 mx-auto mb-3" />
             <h3 className="text-lg font-medium text-surface-400">No workspaces yet</h3>
-            <p className="text-sm text-surface-500 mt-1 mb-4">Create your first workspace to get started</p>
-            <button onClick={() => setShowCreate(true)} className="btn-primary">
-              Create Workspace
-            </button>
+            <p className="text-sm text-surface-500 mt-1 mb-4">Create your first workspace — or load a pre-built demo to explore AgentOS in action.</p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <button
+                onClick={() => seedDemo()}
+                disabled={seeding}
+                className="btn-primary flex items-center gap-2"
+              >
+                {seeding ? (
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <RocketIcon size={16} />
+                )}
+                {seeding ? 'Loading demo…' : 'Load demo workspace'}
+              </button>
+              <button onClick={() => setShowCreate(true)} className="btn-secondary flex items-center gap-2">
+                <PlusIcon size={16} />
+                Create Workspace
+              </button>
+            </div>
           </div>
         ) : (
           list.map((ws) => (

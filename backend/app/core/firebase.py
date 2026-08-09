@@ -3,10 +3,15 @@
 The Firestore client is initialized lazily in a strict, production-friendly
 order:
 
-1. Service Account (FIREBASE_PRIVATE_KEY & FIREBASE_CLIENT_EMAIL)  → prod
-2. Local CLI OAuth tokens (~/.config/configstore/firebase-tools.json) → dev
-3. ENV OAuth refresh token (FIREBASE_REFRESH_TOKEN & FIREBASE_CLIENT_ID)
-4. GOOGLE_APPLICATION_CREDENTIALS / GCP ADC → GCP services / default
+1. Service Account JSON (FIREBASE_SERVICE_ACCOUNT_JSON)          → prod (best)
+2. Service Account pair (FIREBASE_PRIVATE_KEY & FIREBASE_CLIENT_EMAIL) → prod
+3. Local CLI OAuth tokens (~/.config/configstore/firebase-tools.json) → dev
+4. ENV OAuth refresh token (FIREBASE_REFRESH_TOKEN & FIREBASE_CLIENT_ID) → dev
+5. GOOGLE_APPLICATION_CREDENTIALS / GCP ADC → GCP services / default
+
+In production, prefer the service account (1 or 2) — a dedicated identity
+with scoped IAM permissions. The refresh-token paths (3/4) exist for local
+development and legacy setups; they log a warning when used.
 
 Firebase Auth ID tokens are verified against **Firebase's** public signing
 certs (``securetoken@system.gserviceaccount.com``). This is important:
@@ -58,7 +63,18 @@ def get_firestore_db() -> firestore.Client:
     project_id = settings.FIREBASE_PROJECT_ID or "agentos-7f01e"
     client_opts = {"quota_project_id": project_id}
 
-    # ─── 1. Production: Service Account Private Key from ENV ─────────────
+    # ─── 1. Production: Service Account JSON from ENV (preferred) ────────
+    if settings.FIREBASE_SERVICE_ACCOUNT_JSON:
+        try:
+            cred_dict = json.loads(settings.FIREBASE_SERVICE_ACCOUNT_JSON)
+            creds = service_account.Credentials.from_service_account_info(cred_dict)
+            _firestore_db = firestore.Client(project=project_id, credentials=creds, client_options=client_opts)
+            logger.info(f"Cloud Firestore initialized using Service Account JSON for project {project_id}.")
+            return _firestore_db
+        except Exception as e:  # pragma: no cover
+            logger.warning(f"FIREBASE_SERVICE_ACCOUNT_JSON failed to parse: {e}")
+
+    # ─── 2. Production: Service Account Private Key from ENV ─────────────
     if settings.FIREBASE_PRIVATE_KEY and settings.FIREBASE_CLIENT_EMAIL:
         formatted_key = settings.FIREBASE_PRIVATE_KEY.replace("\\n", "\n")
         cred_dict = {
@@ -73,7 +89,7 @@ def get_firestore_db() -> firestore.Client:
         logger.info(f"Cloud Firestore initialized using Service Account ENV for project {project_id}.")
         return _firestore_db
 
-    # ─── 2. Local Developer: CLI Credentials File ────────────────────────
+    # ─── 3. Local Developer: CLI Credentials File ────────────────────────
     if CONFIGSTORE_PATH.exists():
         try:
             import json
@@ -96,7 +112,7 @@ def get_firestore_db() -> firestore.Client:
         except Exception as e:  # pragma: no cover
             logger.warning(f"Local CLI token init failed: {e}")
 
-    # ─── 3. ENV Credentials: OAuth Refresh Token ─────────────────────────
+    # ─── 4. ENV Credentials: OAuth Refresh Token (legacy/dev) ────────────
     if settings.FIREBASE_REFRESH_TOKEN and settings.FIREBASE_CLIENT_ID:
         # Normalize empty-string access token to None. An empty string makes
         # google-auth think it has a valid token and send a blank Bearer
@@ -110,13 +126,13 @@ def get_firestore_db() -> firestore.Client:
             client_secret=FIREBASE_CLI_CLIENT_SECRET,
         )
         _firestore_db = firestore.Client(project=project_id, credentials=creds, client_options=client_opts)
-        logger.info(
-            f"Cloud Firestore initialized using ENV OAuth credentials ({settings.FIREBASE_USER_EMAIL}) "
-            f"for project {project_id}."
+        logger.warning(
+            f"Cloud Firestore initialized using ENV OAuth refresh token ({settings.FIREBASE_USER_EMAIL}) "
+            f"for project {project_id}. Prefer FIREBASE_SERVICE_ACCOUNT_JSON in production."
         )
         return _firestore_db
 
-    # ─── 4. Default Fallback (ADC / GOOGLE_APPLICATION_CREDENTIALS) ──────
+    # ─── 5. Default Fallback (ADC / GOOGLE_APPLICATION_CREDENTIALS) ──────
     _firestore_db = firestore.Client(project=project_id, client_options=client_opts)
     logger.info(f"Cloud Firestore initialized using default client for project {project_id}.")
     return _firestore_db

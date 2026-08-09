@@ -61,15 +61,20 @@ services:
         sync: false
       - key: VITE_FIREBASE_APP_ID
         sync: false
-      # Backend Firestore credentials — see backend/.env.example. The
-      # FIREBASE_REFRESH_TOKEN + FIREBASE_CLIENT_ID pair (from `firebase login`)
-      # works out of the box; a service account is the production-grade option.
+      # Backend Firestore credentials — see backend/.env.example.
+      # Preferred (production-grade): paste the full service-account JSON
+      # (Firebase Console → Project settings → Service accounts → Generate
+      # new private key) into FIREBASE_SERVICE_ACCOUNT_JSON.
+      # Legacy/dev option: the FIREBASE_REFRESH_TOKEN + FIREBASE_CLIENT_ID
+      # pair (from `firebase login`) still works out of the box.
       - key: SECRET_KEY
         sync: false
       - key: ENCRYPTION_KEY
         sync: false
       - key: FIREBASE_PROJECT_ID
         value: agentos-7f01e
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
       - key: FIREBASE_USER_EMAIL
         sync: false
       - key: FIREBASE_CLIENT_ID

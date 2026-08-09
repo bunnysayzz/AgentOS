@@ -20,6 +20,7 @@ from app.api.api_keys import router as api_keys_router
 from app.api.gallery import router as gallery_router
 from app.api.webhooks import router as webhooks_router
 from app.api.dashboard import router as dashboard_router
+from app.api.demo import router as demo_router
 
 router = APIRouter()
 
@@ -42,6 +43,7 @@ router.include_router(execution_graphs_router)
 router.include_router(telemetry_router)
 router.include_router(webhooks_router)
 router.include_router(dashboard_router)
+router.include_router(demo_router)
 
 
 @router.get("/")
