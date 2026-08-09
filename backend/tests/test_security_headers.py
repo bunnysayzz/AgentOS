@@ -29,6 +29,13 @@ async def test_security_headers_present_on_api_response(
     assert "frame-src 'self' https://accounts.google.com" in csp
     assert "frame-src" in csp and "https://*.firebaseapp.com" in csp
 
+    # gapi (apis.google.com/js/api.js) is injected INTO the main document by
+    # the Firebase Auth SDK to build the hidden auth iframe for the popup
+    # handshake. Blocking it (script-src 'self' alone) makes signInWithPopup
+    # fail in EVERY browser — verified live with a headless-Chrome probe.
+    assert "script-src 'self' https://apis.google.com" in csp
+    assert "connect-src" in csp and "https://apis.google.com" in csp
+
     # The Firebase Auth service worker (signInWithRedirect, hosted on the
     # authDomain) MUST be worker-allowed. Without worker-src it falls back to
     # default-src 'self', the SW can't register, the redirect result is lost

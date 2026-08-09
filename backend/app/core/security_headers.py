@@ -31,6 +31,13 @@ from app.core.config import settings
 #   identitytoolkit.googleapis    → Firebase Auth (email/password, ID tokens)
 #   securetoken.googleapis        → Firebase Auth token refresh
 #   www.googleapis.com            → Google sign-in API
+#   apis.google.com               → gapi (https://apis.google.com/js/api.js)
+#                                   — the Firebase Auth SDK injects this INTO
+#                                   the MAIN document to build the hidden
+#                                   auth iframe for the popup handshake.
+#                                   Blocking it (script-src 'self') makes
+#                                   signInWithPopup fail in EVERY browser
+#                                   (auth/internal-error → redirect fallback).
 #   firebasestorage.googleapis    → avatar uploads/downloads
 #   storage.googleapis.com        → avatar CDN URLs
 #   lh3.googleusercontent.com     → Google profile photos
@@ -61,7 +68,9 @@ if getattr(settings, "CSP_EXTRA_SCRIPT_SRC", ""):
 
 _CSP = (
     "default-src 'self'; "
-    "script-src 'self'" + (" " + " ".join(_CSP_SCRIPT_EXTRA) if _CSP_SCRIPT_EXTRA else "") + "; "
+    "script-src 'self' https://apis.google.com"
+    + (" " + " ".join(_CSP_SCRIPT_EXTRA) if _CSP_SCRIPT_EXTRA else "")
+    + "; "
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
     "font-src 'self' https://fonts.gstatic.com; "
     "img-src 'self' data: blob: https://firebasestorage.googleapis.com "
@@ -69,10 +78,12 @@ _CSP = (
     "https://raw.githubusercontent.com; "
     "connect-src 'self' https://identitytoolkit.googleapis.com "
     "https://securetoken.googleapis.com https://www.googleapis.com "
+    "https://accounts.google.com https://apis.google.com "
     "https://firebasestorage.googleapis.com https://storage.googleapis.com"
     + (" " + " ".join(_CSP_CONNECT_EXTRA) if _CSP_CONNECT_EXTRA else "")
     + "; "
-    "frame-src 'self' https://accounts.google.com https://*.firebaseapp.com https://*.web.app; "
+    "frame-src 'self' https://accounts.google.com https://apis.google.com "
+    "https://*.firebaseapp.com https://*.web.app; "
     "worker-src 'self' https://*.firebaseapp.com https://*.web.app; "
     "object-src 'none'; "
     "base-uri 'self'; "
