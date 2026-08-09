@@ -1,27 +1,121 @@
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { cn } from '@/utils/cn'
-import { ActivityIcon, ArchiveIcon, BotIcon, BrainIcon, ChevronLeftIcon, ChevronRightIcon, CpuIcon, DashboardIcon, FileTextIcon, GitBranchIcon, GlobeIcon, KeyIcon, LogInIcon, LogoIcon, LogOutIcon, SettingsIcon, UserPlusIcon, UsersIcon, WorkflowIcon, WrenchIcon, XIcon } from '@/components/Icons'
+import { ActivityIcon, ArchiveIcon, BotIcon, BrainIcon, ChevronLeftIcon, ChevronRightIcon, CpuIcon, DashboardIcon, FileTextIcon, GitBranchIcon, GlobeIcon, KeyIcon, LogInIcon, LogoIcon, LogOutIcon, SettingsIcon, UserPlusIcon, UsersIcon, WorkflowIcon, WrenchIcon, XIcon, CheckIcon, ChevronDownIcon } from '@/components/Icons'
 import { useAuthStore } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
 import { firebaseAuth, firebaseSignOut } from '@/services/firebase'
+import { CommandPaletteTrigger } from '@/components/CommandPalette'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import api from '@/services/api'
+import { useWorkspaceStore } from '@/stores/workspaceStore'
 
-const navItems = [
-  { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon },
-  { label: 'Workspaces', path: '/workspaces', icon: UsersIcon },
-  { label: 'Agents', path: '/agents', icon: BotIcon },
-  { label: 'Gallery', path: '/gallery', icon: GlobeIcon },
-  { label: 'Workflows', path: '/workflows', icon: WorkflowIcon },
-  { label: 'Memory', path: '/memory', icon: BrainIcon },
-  { label: 'Tools', path: '/tools', icon: WrenchIcon },
-  { label: 'MCP Gateway', path: '/mcp', icon: CpuIcon },
-  { label: 'Prompts', path: '/prompts', icon: FileTextIcon },
-  { label: 'Secrets', path: '/secrets', icon: KeyIcon },
-  { label: 'Artifacts', path: '/artifacts', icon: ArchiveIcon },
-  { label: 'Graphs', path: '/graphs', icon: GitBranchIcon },
-  { label: 'Telemetry', path: '/telemetry', icon: ActivityIcon },
-  { label: 'Providers', path: '/providers', icon: KeyIcon },
+// ─── Navigation, grouped like industry tools (Overview / Build / …) ──
+const NAV_SECTIONS: { label: string; items: { label: string; path: string; icon: React.FC<any> }[] }[] = [
+  {
+    label: 'Overview',
+    items: [
+      { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon },
+      { label: 'Workspaces', path: '/workspaces', icon: UsersIcon },
+      { label: 'Gallery', path: '/gallery', icon: GlobeIcon },
+    ],
+  },
+  {
+    label: 'Build',
+    items: [
+      { label: 'Agents', path: '/agents', icon: BotIcon },
+      { label: 'Workflows', path: '/workflows', icon: WorkflowIcon },
+      { label: 'Prompts', path: '/prompts', icon: FileTextIcon },
+      { label: 'Tools', path: '/tools', icon: WrenchIcon },
+    ],
+  },
+  {
+    label: 'Integrate',
+    items: [
+      { label: 'MCP Gateway', path: '/mcp', icon: CpuIcon },
+      { label: 'Providers', path: '/providers', icon: GlobeIcon },
+      { label: 'API Keys', path: '/api-keys', icon: KeyIcon },
+    ],
+  },
+  {
+    label: 'Observe',
+    items: [
+      { label: 'Memory', path: '/memory', icon: BrainIcon },
+      { label: 'Secrets', path: '/secrets', icon: KeyIcon },
+      { label: 'Artifacts', path: '/artifacts', icon: ArchiveIcon },
+      { label: 'Graphs', path: '/graphs', icon: GitBranchIcon },
+      { label: 'Telemetry', path: '/telemetry', icon: ActivityIcon },
+    ],
+  },
 ]
+
+// Workspace switcher embedded in the sidebar (collapsed → chevron only)
+function SidebarWorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
+  const [open, setOpen] = useState(false)
+  const { selectedWorkspaceId, selectedWorkspaceName, setSelectedWorkspace } = useWorkspaceStore()
+  const { data: workspaces } = useQuery({
+    queryKey: ['workspaces'],
+    queryFn: () => api.get('/workspaces/').then((r) => r.data),
+  })
+  const list: { id: string; name: string }[] = Array.isArray(workspaces) ? workspaces : []
+  if (list.length === 0) return null
+
+  return (
+    <div className="relative px-2">
+      <button
+        onClick={() => setOpen(!open)}
+        className={cn(
+          'w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-all duration-200',
+          'bg-surface-900/60 border border-surface-700/30 hover:border-surface-600/60 text-surface-200',
+          collapsed && 'justify-center px-1',
+        )}
+        title={selectedWorkspaceName || 'Select workspace'}
+      >
+        <span className={cn(
+          'flex items-center justify-center w-5 h-5 rounded-md text-[10px] font-bold flex-shrink-0',
+          'bg-primary-500/15 text-primary-400 border border-primary-500/25',
+        )}>
+          {(selectedWorkspaceName || 'W').slice(0, 1).toUpperCase()}
+        </span>
+        {!collapsed && (
+          <>
+            <span className="flex-1 text-left truncate text-[13px]">
+              {selectedWorkspaceName || 'Select workspace'}
+            </span>
+            <ChevronDownIcon size={13} className="text-surface-500 flex-shrink-0" />
+          </>
+        )}
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute left-2 right-2 top-full mt-1 z-20 glass-panel p-1 shadow-xl max-h-60 overflow-y-auto">
+            {list.map((ws) => (
+              <button
+                key={ws.id}
+                onClick={() => {
+                  setSelectedWorkspace(ws.id, ws.name)
+                  setOpen(false)
+                }}
+                className={cn(
+                  'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all duration-150',
+                  selectedWorkspaceId === ws.id
+                    ? 'bg-primary-500/10 text-primary-400'
+                    : 'text-surface-300 hover:bg-surface-800',
+                )}
+              >
+                <span className="flex-1 text-left truncate">{ws.name}</span>
+                {selectedWorkspaceId === ws.id && <CheckIcon size={13} className="flex-shrink-0" />}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
 
 export default function Sidebar() {
   const { sidebarCollapsed: collapsed, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen } = useUIStore()
@@ -34,16 +128,13 @@ export default function Sidebar() {
     try { await firebaseSignOut(firebaseAuth) } catch { /* ignore */ }
     clearAuth()
     localStorage.removeItem('agentos-auth')
-    // Land back on the dashboard in guest mode — no login wall.
     navigate('/')
   }
 
-  // Close mobile sidebar on navigation
   useEffect(() => {
     setMobileSidebarOpen(false)
   }, [location.pathname, setMobileSidebarOpen])
 
-  // Prevent body scroll when mobile sidebar is open
   useEffect(() => {
     if (mobileSidebarOpen) {
       document.body.style.overflow = 'hidden'
@@ -55,7 +146,6 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile backdrop */}
       {mobileSidebarOpen && (
         <div
           className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm md:hidden"
@@ -68,128 +158,157 @@ export default function Sidebar() {
           'fixed left-0 top-0 h-full z-40 flex flex-col',
           'bg-surface-900/95 backdrop-blur-xl border-r border-surface-700/30',
           'transition-all duration-300 ease-in-out',
-          // Desktop: normal sidebar behavior
           'md:translate-x-0',
-          // Mobile: slide in/out from left
           mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full',
           collapsed ? 'w-60 md:w-16' : 'w-60',
         )}
       >
-      {/* Logo */}
-      <div className={cn('flex items-center h-16 border-b border-white/[0.06]', collapsed ? 'justify-center' : 'px-5')}>
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#16151a] to-[#08080b] border border-primary-600/40 flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20">
-            <LogoIcon size={17} />
-          </div>
-          {!collapsed && (
-            <div className="min-w-0 leading-tight">
-              <span className="text-sm font-semibold tracking-tight text-surface-100">
-                Agent
-                <span className="text-primary-400">OS</span>
-              </span>
-              <span className="microlabel block mt-0.5" style={{ fontSize: '8.5px', letterSpacing: '0.18em' }}>
-                studio
-              </span>
+        {/* Logo */}
+        <div className={cn('flex items-center h-16 border-b border-white/[0.06] flex-shrink-0', collapsed ? 'justify-center' : 'px-5')}>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#16151a] to-[#08080b] border border-primary-600/40 flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20">
+              <LogoIcon size={17} />
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-1">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
-                isActive
-                  ? 'bg-primary-500/10 text-primary-300 border border-primary-500/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]'
-                  : 'text-surface-400 hover:text-surface-100 hover:bg-surface-800/60 border border-transparent',
-                collapsed && 'justify-center px-2',
-              )
-            }
-          >
-            <item.icon className="w-[18px] h-[18px] flex-shrink-0" size={18} />
-            {!collapsed && <span className="truncate">{item.label}</span>}
-          </NavLink>
-        ))}
-      </nav>
-
-      {/* Footer */}
-      <div className={cn('border-t border-surface-700/30 py-3', collapsed ? 'px-2' : 'px-3')}>
-        {isAuthenticated ? (
-          <>
-            {/* Profile link */}
-            <button
-              onClick={() => navigate('/profile')}
-              className={cn(
-                'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 mb-1',
-                'text-surface-400 hover:text-surface-200 hover:bg-surface-800/50',
-                collapsed && 'justify-center px-2',
-              )}
-            >
-              <SettingsIcon size={18} />
-              {!collapsed && <span>Settings</span>}
-            </button>
-
-            <button
-              onClick={handleSignOut}
-              className={cn(
-                'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
-                'text-surface-400 hover:text-red-400 hover:bg-red-500/10',
-                collapsed && 'justify-center px-2',
-              )}
-            >
-              <LogOutIcon size={18} />
-              {!collapsed && <span>Sign out</span>}
-            </button>
-          </>
-        ) : (
-          <div className={cn('space-y-1.5', collapsed && 'flex flex-col items-center')}>
             {!collapsed && (
-              <div className="px-3 py-2.5 rounded-xl bg-primary-500/5 border border-primary-500/15">
-                <p className="text-xs font-semibold text-primary-400">Guest mode</p>
-                <p className="text-[11px] text-surface-500 mt-0.5 leading-snug">
-                  Explore freely. Sign in to save your work.
-                </p>
+              <div className="min-w-0 leading-tight">
+                <span className="text-sm font-semibold tracking-tight text-surface-100">
+                  Agent<span className="text-primary-400">OS</span>
+                </span>
+                <span className="microlabel block mt-0.5" style={{ fontSize: '8.5px', letterSpacing: '0.18em' }}>
+                  studio
+                </span>
               </div>
             )}
-            <Link
-              to="/login"
-              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-primary-500/20 transition-all duration-200 hover:shadow-primary-500/30"
-              style={{ color: '#141007', background: 'linear-gradient(120deg, #b8842f, #e3b862)' }}
-            >
-              <LogInIcon size={16} />
-              {!collapsed && <span>Sign in</span>}
-            </Link>
-            <Link
-              to="/register"
-              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium bg-surface-800/60 hover:bg-surface-800 border border-surface-700/40 text-surface-200 transition-all duration-200"
-            >
-              <UserPlusIcon size={16} />
-              {!collapsed && <span>Create account</span>}
-            </Link>
           </div>
-        )}
+        </div>
 
-        {/* Desktop collapse button */}
-        <button
-          onClick={toggleSidebar}
-          className="hidden md:flex w-full items-center justify-center gap-2 px-3 py-2 rounded-xl text-surface-500 hover:text-surface-300 hover:bg-surface-800/50 transition-all duration-200 text-sm"
-        >
-          {collapsed ? <ChevronRightIcon size={16} /> : <><ChevronLeftIcon size={16} /> Collapse</>}
-        </button>
-        {/* Mobile close button */}
-        <button
-          onClick={() => setMobileSidebarOpen(false)}
-          className="flex md:hidden w-full items-center justify-center gap-2 px-3 py-2 rounded-xl text-surface-500 hover:text-surface-300 hover:bg-surface-800/50 transition-all duration-200 text-sm"
-        >
-          <XIcon size={16} /> Close
-        </button>
-      </div>
-    </aside>
+        {/* Search / Cmd+K */}
+        <div className={cn('pt-3 flex-shrink-0', collapsed ? 'px-2' : 'px-3')}>
+          {!collapsed && <CommandPaletteTrigger />}
+        </div>
+
+        {/* Workspace switcher */}
+        <div className={cn('mt-2 flex-shrink-0', collapsed && 'px-2')}>
+          <SidebarWorkspaceSwitcher collapsed={collapsed} />
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
+          {NAV_SECTIONS.map((section) => (
+            <div key={section.label}>
+              {!collapsed && (
+                <p className="microlabel px-3 mb-1.5" style={{ fontSize: '9px', letterSpacing: '0.16em' }}>
+                  {section.label}
+                </p>
+              )}
+              <div className="space-y-0.5">
+                {section.items.map((item) => (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    className={({ isActive }) =>
+                      cn(
+                        'group relative flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium transition-all duration-200',
+                        isActive
+                          ? 'bg-primary-500/10 text-primary-300'
+                          : 'text-surface-400 hover:text-surface-100 hover:bg-surface-800/60',
+                        collapsed && 'justify-center px-2',
+                      )
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        {/* Active accent bar */}
+                        {isActive && !collapsed && (
+                          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-gradient-to-b from-primary-400 to-primary-600" />
+                        )}
+                        <item.icon
+                          className={cn(
+                            'w-[18px] h-[18px] flex-shrink-0 transition-colors',
+                            isActive && 'text-primary-400',
+                          )}
+                          size={18}
+                        />
+                        {!collapsed && <span className="truncate">{item.label}</span>}
+                      </>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        {/* Footer */}
+        <div className={cn('border-t border-surface-700/30 py-3 flex-shrink-0', collapsed ? 'px-2' : 'px-3')}>
+          {isAuthenticated ? (
+            <>
+              <button
+                onClick={() => navigate('/profile')}
+                className={cn(
+                  'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-200 mb-1',
+                  'text-surface-400 hover:text-surface-200 hover:bg-surface-800/50',
+                  collapsed && 'justify-center px-2',
+                )}
+              >
+                <SettingsIcon size={18} />
+                {!collapsed && <span>Settings</span>}
+              </button>
+
+              <button
+                onClick={handleSignOut}
+                className={cn(
+                  'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-200',
+                  'text-surface-400 hover:text-red-400 hover:bg-red-500/10',
+                  collapsed && 'justify-center px-2',
+                )}
+              >
+                <LogOutIcon size={18} />
+                {!collapsed && <span>Sign out</span>}
+              </button>
+            </>
+          ) : (
+            <div className={cn('space-y-1.5', collapsed && 'flex flex-col items-center')}>
+              {!collapsed && (
+                <div className="px-3 py-2.5 rounded-xl bg-primary-500/5 border border-primary-500/15">
+                  <p className="text-xs font-semibold text-primary-400">Guest mode</p>
+                  <p className="text-[11px] text-surface-500 mt-0.5 leading-snug">
+                    Explore freely. Sign in to save your work.
+                  </p>
+                </div>
+              )}
+              <Link
+                to="/login"
+                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[13px] font-semibold shadow-lg shadow-primary-500/20 transition-all duration-200 hover:shadow-primary-500/30"
+                style={{ color: '#141007', background: 'linear-gradient(120deg, #b8842f, #e3b862)' }}
+              >
+                <LogInIcon size={16} />
+                {!collapsed && <span>Sign in</span>}
+              </Link>
+              <Link
+                to="/register"
+                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[13px] font-medium bg-surface-800/60 hover:bg-surface-800 border border-surface-700/40 text-surface-200 transition-all duration-200"
+              >
+                <UserPlusIcon size={16} />
+                {!collapsed && <span>Create account</span>}
+              </Link>
+            </div>
+          )}
+
+          <button
+            onClick={toggleSidebar}
+            className="hidden md:flex w-full items-center justify-center gap-2 px-3 py-2 rounded-xl text-surface-500 hover:text-surface-300 hover:bg-surface-800/50 transition-all duration-200 text-[13px]"
+          >
+            {collapsed ? <ChevronRightIcon size={16} /> : <><ChevronLeftIcon size={16} /> Collapse</>}
+          </button>
+          <button
+            onClick={() => setMobileSidebarOpen(false)}
+            className="flex md:hidden w-full items-center justify-center gap-2 px-3 py-2 rounded-xl text-surface-500 hover:text-surface-300 hover:bg-surface-800/50 transition-all duration-200 text-[13px]"
+          >
+            <XIcon size={16} /> Close
+          </button>
+        </div>
+      </aside>
     </>
   )
 }

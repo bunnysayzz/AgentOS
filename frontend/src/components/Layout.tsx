@@ -1,9 +1,11 @@
 import { useEffect } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
 import Sidebar from './Sidebar'
 import ToastContainer from './Toast'
 import ConfirmDialog from './ConfirmDialog'
 import ErrorBoundary from './ErrorBoundary'
+import CommandPalette from './CommandPalette'
 import { useUIStore } from '@/stores/uiStore'
 import { cn } from '@/utils/cn'
 import { MenuIcon, SunIcon, MoonIcon } from '@/components/Icons'
@@ -13,6 +15,7 @@ export default function Layout() {
   const setMobileSidebarOpen = useUIStore((s) => s.setMobileSidebarOpen)
   const theme = useUIStore((s) => s.theme)
   const toggleTheme = useUIStore((s) => s.toggleTheme)
+  const location = useLocation()
 
   // Initialize theme class on mount
   useEffect(() => {
@@ -20,6 +23,11 @@ export default function Layout() {
     document.documentElement.classList.toggle('light', stored === 'light')
     document.documentElement.classList.toggle('dark', stored === 'dark')
   }, [])
+
+  // Scroll to top on route change
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
+  }, [location.pathname])
 
   return (
     <ErrorBoundary>
@@ -47,7 +55,18 @@ export default function Layout() {
         'pt-14 md:pt-0',
       )}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
-          <Outlet />
+          {/* Page transitions — fade + subtle rise on every route change */}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={location.pathname}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <Outlet />
+            </motion.div>
+          </AnimatePresence>
         </div>
       </main>
 
@@ -64,6 +83,7 @@ export default function Layout() {
       {/* Global overlays */}
       <ToastContainer />
       <ConfirmDialog />
+      <CommandPalette />
     </div>
     </ErrorBoundary>
   )

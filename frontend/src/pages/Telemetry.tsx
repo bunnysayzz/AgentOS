@@ -5,7 +5,36 @@ import { ActivityIcon, AlertTriangleIcon, BarChart3Icon, ClockIcon, DollarSignIc
 import api from '@/services/api'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import WorkspaceSelector from '@/components/WorkspaceSelector'
+import EmptyState from '@/components/EmptyState'
 import { cn } from '@/utils/cn'
+
+// ─── Shared table primitives ─────────────────────────────────────────
+function Th({ children, className }: { children?: React.ReactNode; className?: string }) {
+  return <th className={cn('px-4 py-3 text-left text-[10px] font-mono uppercase tracking-wider text-surface-500 font-medium whitespace-nowrap', className)}>{children}</th>
+}
+function Td({ children, className }: { children?: React.ReactNode; className?: string }) {
+  return <td className={cn('px-4 py-3 text-sm whitespace-nowrap', className)}>{children}</td>
+}
+
+const sevBadge = (s: string) => cn(
+  'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide border',
+  s === 'error' || s === 'critical'
+    ? 'text-red-400 bg-red-500/10 border-red-500/20'
+    : s === 'warning'
+      ? 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+      : 'text-sky-400 bg-sky-500/10 border-sky-500/20',
+)
+
+const actionBadge = (a: string) => cn(
+  'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide border',
+  a === 'delete'
+    ? 'text-red-400 bg-red-500/10 border-red-500/20'
+    : a === 'create'
+      ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+      : a === 'update'
+        ? 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+        : 'text-primary-400 bg-primary-500/10 border-primary-500/20',
+)
 
 interface Event { id: string; event_name: string; event_type: string; severity: string; duration_ms?: number; cost_usd?: number; created_at: string }
 interface AuditLog { id: string; action: string; resource_type: string; resource_id?: string; created_at: string }
@@ -109,32 +138,63 @@ export default function Telemetry() {
 
       {tab === 'events' && (
         <div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex gap-2">
-              {['', 'info', 'warning', 'error', 'critical'].map((s) => (
-                <button key={s} onClick={() => setSevFilter(s)} className={cn('chip cursor-pointer hover:bg-surface-700 transition-colors', sevFilter === s && 'bg-primary-500/20 text-primary-400 border-primary-500/30')}>
-                  {s || 'All'}
-                </button>
-              ))}
-            </div>
-            <button onClick={() => setShowCreateEvent(true)} className="btn-primary flex items-center gap-1.5 text-xs py-1.5 px-3"><PlusIcon size={12} />Log Event</button>
-          </div>
-          <div className="space-y-2">
-            {eventList.length === 0 ? (
-              <div className="glass-panel p-12 text-center"><ActivityIcon className="w-12 h-12 text-surface-600 mx-auto mb-3" /><h3 className="text-lg font-medium text-surface-400">No events</h3></div>
-            ) : eventList.map((e) => (
-              <div key={e.id} className="card flex items-center justify-between">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{e.event_name}</p>
-                  <p className="text-xs text-surface-500">{e.event_type}</p>
-                </div>
-                <div className="flex items-center gap-3 flex-shrink-0">
-                  <span className={cn('chip text-[10px]', e.severity === 'error' || e.severity === 'critical' ? 'text-red-400 bg-red-500/10' : e.severity === 'warning' ? 'text-amber-400 bg-amber-500/10' : 'text-surface-400')}>{e.severity}</span>
-                  {e.duration_ms && <span className="text-xs text-surface-500">{e.duration_ms}ms</span>}
-                </div>
-              </div>
+          <div className="flex items-center justify-between mb-4">          <div className="flex gap-2">
+            {['', 'info', 'warning', 'error', 'critical'].map((s) => (
+              <button key={s} onClick={() => setSevFilter(s)} className={cn('chip cursor-pointer hover:bg-surface-700 transition-colors', sevFilter === s && 'bg-primary-500/20 text-primary-400 border-primary-500/30')}>
+                {s || 'All'}
+              </button>
             ))}
           </div>
+          <button onClick={() => setShowCreateEvent(true)} className="btn-primary flex items-center gap-1.5 text-xs py-1.5 px-3"><PlusIcon size={12} />Log Event</button>
+        </div>
+
+        {eventList.length === 0 ? (
+          <EmptyState
+            icon={ActivityIcon}
+            title="No events yet"
+            description="Events appear here as your agents, workflows and tools run. Log a custom event to get started."
+            action={
+              <button onClick={() => setShowCreateEvent(true)} className="btn-primary flex items-center gap-1.5">
+                <PlusIcon size={14} />Log your first event
+              </button>
+            }
+          />
+        ) : (
+          <div className="glass-panel overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px]">
+                <thead>
+                  <tr className="border-b border-white/[0.06] bg-white/[0.02]">
+                    <Th>Event</Th>
+                    <Th>Type</Th>
+                    <Th>Severity</Th>
+                    <Th className="text-right">Duration</Th>
+                    <Th className="text-right">Cost</Th>
+                    <Th className="text-right">Timestamp</Th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/[0.04]">
+                  {eventList.map((e) => (
+                    <tr key={e.id} className="group hover:bg-white/[0.03] transition-colors duration-100">
+                      <Td className="max-w-[280px]">
+                        <span className="font-medium text-surface-200 truncate block">{e.event_name}</span>
+                      </Td>
+                      <Td><span className="text-surface-400">{e.event_type}</span></Td>
+                      <Td><span className={sevBadge(e.severity)}>{e.severity}</span></Td>
+                      <Td className="text-right text-surface-400 tabular-nums">{e.duration_ms != null ? `${e.duration_ms}ms` : '—'}</Td>
+                      <Td className="text-right text-surface-400 tabular-nums">{e.cost_usd != null ? `$${e.cost_usd.toFixed(4)}` : '—'}</Td>
+                      <Td className="text-right text-surface-500 text-xs">
+                        {e.created_at ? (
+                          <span title={e.created_at}>{e.created_at.slice(0, 19).replace('T', ' ')}</span>
+                        ) : '—'}
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
           {/* Create Event Modal */}
           {showCreateEvent && (
@@ -164,20 +224,44 @@ export default function Telemetry() {
       )}
 
       {tab === 'audit' && (
-        <div className="space-y-2">
-          {auditList.length === 0 ? (
-            <div className="glass-panel p-12 text-center"><ListOrderedIcon className="w-12 h-12 text-surface-600 mx-auto mb-3" /><h3 className="text-lg font-medium text-surface-400">No audit logs</h3></div>
-          ) : auditList.map((l) => (
-            <div key={l.id} className="card flex items-center justify-between">
-              <div className="flex items-center gap-3 min-w-0">
-                <span className={cn('chip text-[10px] uppercase', l.action === 'delete' ? 'text-red-400 bg-red-500/10' : l.action === 'create' ? 'text-emerald-400 bg-emerald-500/10' : 'text-primary-400 bg-primary-500/10')}>{l.action}</span>
-                <span className="text-sm text-surface-300 truncate">{l.resource_type}</span>
-                {l.resource_id && <span className="text-xs text-surface-600 font-mono truncate max-w-[100px]">{l.resource_id.slice(0, 8)}...</span>}
-              </div>
-              <span className="text-xs text-surface-500 flex-shrink-0">{l.created_at?.slice(0, 10)}</span>
+        auditList.length === 0 ? (
+          <EmptyState
+            icon={ListOrderedIcon}
+            title="No audit logs yet"
+            description="Every create, update and delete in your workspace is recorded here for a full audit trail."
+          />
+        ) : (
+          <div className="glass-panel overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px]">
+                <thead>
+                  <tr className="border-b border-white/[0.06] bg-white/[0.02]">
+                    <Th>Action</Th>
+                    <Th>Resource</Th>
+                    <Th>Resource ID</Th>
+                    <Th className="text-right">Timestamp</Th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/[0.04]">
+                  {auditList.map((l) => (
+                    <tr key={l.id} className="group hover:bg-white/[0.03] transition-colors duration-100">
+                      <Td><span className={actionBadge(l.action)}>{l.action}</span></Td>
+                      <Td><span className="text-surface-200">{l.resource_type}</span></Td>
+                      <Td>
+                        {l.resource_id ? (
+                          <span className="text-xs text-surface-500 font-mono" title={l.resource_id}>{l.resource_id.slice(0, 12)}…</span>
+                        ) : '—'}
+                      </Td>
+                      <Td className="text-right text-surface-500 text-xs">
+                        {l.created_at ? l.created_at.slice(0, 19).replace('T', ' ') : '—'}
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ))}
-        </div>
+          </div>
+        )
       )}
     </div>
   )

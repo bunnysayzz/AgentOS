@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import {
   ActivityIcon, ArchiveIcon, ArrowRightIcon, BotIcon, BrainIcon, CheckCircleIcon,
   CheckIcon, CpuIcon, FileTextIcon, KeyIcon, LogInIcon, LogoIcon, PlusIcon,
@@ -170,6 +171,16 @@ export default function Dashboard() {
     },
   ]
 
+  // ─── Stagger presets for card grids (industry-level entrance) ────
+  const staggerContainer = {
+    hidden: {},
+    show: { transition: { staggerChildren: 0.05, delayChildren: 0.04 } },
+  }
+  const staggerItem = {
+    hidden: { opacity: 0, y: 12 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] as const } },
+  }
+
   return (
     <div className="space-y-8">
       {/* ── Welcome Header — guest-aware, single CTA ─────────────── */}
@@ -267,10 +278,15 @@ export default function Dashboard() {
               </span>
             )}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <motion.div
+            className="grid grid-cols-1 md:grid-cols-2 gap-3"
+            variants={staggerContainer}
+            initial="hidden"
+            animate="show"
+          >
             {checklistSteps.map((step) => (
+              <motion.div key={step.key} variants={staggerItem}>
               <Link
-                key={step.key}
                 to={step.path}
                 className="group flex items-start gap-3 p-4 rounded-xl bg-surface-800/50 border border-surface-700/30 hover:border-primary-500/30 hover:bg-surface-800 transition-all duration-200"
               >
@@ -297,8 +313,9 @@ export default function Dashboard() {
                   className="text-surface-600 group-hover:text-primary-400 group-hover:translate-x-0.5 transition-all duration-200 mt-1"
                 />
               </Link>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       )}
 
@@ -332,10 +349,15 @@ export default function Dashboard() {
               <h2 className="microlabel">Resources</h2>
               <span className="h-px flex-1 mx-4 bg-white/[0.06]" />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <motion.div
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+              variants={staggerContainer}
+              initial="hidden"
+              animate="show"
+            >
               {mainStatCards.filter((c) => c.show).map((card) => (
+                <motion.div key={card.label} variants={staggerItem}>
                 <Link
-                  key={card.label}
                   to={card.path}
                   className="card group relative overflow-hidden hover:border-primary-500/30 hover:-translate-y-0.5 hover:shadow-glass transition-all duration-200"
                 >
@@ -354,8 +376,9 @@ export default function Dashboard() {
                   </p>
                   <p className="text-sm text-surface-400 mt-0.5">{card.label}</p>
                 </Link>
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
           </div>
 
           {/* Secondary Stats */}
@@ -364,15 +387,20 @@ export default function Dashboard() {
               <h2 className="microlabel">Platform Metrics</h2>
               <span className="h-px flex-1 mx-4 bg-white/[0.06]" />
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <motion.div
+              className="grid grid-cols-2 lg:grid-cols-4 gap-4"
+              variants={staggerContainer}
+              initial="hidden"
+              animate="show"
+            >
               {secondaryStatCards.map((card) => (
-                <div key={card.label} className="card hover:border-primary-500/25 hover:-translate-y-0.5 transition-all duration-200">
+                <motion.div key={card.label} variants={staggerItem} className="card hover:border-primary-500/25 hover:-translate-y-0.5 transition-all duration-200">
                   <card.icon size={18} className={`${card.color} mb-2`} />
                   <p className="text-2xl font-semibold tracking-tight">{isLoading ? <span className="inline-block w-10 h-7 bg-surface-800 rounded animate-pulse" /> : card.value}</p>
                   <p className="text-xs text-surface-500 mt-0.5">{card.sub}</p>
-                </div>
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
           </div>
 
           {/* Telemetry Quick Summary (if available) */}
@@ -408,18 +436,24 @@ export default function Dashboard() {
           <h2 className="microlabel">Quick Actions</h2>
           <span className="h-px flex-1 bg-white/[0.06]" />
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <motion.div
+          className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3"
+          variants={staggerContainer}
+          initial="hidden"
+          animate="show"
+        >
           {QUICK_ACTIONS.map((action) => (
+            <motion.div key={action.label} variants={staggerItem}>
             <Link
-              key={action.label}
               to={action.path}
               className="flex flex-col items-center gap-2 px-3 py-4 rounded-xl bg-surface-800/50 border border-surface-700/30 hover:bg-surface-800 hover:border-surface-600/50 transition-all duration-200 group"
             >
               <action.icon size={20} className={`${action.color} group-hover:scale-110 transition-transform duration-200`} />
               <span className="text-xs text-surface-400 group-hover:text-surface-200 text-center leading-tight">{action.label}</span>
             </Link>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       </div>
 
       {/* ── All Domains / Explore the platform ─────────────────────── */}
@@ -430,10 +464,15 @@ export default function Dashboard() {
           </h2>
           <span className="h-px flex-1 mx-4 bg-white/[0.06]" />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <motion.div
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+          variants={staggerContainer}
+          initial="hidden"
+          animate="show"
+        >
           {DOMAIN_LINKS.map((domain) => (
+            <motion.div key={domain.path} variants={staggerItem}>
             <Link
-              key={domain.path}
               to={domain.path}
               className="card flex items-start gap-4 group hover:border-primary-500/30 hover:-translate-y-0.5 hover:shadow-glass transition-all duration-200"
             >
@@ -447,8 +486,9 @@ export default function Dashboard() {
                 <p className="text-xs text-surface-500 mt-0.5">{domain.desc}</p>
               </div>
             </Link>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       </div>
 
       {/* Global loading overlay */}
