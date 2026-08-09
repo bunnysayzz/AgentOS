@@ -45,41 +45,31 @@ export default function Dashboard() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const [selectedWsId, setSelectedWsId] = useState<string | null>(null)
 
-  // ─── Global Stats (parallel fetch) ────────────────────────────────
+  // ─── Dashboard stats — ONE aggregate endpoint ─────────────────────
+  // The server computes every count (workspaces, models, calls, keys,
+  // providers + per-workspace tallies) with aggregate Firestore queries,
+  // replacing the old ~12 parallel list fetches that downloaded entire
+  // collections just to display numbers.
   const globalStatsQuery = useQuery({
-    queryKey: ['dashboard-global-stats'],
+    queryKey: ['dashboard-stats', selectedWsId],
     queryFn: async () => {
-      const [workspacesRes, modelsRes, callsRes, keysRes, providersRes] = await Promise.allSettled([
-        api.get('/workspaces/'),
-        api.get('/mcp/models'),
-        api.get('/mcp/calls'),
-        api.get('/api-keys/'),
-        api.get('/mcp/providers'),
-      ])
-
-      const workspaces = workspacesRes.status === 'fulfilled' ? workspacesRes.value.data : []
-      const models = modelsRes.status === 'fulfilled' ? modelsRes.value.data : []
-      const calls = callsRes.status === 'fulfilled' ? callsRes.value.data : []
-      const keys = keysRes.status === 'fulfilled' ? keysRes.value.data : []
-      const providers = providersRes.status === 'fulfilled' ? providersRes.value.data : []
-
-      // Compute derived stats
-      const callList = Array.isArray(calls) ? calls : []
-      const totalTokens = callList.reduce((s: number, c: { prompt_tokens?: number; completion_tokens?: number }) => s + (c.prompt_tokens || 0) + (c.completion_tokens || 0), 0)
-      const totalCost = callList.reduce((s: number, c: { cost_usd?: number }) => s + (c.cost_usd || 0), 0)
-      const configuredProviders = Array.isArray(providers) ? providers.filter((p: { is_configured?: boolean }) => p.is_configured).length : 0
-      const firstWs = Array.isArray(workspaces) && workspaces.length > 0 ? workspaces[0].id : null
-
+      const { data } = await api.get('/dashboard/stats', {
+        params: selectedWsId ? { workspace_id: selectedWsId, days: 7 } : { days: 7 },
+      })
+      const d = data || {}
+      const workspaces: { id: string; name: string }[] = Array.isArray(d.workspaces) ? d.workspaces : []
       return {
-        workspaces: Array.isArray(workspaces) ? workspaces : [],
-        workspaceCount: Array.isArray(workspaces) ? workspaces.length : 0,
-        modelCount: Array.isArray(models) ? models.length : 0,
-        callCount: callList.length,
-        totalTokens,
-        totalCost,
-        keyCount: Array.isArray(keys) ? keys.length : 0,
-        configuredProviders,
-        firstWs,
+        workspaces,
+        workspaceCount: d.workspace_count ?? 0,
+        modelCount: d.model_count ?? 0,
+        callCount: d.call_count ?? 0,
+        totalTokens: d.total_tokens ?? 0,
+        totalCost: d.total_cost_usd ?? 0,
+        keyCount: d.key_count ?? 0,
+        configuredProviders: d.configured_providers ?? 0,
+        firstWs: d.first_ws ?? (workspaces.length > 0 ? workspaces[0].id : null),
+        // Per-workspace tallies (server-aggregated)
+        ws: d.workspace || null,
       }
     },
     retry: 1,
@@ -88,47 +78,11 @@ export default function Dashboard() {
 
   const stats = globalStatsQuery.data
 
-  // ─── Workspace-specific stats ─────────────────────────────────────
+  // Workspace-specific stats ride along in the same aggregate response — no
+  // second round of fetches when the user switches workspaces.
+  const wsStats = stats?.ws
   const wsId = selectedWsId || stats?.firstWs || ''
-  const wsStatsQuery = useQuery({
-    queryKey: ['dashboard-ws-stats', wsId],
-    queryFn: async () => {
-      const [agentsRes, workflowsRes, promptsRes, toolsRes, secretsRes, artifactsRes, telemetryRes] = await Promise.allSettled([
-        api.get(`/workspaces/${wsId}/agents/`),
-        api.get(`/workspaces/${wsId}/workflows/`),
-        api.get(`/workspaces/${wsId}/prompts`),
-        api.get(`/workspaces/${wsId}/tools`),
-        api.get(`/workspaces/${wsId}/secrets/`),
-        api.get(`/workspaces/${wsId}/artifacts/`),
-        api.get(`/workspaces/${wsId}/events/stats`, { params: { days: 7 } }),
-      ])
-
-      const agents = agentsRes.status === 'fulfilled' ? agentsRes.value.data : []
-      const workflows = workflowsRes.status === 'fulfilled' ? workflowsRes.value.data : []
-      const prompts = promptsRes.status === 'fulfilled' ? promptsRes.value.data : []
-      const tools = toolsRes.status === 'fulfilled' ? toolsRes.value.data : []
-      const secrets = secretsRes.status === 'fulfilled' ? secretsRes.value.data : []
-      const artifacts = artifactsRes.status === 'fulfilled' ? artifactsRes.value.data : []
-      const telemetry = telemetryRes.status === 'fulfilled' ? telemetryRes.value.data : null
-
-      return {
-        agentCount: Array.isArray(agents) ? agents.length : 0,
-        workflowCount: Array.isArray(workflows) ? workflows.length : 0,
-        promptCount: Array.isArray(prompts) ? prompts.length : 0,
-        toolCount: Array.isArray(tools) ? tools.length : 0,
-        secretCount: Array.isArray(secrets) ? secrets.length : 0,
-        artifactCount: Array.isArray(artifacts) ? artifacts.length : 0,
-        telemetryEvents: telemetry?.total_events || 0,
-        telemetryErrors: telemetry?.errors || 0,
-      }
-    },
-    enabled: !!wsId,
-    retry: 1,
-    staleTime: 30_000,
-  })
-
-  const wsStats = wsStatsQuery.data
-  const isLoading = globalStatsQuery.isLoading || wsStatsQuery.isLoading
+  const isLoading = globalStatsQuery.isLoading
 
   // ─── Onboarding state ─────────────────────────────────────────────
   // Guests get the full "getting started" experience; authed users with

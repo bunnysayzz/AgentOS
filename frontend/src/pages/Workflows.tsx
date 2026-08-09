@@ -85,9 +85,12 @@ export default function Workflows() {
     queryFn: () => api.get(`/workspaces/${wsId}/workflows/${detailId}/executions`).then((r) => r.data),
     enabled: !!detailId && !!wsId,
     // Poll while any execution is in flight so background DAG results appear.
+    // 5s interval (was 2s): still live enough for run feedback, but no longer
+    // hammers the API ~30x/min while a long workflow runs. Polling also stops
+    // the moment nothing is in-flight.
     refetchInterval: (query) => {
       const rows: any[] = query.state.data || []
-      return rows.some((e: any) => ['pending', 'running', 'awaiting_approval'].includes(e.status)) ? 2000 : false
+      return rows.some((e: any) => ['pending', 'running', 'awaiting_approval'].includes(e.status)) ? 5000 : false
     },
   })
 
@@ -97,7 +100,7 @@ export default function Workflows() {
     enabled: !!wsId && !!selectedExecId,
     refetchInterval: (query) => {
       const nodes: any[] = (query.state.data as any)?.nodes || []
-      return nodes.some((n: any) => ['pending', 'running', 'awaiting_input'].includes(n.status)) ? 2000 : false
+      return nodes.some((n: any) => ['pending', 'running', 'awaiting_input'].includes(n.status)) ? 5000 : false
     },
   })
 

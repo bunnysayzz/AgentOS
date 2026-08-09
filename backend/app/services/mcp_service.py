@@ -935,9 +935,19 @@ async def stream_chat_completion(
 
 
 def _cost_rows(db: FirestoreDB, workspace_id: str | None, days: int) -> list[dict]:
+    """LLM calls within the last N days, date-filtered in Firestore.
+
+    Previously this downloaded the ENTIRE llm_calls collection and filtered
+    in Python — an O(n) scan that grows forever. ``query_since`` pushes the
+    ``created_at >= cutoff`` range down to Firestore (composite index declared
+    in firestore.indexes.json), so only in-window rows ever leave the DB.
+    """
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    rows = db.query(LLM_CALLS) if workspace_id is None else db.query(LLM_CALLS, "workspace_id", str(workspace_id))
-    return [r for r in rows if (r.get("created_at") or "") >= cutoff]
+    if workspace_id is None:
+        rows = db.query_since(LLM_CALLS, None, None, cutoff)
+    else:
+        rows = db.query_since(LLM_CALLS, "workspace_id", str(workspace_id), cutoff)
+    return rows
 
 
 async def get_cost_summary(
@@ -1006,7 +1016,9 @@ async def get_cost_by_model(
 async def get_recent_calls(
     db: FirestoreDB, workspace_id: str | None = None, limit: int = 50
 ) -> list[dict]:
-    """Get recent LLM calls."""
-    rows = db.query(LLM_CALLS) if workspace_id is None else db.query(LLM_CALLS, "workspace_id", str(workspace_id))
-    rows.sort(key=lambda r: r.get("created_at") or "", reverse=True)
-    return rows[:limit]
+    """Get the newest N LLM calls (order+limit pushed to Firestore)."""
+    if workspace_id is None:
+        rows = db.query_top(LLM_CALLS, None, None, limit)
+    else:
+        rows = db.query_top(LLM_CALLS, "workspace_id", str(workspace_id), limit)
+    return rows

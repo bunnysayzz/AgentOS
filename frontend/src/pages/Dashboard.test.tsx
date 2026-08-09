@@ -25,14 +25,18 @@ function renderDashboard() {
   )
 }
 
-// Default guest responses: everything empty
+// Default guest responses: everything empty (single aggregate endpoint)
 function mockEmptyBackend() {
   ;(api.get as any).mockImplementation((url: string) => {
-    if (url === '/mcp/models') return Promise.resolve({ data: [] })
-    if (url === '/mcp/calls') return Promise.resolve({ data: [] })
-    if (url === '/api-keys/') return Promise.resolve({ data: [] })
-    if (url === '/mcp/providers') return Promise.resolve({ data: [] })
-    // workspaces (default)
+    if (url === '/dashboard/stats') {
+      return Promise.resolve({
+        data: {
+          workspaces: [], workspace_count: 0, model_count: 0, call_count: 0,
+          total_tokens: 0, total_cost_usd: 0, key_count: 0, configured_providers: 0,
+          first_ws: null, workspace: null,
+        },
+      })
+    }
     return Promise.resolve({ data: [] })
   })
 }
@@ -107,12 +111,19 @@ describe('Dashboard — authenticated', () => {
 
   it('welcomes the user and shows real stats when a workspace exists', async () => {
     ;(api.get as any).mockImplementation((url: string) => {
-      if (url === '/mcp/models') return Promise.resolve({ data: [{ id: 'm1' }] })
-      if (url === '/mcp/calls') return Promise.resolve({ data: [] })
-      if (url === '/api-keys/') return Promise.resolve({ data: [{ id: 'k1' }] })
-      if (url === '/mcp/providers') return Promise.resolve({ data: [{ id: 'p1', is_configured: true }] })
-      if (url === '/workspaces/') return Promise.resolve({ data: [{ id: 'ws-1', name: 'Prod' }] })
-      if (url.startsWith('/workspaces/ws-1')) return Promise.resolve({ data: [] })
+      if (url === '/dashboard/stats') {
+        return Promise.resolve({
+          data: {
+            workspaces: [{ id: 'ws-1', name: 'Prod' }], workspace_count: 1,
+            model_count: 1, call_count: 0, total_tokens: 0, total_cost_usd: 0,
+            key_count: 1, configured_providers: 1, first_ws: 'ws-1',
+            workspace: {
+              agent_count: 1, workflow_count: 1, prompt_count: 0, tool_count: 0,
+              secret_count: 0, artifact_count: 0, telemetry_events: 0, telemetry_errors: 0,
+            },
+          },
+        })
+      }
       return Promise.resolve({ data: [] })
     })
 

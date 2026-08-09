@@ -45,10 +45,11 @@ export default function Agents() {
     queryFn: () => api.get(`/workspaces/${wsId}/agents/${detailId}/executions`).then((r) => r.data),
     enabled: !!detailId && !!wsId,
     // Poll while any execution is still in flight so the background engine's
-    // result (output/tokens/status) shows up automatically.
+    // result (output/tokens/status) shows up automatically. 5s interval
+    // (was 2s) — still live for run feedback, far gentler on the API.
     refetchInterval: (query) => {
       const rows: any[] = query.state.data || []
-      return rows.some((e: any) => ['pending', 'running', 'paused'].includes(e.status)) ? 2000 : false
+      return rows.some((e: any) => ['pending', 'running', 'paused'].includes(e.status)) ? 5000 : false
     },
   })
 

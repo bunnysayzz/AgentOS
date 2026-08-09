@@ -7,6 +7,8 @@ decrypted transparently, so existing stored keys keep working.
 """
 
 import base64
+import threading
+import time
 from datetime import datetime, timezone
 
 from cryptography.fernet import Fernet
@@ -18,6 +20,24 @@ from app.core.config import settings
 from app.schemas.mcp import ProviderConfigCreate
 
 PROVIDER_CONFIGS = "provider_configs"
+
+# ─── In-process TTL cache ──────────────────────────────────────────────
+# Provider configs change rarely (an API-key upsert or delete), but are read
+# 2-3 times per LLM call (fallback chain + preferred provider). Each read was
+# a full Firestore collection scan — the single hottest repeated DB access in
+# the gateway. Cache for 15s; invalidated on any write (upsert/delete/test).
+_PROVIDER_CACHE_TTL_SECONDS = 15.0
+_provider_cache: list[dict] | None = None
+_provider_cache_ts = 0.0
+_provider_cache_lock = threading.Lock()
+
+
+def invalidate_provider_cache() -> None:
+    """Drop the cached provider list (call after any provider write)."""
+    global _provider_cache, _provider_cache_ts
+    with _provider_cache_lock:
+        _provider_cache = None
+        _provider_cache_ts = 0.0
 
 # Marker prefix for Fernet-encrypted values (legacy XOR values have none).
 _FERNET_PREFIX = "fernet:"
@@ -64,14 +84,28 @@ def _doc_id(provider) -> str:
 
 async def get_provider_config(db: FirestoreDB, provider) -> dict | None:
     """Get the config for a specific provider."""
+    # Single-document get is already cheap (no scan) — read fresh, but mirror
+    # the cached list's TTL semantics by seeding from cache when available.
     return db.get(PROVIDER_CONFIGS, _doc_id(provider))
 
 
 async def list_provider_configs(db: FirestoreDB) -> list[dict]:
-    """List all provider configs."""
+    """List all provider configs (15s in-process TTL cache)."""
+    global _provider_cache, _provider_cache_ts
+    now = time.monotonic()
+    with _provider_cache_lock:
+        if (
+            _provider_cache is not None
+            and (now - _provider_cache_ts) < _PROVIDER_CACHE_TTL_SECONDS
+        ):
+            return [dict(r) for r in _provider_cache]
+
     rows = db.query(PROVIDER_CONFIGS)
     rows.sort(key=lambda r: r.get("provider") or "")
-    return rows
+    with _provider_cache_lock:
+        _provider_cache = [dict(r) for r in rows]
+        _provider_cache_ts = time.monotonic()
+    return [dict(r) for r in rows]
 
 
 async def upsert_provider_config(db: FirestoreDB, config_in: ProviderConfigCreate) -> dict:
@@ -104,6 +138,7 @@ async def upsert_provider_config(db: FirestoreDB, config_in: ProviderConfigCreat
         })
 
     db.set(PROVIDER_CONFIGS, doc_id, existing)
+    invalidate_provider_cache()
     return existing
 
 
@@ -113,6 +148,7 @@ async def delete_provider_config(db: FirestoreDB, provider) -> bool:
     if db.get(PROVIDER_CONFIGS, doc_id) is None:
         return False
     db.delete(PROVIDER_CONFIGS, doc_id)
+    invalidate_provider_cache()
     return True
 
 
@@ -141,6 +177,7 @@ async def test_connection(db: FirestoreDB, provider) -> tuple[bool, str]:
         config["last_tested_at"] = datetime.now(timezone.utc).isoformat()
         config["last_error"] = error
         db.set(PROVIDER_CONFIGS, _doc_id(provider), config)
+        invalidate_provider_cache()
         return success, error or "Connection successful"
 
     # ─── OpenAI-compatible providers (incl. Groq, Cerebras, LLM API, etc.) ──

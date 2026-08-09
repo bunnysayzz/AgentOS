@@ -67,6 +67,17 @@ async def list_events(
     offset: int = 0,
 ) -> tuple[list[dict], int]:
     """List telemetry events with optional filters."""
+    # Fast path: only the workspace filter → order+limit pushed to Firestore
+    # (composite index in firestore.indexes.json). With extra filters the
+    # full workspace slice is still needed, so keep the in-memory path.
+    if event_type is None and severity is None and execution_id is None:
+        if workspace_id is None:
+            rows = db.query_top(EVENTS, None, None, limit + offset + 1)
+        else:
+            rows = db.query_top(EVENTS, "workspace_id", str(workspace_id), limit + offset + 1)
+        has_more = len(rows) > limit + offset
+        return rows[offset : offset + limit], (offset + limit) + (1 if has_more else 0)
+
     rows = db.query(EVENTS) if workspace_id is None else db.query(EVENTS, "workspace_id", str(workspace_id))
 
     if event_type is not None:
@@ -120,6 +131,14 @@ async def list_audit_logs(
     offset: int = 0,
 ) -> tuple[list[dict], int]:
     """List audit logs with optional filters."""
+    if user_id is None and action is None and resource_type is None:
+        if workspace_id is None:
+            rows = db.query_top(AUDIT, None, None, limit + offset + 1)
+        else:
+            rows = db.query_top(AUDIT, "workspace_id", str(workspace_id), limit + offset + 1)
+        has_more = len(rows) > limit + offset
+        return rows[offset : offset + limit], (offset + limit) + (1 if has_more else 0)
+
     rows = db.query(AUDIT) if workspace_id is None else db.query(AUDIT, "workspace_id", str(workspace_id))
 
     if user_id is not None:
@@ -142,8 +161,7 @@ async def get_workspace_stats(db: FirestoreDB, workspace_id: str, days: int = 7)
     since = datetime.now(timezone.utc) - timedelta(days=days)
     since_iso = since.isoformat()
 
-    rows = db.query(EVENTS, "workspace_id", str(workspace_id))
-    rows = [r for r in rows if (r.get("created_at") or "") >= since_iso]
+    rows = db.query_since(EVENTS, "workspace_id", str(workspace_id), since_iso)
 
     event_counts: dict[str, int] = {}
     error_count = 0
@@ -158,8 +176,7 @@ async def get_workspace_stats(db: FirestoreDB, workspace_id: str, days: int = 7)
         if r.get("duration_ms") is not None:
             durations.append(r["duration_ms"])
 
-    audit_rows = [r for r in db.query(AUDIT, "workspace_id", str(workspace_id))
-                  if (r.get("created_at") or "") >= since_iso]
+    audit_rows = db.query_since(AUDIT, "workspace_id", str(workspace_id), since_iso)
     audit_counts: dict[str, int] = {}
     for r in audit_rows:
         act = r.get("action") or "unknown"

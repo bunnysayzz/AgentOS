@@ -144,13 +144,119 @@ class FirestoreDB:
             rows.append(AttrDict(data))
         return rows
 
+    def query_since(
+        self,
+        coll: str,
+        field: str | None,
+        value: Any,
+        since_iso: str,
+        limit: int | None = None,
+    ) -> list[dict]:
+        """Documents with one equality filter AND ``created_at >= since_iso``.
+
+        Pushes BOTH filters down to Firestore first (composite ``(field,
+        created_at)`` index declared in firestore.indexes.json). Only if the
+        pushdown fails (missing index, client without support) does it fall
+        back to a single-filter query + in-memory range filter. The fallback
+        must NEVER run first — that would turn every call back into the full
+        collection scan this helper exists to eliminate.
+        """
+        from google.cloud.firestore_v1.base_query import FieldFilter
+
+        try:
+            ref = self.client.collection(coll)
+            if field is not None:
+                ref = ref.where(filter=FieldFilter(field, "==", value))
+            ref = ref.where(filter=FieldFilter("created_at", ">=", since_iso))
+            if limit is not None:
+                ref = ref.limit(limit)
+            pushed: list[dict] = []
+            for snap in ref.stream():
+                data = dict(snap.to_dict() or {})
+                data["id"] = snap.id
+                pushed.append(AttrDict(data))
+            return pushed
+        except Exception:
+            pass  # Composite index missing or client unsupported — filter below.
+        rows = self.query(coll, field, value)
+        rows = [r for r in rows if (r.get("created_at") or "") >= since_iso]
+        if limit is not None:
+            rows = rows[:limit]
+        return rows
+
+    def query_top(
+        self,
+        coll: str,
+        field: str | None,
+        value: Any,
+        limit: int,
+    ) -> list[dict]:
+        """Newest N documents matching one equality filter (created_at DESC).
+
+        Pushes ``order_by(created_at DESC).limit(N)`` to Firestore first
+        (composite index in firestore.indexes.json); falls back to a
+        single-filter query + Python sort/slice only if the pushdown fails.
+        """
+        from google.cloud.firestore_v1.base_query import FieldFilter
+
+        try:
+            ref = self.client.collection(coll)
+            if field is not None:
+                ref = ref.where(filter=FieldFilter(field, "==", value))
+            from google.cloud.firestore_v1.query import Direction
+            ref = ref.order_by("created_at", direction=Direction.DESCENDING)
+            ref = ref.limit(limit)
+            pushed: list[dict] = []
+            for snap in ref.stream():
+                data = dict(snap.to_dict() or {})
+                data["id"] = snap.id
+                pushed.append(AttrDict(data))
+            return pushed
+        except Exception:
+            pass
+        rows = self.query(coll, field, value)
+        rows.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+        return rows[:limit]
+
+    # ─── Aggregate query builders (internal) ────────────────────────────
+
+    def _aggregate(self, coll: str, field: str | None, value: Any):
+        """Server-side count() over an equality filter (or the whole set)."""
+        from google.cloud.firestore_v1.base_query import FieldFilter
+
+        ref = self.client.collection(coll)
+        if field is not None:
+            ref = ref.where(filter=FieldFilter(field, "==", value))
+        return ref.count().get()
+
+    def _aggregate_since(self, coll: str, field: str | None, value: Any, since_iso: str):
+        """Server-side count() over equality + created_at >= range."""
+        from google.cloud.firestore_v1.base_query import FieldFilter
+
+        ref = self.client.collection(coll)
+        if field is not None:
+            ref = ref.where(filter=FieldFilter(field, "==", value))
+        ref = ref.where(filter=FieldFilter("created_at", ">=", since_iso))
+        return ref.count().get()
+
     def get_first(self, coll: str, field: str | None = None, value: Any = None) -> dict | None:
         """Return the first matching document (or None)."""
         rows = self.query(coll, field, value)
         return rows[0] if rows else None
 
     def count(self, coll: str, field: str | None = None, value: Any = None) -> int:
-        return len(self.query(coll, field, value))
+        """Count documents (native Firestore aggregation when available).
+
+        Uses the server-side ``count()`` aggregate query when the client
+        supports it (google-cloud-firestore >= 2.16); falls back to a Python
+        scan otherwise (tests / fake client). This avoids downloading every
+        matching document just to compute a number.
+        """
+        try:
+            agg = self._aggregate(coll, field, value)
+            return int(agg[0][0].value)
+        except Exception:
+            return len(self.query(coll, field, value))
 
     def sum_field(self, coll: str, field: str | None, value: Any, sum_key: str) -> float:
         """Sum a numeric field over matching documents."""
@@ -158,6 +264,26 @@ class FirestoreDB:
         for row in self.query(coll, field, value):
             total += row.get(sum_key) or 0
         return total
+
+    def sum_since(self, coll: str, field: str | None, value: Any, sum_key: str, since_iso: str) -> float:
+        """Sum a numeric field over documents with created_at >= since."""
+        total = 0
+        for row in self.query_since(coll, field, value, since_iso):
+            total += row.get(sum_key) or 0
+        return total
+
+    def count_since(self, coll: str, field: str | None, value: Any, since_iso: str) -> int:
+        """Count documents with created_at >= since (aggregate when possible).
+
+        Falls back to filtering the equality-filtered rows in Python (never
+        rethrows a composite-index error — the range is applied in memory).
+        """
+        try:
+            agg = self._aggregate_since(coll, field, value, since_iso)
+            return int(agg[0][0].value)
+        except Exception:
+            rows = self.query(coll, field, value)
+            return sum(1 for r in rows if (r.get("created_at") or "") >= since_iso)
 
     def avg_field(self, coll: str, field: str | None, value: Any, avg_key: str) -> float:
         """Average a numeric field over matching documents."""

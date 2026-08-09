@@ -84,6 +84,11 @@ def fake_firebase_token_auth(monkeypatch, firestore_client):
     from app.core.rate_limit import reset_rate_limits
     reset_rate_limits()
 
+    # The provider-config TTL cache is module-global — drop it so a test never
+    # sees another test's cached provider list.
+    from app.services.provider_service import invalidate_provider_cache
+    invalidate_provider_cache()
+
     monkeypatch.setattr(deps_module, "verify_firebase_token", fake_verify_firebase_token)
     monkeypatch.setattr(auth_module, "verify_firebase_token", fake_verify_firebase_token)
     monkeypatch.setattr(firebase_core, "verify_firebase_token", fake_verify_firebase_token)

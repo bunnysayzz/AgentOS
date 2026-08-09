@@ -34,10 +34,12 @@ class _FakeDocumentRef:
 
 
 class _FakeCollectionRef:
-    def __init__(self, name, store, filters=None):
+    def __init__(self, name, store, filters=None, order_by=None, limit=None):
         self._name = name
         self._store = store
         self._filters = filters or []
+        self._order_by = order_by
+        self._limit = limit
 
     def document(self, doc_id):
         return _FakeDocumentRef(self, doc_id)
@@ -50,7 +52,22 @@ class _FakeCollectionRef:
             field = getattr(filter, "field_path", None)
             op = getattr(filter, "op_string", None)
             value = getattr(filter, "value", None)
-        return _FakeCollectionRef(self._name, self._store, self._filters + [(field, op, value)])
+        return _FakeCollectionRef(
+            self._name, self._store, self._filters + [(field, op, value)],
+            self._order_by, self._limit,
+        )
+
+    def order_by(self, field, direction=None):
+        desc = getattr(direction, "DESCENDING", None) == "DESCENDING" or (
+            getattr(direction, "value", None) == "DESCENDING"
+        )
+        return _FakeCollectionRef(self._name, self._store, self._filters, (field, desc), self._limit)
+
+    def limit(self, n):
+        return _FakeCollectionRef(self._name, self._store, self._filters, self._order_by, n)
+
+    def count(self):
+        return _FakeAggregationQuery(self)
 
     def _filtered(self):
         items = []
@@ -60,13 +77,40 @@ class _FakeCollectionRef:
                 if op == "==" and data.get(field) != value:
                     ok = False
                     break
+                if op == ">=" and (data.get(field) or "") < value:
+                    ok = False
+                    break
             if ok:
                 items.append(doc_id)
         return items
 
     def stream(self):
-        for doc_id in self._filtered():
+        ids = self._filtered()
+        if self._order_by:
+            field, desc = self._order_by
+            ids.sort(key=lambda d: self._store[d].get(field) or "", reverse=desc)
+        if self._limit is not None:
+            ids = ids[: self._limit]
+        for doc_id in ids:
             yield _FakeSnapshot(_FakeDocumentRef(self, doc_id), self._store[doc_id])
+
+
+class _FakeAggregationResult:
+    """Mimics google.cloud.firestore AggregationResult (``res[0][0].value``)."""
+
+    def __init__(self, value):
+        self.value = value
+
+    def __getitem__(self, index):
+        return self
+
+
+class _FakeAggregationQuery:
+    def __init__(self, coll):
+        self._coll = coll
+
+    def get(self):
+        return [_FakeAggregationResult(len(self._coll._filtered()))]
 
 
 class FakeFirestoreClient:
