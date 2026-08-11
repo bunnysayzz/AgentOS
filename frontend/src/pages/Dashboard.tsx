@@ -206,36 +206,92 @@ export default function Dashboard() {
   return (
     <div className="space-y-8">
       {/* ── Welcome Header — guest-aware, single CTA ─────────────── */}
-      <div className="relative overflow-hidden rounded-3xl border border-white/[0.06] bg-gradient-to-br from-white/[0.04] to-transparent p-6 sm:p-10">
-        <div className="absolute -top-24 -right-16 w-72 h-72 rounded-full bg-primary-500/10 blur-3xl pointer-events-none" aria-hidden />
-        <div className="absolute -bottom-32 -left-20 w-96 h-96 rounded-full bg-info/10 blur-3xl pointer-events-none" aria-hidden />
+      <motion.div 
+        className="relative overflow-hidden rounded-3xl border border-white/[0.06] bg-gradient-to-br from-white/[0.04] to-transparent p-6 sm:p-10"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      >
+        {/* Animated background orbs */}
+        <motion.div 
+          className="absolute -top-24 -right-16 w-72 h-72 rounded-full bg-primary-500/10 blur-3xl pointer-events-none" 
+          animate={{ scale: [1, 1.1, 1], opacity: [0.5, 0.8, 0.5] }}
+          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+          aria-hidden 
+        />
+        <motion.div 
+          className="absolute -bottom-32 -left-20 w-96 h-96 rounded-full bg-info/10 blur-3xl pointer-events-none" 
+          animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0.7, 0.4] }}
+          transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 1 }}
+          aria-hidden 
+        />
+        <motion.div 
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 rounded-full bg-emerald-500/5 blur-3xl pointer-events-none" 
+          animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
+          transition={{ duration: 6, repeat: Infinity, ease: "easeInOut", delay: 2 }}
+          aria-hidden 
+        />
         <div className="relative flex flex-col lg:flex-row lg:items-center gap-8">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#16151a] to-[#08080b] border border-primary-600/40 flex items-center justify-center shadow-lg shadow-primary-500/25 flex-shrink-0">
+            <motion.div 
+              className="flex items-center gap-3 mb-4"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.2, duration: 0.4 }}
+            >
+              <motion.div 
+                className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#16151a] to-[#08080b] border border-primary-600/40 flex items-center justify-center shadow-lg shadow-primary-500/25 flex-shrink-0"
+                whileHover={{ scale: 1.05, rotate: 5 }}
+                transition={{ type: "spring", stiffness: 300, damping: 20 }}
+              >
                 <LogoIcon size={22} />
-              </div>
+              </motion.div>
               <p className="microlabel">agent orchestration studio</p>
-            </div>
+            </motion.div>
             {isAuthenticated ? (
               <>
-                <h1 className="text-2xl sm:text-3xl font-light tracking-tight serif-display">
+                <motion.h1 
+                  className="text-2xl sm:text-3xl font-light tracking-tight serif-display"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3, duration: 0.4 }}
+                >
                   Welcome back{user?.fullName ? `, ${user.fullName.split(' ')[0]}` : ''}
-                </h1>
-                <p className="text-surface-400 mt-2 text-sm">
+                </motion.h1>
+                <motion.p 
+                  className="text-surface-400 mt-2 text-sm"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.4 }}
+                >
                   Here's everything happening in your AgentOS Studio
-                </p>
+                </motion.p>
               </>
             ) : (
               <>
-                <h1 className="text-3xl sm:text-4xl font-light tracking-tight serif-display leading-tight">
-                  Build agents that <span className="text-gradient">work while you sleep</span>.
-                </h1>
-                <p className="text-surface-400 mt-3 text-sm sm:text-base max-w-xl">
+                <motion.h1 
+                  className="text-3xl sm:text-4xl font-light tracking-tight serif-display leading-tight"
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3, duration: 0.5 }}
+                >
+                  Build agents that <span className="text-gradient-animated">work while you sleep</span>.
+                </motion.h1>
+                <motion.p 
+                  className="text-surface-400 mt-3 text-sm sm:text-base max-w-xl"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.5 }}
+                >
                   Orchestrate AI agents, workflows, tools & memory in isolated workspaces.
                   Explore everything. Nothing is hidden; your data waits for you.
-                </p>
-                <div className="flex flex-wrap items-center gap-3 mt-6">
+                </motion.p>
+                <motion.div 
+                  className="flex flex-wrap items-center gap-3 mt-6"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.6 }}
+                >
                   <Link
                     to="/login"
                     className="btn-primary inline-flex items-center gap-2 px-5 py-2.5"
@@ -250,39 +306,64 @@ export default function Dashboard() {
                     <RocketIcon size={16} />
                     Create an account
                   </Link>
-                </div>
+                </motion.div>
               </>
             )}
           </div>
 
           {/* How-it-works pipeline — guest only */}
           {!isAuthenticated && (
-            <div className="hidden lg:block glass-panel p-5 w-72 flex-shrink-0">
+            <motion.div 
+              className="hidden lg:block glass-panel p-5 w-72 flex-shrink-0"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.4, duration: 0.5 }}
+            >
               <p className="microlabel mb-4">how it works</p>
               <div className="space-y-0">
                 {PIPELINE.map((step, i) => (
-                  <div key={step.label}>
+                  <motion.div 
+                    key={step.label}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.5 + i * 0.1 }}
+                  >
                     <div className="flex items-center gap-3 py-1.5">
-                      <div className="w-9 h-9 rounded-xl bg-surface-800/80 border border-surface-700/40 flex items-center justify-center flex-shrink-0">
+                      <motion.div 
+                        className="w-9 h-9 rounded-xl bg-surface-800/80 border border-surface-700/40 flex items-center justify-center flex-shrink-0"
+                        whileHover={{ scale: 1.1, borderColor: "rgba(227, 184, 98, 0.3)" }}
+                      >
                         <step.icon size={16} className={step.color} />
-                      </div>
+                      </motion.div>
                       <span className="text-sm text-surface-300">{step.label}</span>
                       {i === PIPELINE.length - 1 && (
-                        <CheckIcon size={14} className="text-emerald-400 ml-auto" />
+                        <motion.div
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          transition={{ delay: 0.9, type: "spring", stiffness: 300 }}
+                        >
+                          <CheckIcon size={14} className="text-emerald-400 ml-auto" />
+                        </motion.div>
                       )}
                     </div>
                     {i < PIPELINE.length - 1 && (
                       <div className="flex justify-center">
-                        <div className="w-px h-3.5 bg-gradient-to-b from-primary-500/50 to-transparent" />
+                        <motion.div 
+                          className="w-px h-3.5 bg-gradient-to-b from-primary-500/50 to-transparent"
+                          initial={{ scaleY: 0 }}
+                          animate={{ scaleY: 1 }}
+                          transition={{ delay: 0.6 + i * 0.1, duration: 0.3 }}
+                          style={{ transformOrigin: 'top' }}
+                        />
                       </div>
                     )}
-                  </div>
+                  </motion.div>
                 ))}
               </div>
-            </div>
+            </motion.div>
           )}
         </div>
-      </div>
+      </motion.div>
 
       {/* ── Getting Started checklist — guests & new users ───────── */}
       {showGettingStarted && (
@@ -394,26 +475,39 @@ export default function Dashboard() {
               initial="hidden"
               animate="show"
             >
-              {mainStatCards.filter((c) => c.show).map((card) => (
-                <motion.div key={card.label} variants={staggerItem}>
+              {mainStatCards.filter((c) => c.show).map((card, index) => (
+                <motion.div 
+                  key={card.label} 
+                  variants={staggerItem}
+                  whileHover={{ y: -4, scale: 1.02 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                >
                 <Link
                   to={card.path}
-                  className="card group relative overflow-hidden hover:border-primary-500/30 hover:-translate-y-0.5 hover:shadow-glass transition-all duration-200"
+                  className="card group relative overflow-hidden hover-glow"
                 >
-                  <div className="flex items-center justify-between mb-4">
-                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center shadow-lg shadow-black/20 group-hover:scale-105 transition-transform duration-200`}>
-                      <card.icon className="w-5 h-5 text-white" />
+                  {/* Animated gradient background on hover */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-4">
+                      <motion.div 
+                        className={`w-10 h-10 rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center shadow-lg shadow-black/20`}
+                        whileHover={{ scale: 1.15, rotate: 5 }}
+                        transition={{ type: "spring", stiffness: 400, damping: 15 }}
+                      >
+                        <card.icon className="w-5 h-5 text-white" />
+                      </motion.div>
+                      <ArrowRightIcon className="w-4 h-4 text-surface-500 group-hover:text-primary-400 group-hover:translate-x-1 transition-all duration-200" />
                     </div>
-                    <ArrowRightIcon className="w-4 h-4 text-surface-500 group-hover:text-primary-400 group-hover:translate-x-0.5 transition-all duration-200" />
+                    <p className="text-2xl font-semibold tracking-tight">
+                      {isLoading ? (
+                        <span className="inline-block w-10 h-7 bg-surface-800 rounded animate-pulse" />
+                      ) : (
+                        <span>{typeof card.value === 'number' ? card.value.toLocaleString() : card.value}</span>
+                      )}
+                    </p>
+                    <p className="text-sm text-surface-400 mt-0.5">{card.label}</p>
                   </div>
-                  <p className="text-2xl font-semibold tracking-tight">
-                    {isLoading ? (
-                      <span className="inline-block w-10 h-7 bg-surface-800 rounded animate-pulse" />
-                    ) : (
-                      <span>{typeof card.value === 'number' ? card.value.toLocaleString() : card.value}</span>
-                    )}
-                  </p>
-                  <p className="text-sm text-surface-400 mt-0.5">{card.label}</p>
                 </Link>
                 </motion.div>
               ))}

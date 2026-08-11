@@ -160,6 +160,27 @@
   .glass-panel {
     @apply bg-surface-900/50 backdrop-blur-xl border border-surface-700/40 rounded-2xl;
     box-shadow: 0 8px 40px -12px rgba(0, 0, 0, 0.5);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .glass-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, rgba(227, 184, 98, 0.15), transparent 50%, rgba(59, 130, 246, 0.1));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .glass-panel:hover::before {
+    opacity: 1;
   }
 
   /* ─── Fine caps label — the InvestIQ micro-label ───── */
@@ -181,23 +202,67 @@
 
   .btn-primary {
     @apply px-4 py-2 rounded-xl font-medium text-sm transition-all duration-200
-           active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
-    /* Gold gradient with dark ink — InvestIQ signature (dark-on-gold beats
-       white-on-gold for contrast) */
+           disabled:opacity-50 disabled:cursor-not-allowed;
     color: #141007;
     background: linear-gradient(120deg, #b8842f, #e3b862);
     box-shadow: 0 8px 40px -8px rgba(227, 184, 98, 0.25);
+    position: relative;
+    overflow: hidden;
   }
+
+  .btn-primary::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(120deg, transparent, rgba(255,255,255,0.2), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.4s ease;
+  }
+
+  .btn-primary:hover::before {
+    transform: translateX(100%);
+  }
+
   .btn-primary:hover {
-    filter: brightness(1.08);
-    box-shadow: 0 10px 44px -8px rgba(227, 184, 98, 0.35);
+    filter: brightness(1.1);
+    box-shadow: 0 12px 48px -8px rgba(227, 184, 98, 0.4);
+    transform: translateY(-1px);
+  }
+
+  .btn-primary:active {
+    transform: scale(0.97);
+    box-shadow: 0 4px 20px -4px rgba(227, 184, 98, 0.3);
   }
 
   .btn-secondary {
     @apply px-4 py-2 rounded-xl bg-surface-800 hover:bg-surface-700
            text-surface-200 font-medium text-sm transition-all duration-200
-           border border-surface-700/50 active:scale-[0.98]
+           border border-surface-700/50
            disabled:opacity-50 disabled:cursor-not-allowed;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-secondary::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(120deg, transparent, rgba(255,255,255,0.05), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.4s ease;
+  }
+
+  .btn-secondary:hover::before {
+    transform: translateX(100%);
+  }
+
+  .btn-secondary:hover {
+    border-color: rgba(255,255,255,0.12);
+    transform: translateY(-1px);
+  }
+
+  .btn-secondary:active {
+    transform: scale(0.97);
   }
 
   .input-field {
@@ -214,7 +279,33 @@
 
   .card {
     @apply p-5 rounded-2xl bg-surface-900/70 border border-surface-700/30
-           hover:border-surface-600/50 transition-all duration-200;
+           transition-all duration-300;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, rgba(227, 184, 98, 0.2), transparent 40%, rgba(59, 130, 246, 0.15));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .card:hover {
+    @apply border-surface-600/50 -translate-y-0.5;
+    box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(227, 184, 98, 0.08);
+  }
+
+  .card:hover::before {
+    opacity: 1;
   }
 }
 
@@ -231,6 +322,80 @@
   50% { transform: translate(2%, -3%); }
   75% { transform: translate(-2%, -2%); }
   100% { transform: translate(0, 0); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+.text-gradient-animated {
+  background: linear-gradient(270deg, #e3b862, #b8842f, #e3b862);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: gradient-shift 3s ease infinite;
+}
+
+/* Premium hover glow effect for cards */
+.hover-glow {
+  position: relative;
+}
+
+.hover-glow::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(227, 184, 98, 0.1), transparent, rgba(59, 130, 246, 0.1));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: -1;
+  filter: blur(8px);
+}
+
+.hover-glow:hover::after {
+  opacity: 1;
+}
+
+/* Status indicator pulse */
+.status-pulse {
+  position: relative;
+}
+
+.status-pulse::before {
+  content: "";
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* Keyboard shortcut badge */
+.kbd {
+  @apply px-1.5 py-0.5 rounded bg-surface-800 border border-surface-700 text-[10px] font-mono text-surface-400;
 }
 
 @keyframes pulse-dot {

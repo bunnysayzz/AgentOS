@@ -1,4 +1,5 @@
 import { useEffect, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { create } from 'zustand'
 import { cn } from '@/utils/cn'
 import { CheckCircleIcon, XCircleIcon, AlertCircleIcon, InfoIcon, XIcon } from '@/components/Icons'
@@ -76,25 +77,37 @@ function ToastItem({ toast: t, onRemove }: { toast: Toast; onRemove: (id: string
   }, [t.id, t.duration, onRemove])
 
   return (
-    <div
+    <motion.div
+      layout
+      initial={{ opacity: 0, x: 50, scale: 0.95 }}
+      animate={{ opacity: 1, x: 0, scale: 1 }}
+      exit={{ opacity: 0, x: 50, scale: 0.95, transition: { duration: 0.2 } }}
+      transition={{ type: "spring", stiffness: 400, damping: 30 }}
       className={cn(
         'flex items-start gap-3 px-4 py-3 rounded-xl border shadow-xl backdrop-blur-xl',
-        'animate-slide-in-right transition-all duration-300',
         colorMap[t.type],
       )}
     >
-      <Icon size={18} className={cn('flex-shrink-0 mt-0.5', iconColorMap[t.type])} />
+      <motion.div
+        initial={{ scale: 0 }}
+        animate={{ scale: 1 }}
+        transition={{ delay: 0.1, type: "spring", stiffness: 500, damping: 25 }}
+      >
+        <Icon size={18} className={cn('flex-shrink-0 mt-0.5', iconColorMap[t.type])} />
+      </motion.div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold">{t.title}</p>
         {t.message && <p className="text-xs mt-0.5 opacity-80">{t.message}</p>}
       </div>
-      <button
+      <motion.button
         onClick={() => onRemove(t.id)}
         className="flex-shrink-0 p-0.5 rounded-md hover:bg-white/10 transition-colors"
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
       >
         <XIcon size={14} />
-      </button>
-    </div>
+      </motion.button>
+    </motion.div>
   )
 }
 
@@ -107,11 +120,13 @@ export default function ToastContainer() {
 
   return (
     <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 max-w-sm w-full pointer-events-none">
-      {toasts.map((t) => (
-        <div key={t.id} className="pointer-events-auto">
-          <ToastItem toast={t} onRemove={onRemove} />
-        </div>
-      ))}
+      <AnimatePresence mode="popLayout">
+        {toasts.map((t) => (
+          <div key={t.id} className="pointer-events-auto">
+            <ToastItem toast={t} onRemove={onRemove} />
+          </div>
+        ))}
+      </AnimatePresence>
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowRightIcon, EyeIcon, EyeOffIcon, LockIcon, LogInIcon, LogoIcon, MailIcon, GoogleIcon } from '@/components/Icons'
+import { motion } from 'framer-motion'
+import { ArrowRightIcon, EyeIcon, EyeOffIcon, LockIcon, LogInIcon, LogoIcon, MailIcon, GoogleIcon, SparklesIcon } from '@/components/Icons'
 import { useAuthStore } from '@/stores/authStore'
 import { loginWithGoogle, checkGoogleRedirect, loginWithFirebaseEmail, firebaseUserToStoreUser, type FirebaseUser } from '@/services/firebase'
 import axios from 'axios'
@@ -184,21 +185,48 @@ export default function Login() {
   return (
     <div className="min-h-screen relative flex items-center justify-center p-4">
       <div className="stage" aria-hidden />
+      
+      {/* Animated background orbs */}
+      <motion.div 
+        className="fixed top-1/4 left-1/4 w-96 h-96 rounded-full bg-primary-500/10 blur-3xl pointer-events-none"
+        animate={{ scale: [1, 1.2, 1], x: [0, 30, 0], y: [0, -20, 0] }}
+        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div 
+        className="fixed bottom-1/4 right-1/4 w-80 h-80 rounded-full bg-info/10 blur-3xl pointer-events-none"
+        animate={{ scale: [1, 1.15, 1], x: [0, -20, 0], y: [0, 30, 0] }}
+        transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 2 }}
+      />
+      
       <div className="w-full max-w-md relative">
         {/* Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-[#16151a] to-[#08080b] border border-primary-600/40 shadow-lg shadow-primary-500/25 mb-5">
+        <motion.div 
+          className="text-center mb-8"
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <motion.div 
+            className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-[#16151a] to-[#08080b] border border-primary-600/40 shadow-lg shadow-primary-500/25 mb-5"
+            whileHover={{ scale: 1.05, rotate: 5 }}
+            transition={{ type: "spring", stiffness: 300, damping: 15 }}
+          >
             <LogoIcon size={30} />
-          </div>
+          </motion.div>
           <p className="microlabel mb-3">AgentOS Studio | agent orchestration</p>
           <h1 className="text-4xl font-light tracking-tight serif-display text-surface-100">
             Welcome back
           </h1>
           <p className="text-surface-400 text-sm mt-2">Sign in to your account</p>
-        </div>
+        </motion.div>
 
         {/* Form */}
-        <div className="glass-strong rounded-2xl p-6 space-y-4 shadow-glass">
+        <motion.div 
+          className="glass-strong rounded-2xl p-6 space-y-4 shadow-glass"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2, duration: 0.5 }}
+        >
           {error && (
             <div data-testid="auth-error" className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
               {error}
@@ -305,13 +333,14 @@ export default function Login() {
           <div className="pt-2">
             <Link
               to="/dashboard"
-              className="text-center block text-xs text-surface-500 hover:text-primary-400 transition-colors"
+              className="group text-center block text-xs text-surface-500 hover:text-primary-400 transition-colors"
             >
-              Just exploring? Try the live demo as a guest{' '}
-              <ArrowRightIcon size={11} className="inline" />
+              <SparklesIcon size={12} className="inline mr-1 opacity-50 group-hover:opacity-100 transition-opacity" />
+              Just exploring? Try the live demo as a guest
+              <ArrowRightIcon size={11} className="inline ml-1 group-hover:translate-x-0.5 transition-transform" />
             </Link>
           </div>
-        </div>
+        </motion.div>
       </div>
     </div>
   )

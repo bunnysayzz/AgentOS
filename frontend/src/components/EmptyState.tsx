@@ -1,44 +1,48 @@
-import React from 'react'
 import { motion } from 'framer-motion'
+import { type ReactNode } from 'react'
+import { PlusIcon } from '@/components/Icons'
 
 interface EmptyStateProps {
-  icon: React.FC<{ size?: number; className?: string }>
+  icon: ReactNode
   title: string
-  description?: string
-  action?: React.ReactNode
+  description: string
+  action?: {
+    label: string
+    onClick: () => void
+  }
   className?: string
 }
 
-/**
- * Consistent industry-style empty state: an icon tile with a soft accent,
- * a title, a one-line description, and an optional action button.
- * Rendered with a gentle entrance so pages never pop.
- */
-export default function EmptyState({
-  icon: Icon,
-  title,
-  description,
-  action,
-  className = '',
-}: EmptyStateProps) {
+export function EmptyState({ icon, title, description, action, className }: EmptyStateProps) {
   return (
     <motion.div
-      className={`glass-panel flex flex-col items-center justify-center px-6 py-14 text-center ${className}`}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      className={`glass-panel p-12 text-center ${className || ''}`}
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
     >
-      <div className="relative mb-4">
-        <div className="absolute inset-0 rounded-2xl bg-primary-500/10 blur-xl" aria-hidden />
-        <div className="relative w-14 h-14 rounded-2xl bg-surface-800 border border-surface-700/40 flex items-center justify-center">
-          <Icon size={24} className="text-surface-500" />
-        </div>
-      </div>
-      <h3 className="text-base font-medium text-surface-200">{title}</h3>
-      {description && (
-        <p className="text-sm text-surface-500 mt-1.5 max-w-sm leading-relaxed">{description}</p>
+      <motion.div
+        className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-surface-800 to-surface-900 border border-surface-700/50 flex items-center justify-center"
+        animate={{ y: [0, -5, 0] }}
+        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+      >
+        <div className="text-surface-500">{icon}</div>
+      </motion.div>
+      <h3 className="text-lg font-medium text-surface-300 mb-2">{title}</h3>
+      <p className="text-sm text-surface-500 max-w-sm mx-auto mb-6">{description}</p>
+      {action && (
+        <motion.button
+          onClick={action.onClick}
+          className="btn-primary inline-flex items-center gap-2"
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+        >
+          <PlusIcon size={16} />
+          {action.label}
+        </motion.button>
       )}
-      {action && <div className="mt-5">{action}</div>}
     </motion.div>
   )
 }
+
+export default EmptyState
