@@ -92,7 +92,6 @@ def get_firestore_db() -> firestore.Client:
     # ─── 3. Local Developer: CLI Credentials File ────────────────────────
     if CONFIGSTORE_PATH.exists():
         try:
-            import json
             with open(CONFIGSTORE_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
             tokens = data.get("tokens", {})
