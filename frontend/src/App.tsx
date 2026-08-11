@@ -25,6 +25,8 @@ import ApiKeys from '@/pages/ApiKeys'
 import Terms from '@/pages/Terms'
 import Privacy from '@/pages/Privacy'
 import Gallery from '@/pages/Gallery'
+import Budget from '@/pages/Budget'
+import WebhookDebugger from '@/pages/WebhookDebugger'
 
 function App() {
   return (
@@ -72,6 +74,8 @@ function App() {
             <Route path="/secrets" element={<Secrets />} />
             <Route path="/workspaces/:workspaceId/secrets" element={<Secrets />} />
             <Route path="/providers" element={<Providers />} />
+          <Route path="/budget" element={<Budget />} />
+          <Route path="/webhook-debugger" element={<WebhookDebugger />} />
           </Route>
         </Route>
       </Route>

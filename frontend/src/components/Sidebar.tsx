@@ -1,7 +1,7 @@
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { cn } from '@/utils/cn'
-import { ActivityIcon, ArchiveIcon, BotIcon, BrainIcon, ChevronLeftIcon, ChevronRightIcon, CpuIcon, DashboardIcon, FileTextIcon, GitBranchIcon, GlobeIcon, KeyIcon, LogInIcon, LogoIcon, LogOutIcon, SettingsIcon, UserPlusIcon, UsersIcon, WorkflowIcon, WrenchIcon, XIcon, CheckIcon, ChevronDownIcon } from '@/components/Icons'
+import { ActivityIcon, ArchiveIcon, BotIcon, BrainIcon, ChevronLeftIcon, ChevronRightIcon, CpuIcon, DashboardIcon, FileTextIcon, GitBranchIcon, GlobeIcon, KeyIcon, LogInIcon, LogoIcon, LogOutIcon, SettingsIcon, UserPlusIcon, UsersIcon, WorkflowIcon, WrenchIcon, XIcon, CheckIcon, ChevronDownIcon, WalletIcon, WebhookIcon } from '@/components/Icons'
 import { useAuthStore } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
 import { firebaseAuth, firebaseSignOut } from '@/services/firebase'
@@ -46,6 +46,8 @@ const NAV_SECTIONS: { label: string; items: { label: string; path: string; icon:
       { label: 'Artifacts', path: '/artifacts', icon: ArchiveIcon },
       { label: 'Graphs', path: '/graphs', icon: GitBranchIcon },
       { label: 'Telemetry', path: '/telemetry', icon: ActivityIcon },
+      { label: 'Budget', path: '/budget', icon: WalletIcon },
+      { label: 'Webhook Debugger', path: '/webhook-debugger', icon: WebhookIcon },
     ],
   },
 ]

@@ -21,6 +21,8 @@ from app.api.gallery import router as gallery_router
 from app.api.webhooks import router as webhooks_router
 from app.api.dashboard import router as dashboard_router
 from app.api.demo import router as demo_router
+from app.api.budgets import router as budgets_router
+from app.api.webhook_debugger import router as webhook_debugger_router
 
 router = APIRouter()
 
@@ -44,6 +46,8 @@ router.include_router(telemetry_router)
 router.include_router(webhooks_router)
 router.include_router(dashboard_router)
 router.include_router(demo_router)
+router.include_router(budgets_router)
+router.include_router(webhook_debugger_router)
 
 
 @router.get("/")

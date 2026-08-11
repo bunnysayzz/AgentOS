@@ -341,6 +341,43 @@ export const LayersIcon = ({ className, size = 18 }: IconProps) => (
   </svg>
 )
 
+export const WebhookIcon = ({ className, size = 18 }: IconProps) => (
+  <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 16.98h1a2 2 0 0 0 1.74-2.99l-4-7a2 2 0 0 0-3.48 0l-4 7A2 2 0 0 0 10 16.98h1" />
+    <path d="M10 9.01V9" />
+    <path d="M14 9.01V9" />
+    <path d="M12 16v3" />
+  </svg>
+)
+
+export const WalletIcon = ({ className, size = 18 }: IconProps) => (
+  <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" />
+    <path d="M3 5v14a2 2 0 0 0 2 2h16v-5" />
+    <path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z" />
+  </svg>
+)
+
+export const TrendingUpIcon = ({ className, size = 18 }: IconProps) => (
+  <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+    <polyline points="17 6 23 6 23 12" />
+  </svg>
+)
+
+export const BellIcon = ({ className, size = 18 }: IconProps) => (
+  <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+  </svg>
+)
+
+export const ShieldIcon = ({ className, size = 18 }: IconProps) => (
+  <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+  </svg>
+)
+
 // ─── MCP / Gateway Icons ────────────────────────────────────────────
 
 export const DollarSignIcon = ({ className, size = 18 }: IconProps) => (
