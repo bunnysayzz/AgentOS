@@ -53,9 +53,9 @@ ENV VITE_FIREBASE_API_KEY=$VITE_FIREBASE_API_KEY \
     VITE_FIREBASE_MESSAGING_SENDER_ID=$VITE_FIREBASE_MESSAGING_SENDER_ID \
     VITE_FIREBASE_APP_ID=$VITE_FIREBASE_APP_ID
 
-# Install deps from the lockfile (reproducible)
+# Install deps (use npm install for compatibility)
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+RUN npm install --prefer-offline --no-audit --no-fund
 
 # Build the production bundle
 COPY frontend/ ./
