@@ -150,7 +150,7 @@ export default function Telemetry() {
 
         {eventList.length === 0 ? (
           <EmptyState
-            icon={ActivityIcon}
+            icon={<ActivityIcon size={24} />}
             title="No events yet"
             description="Events appear here as your agents, workflows and tools run. Log a custom event to get started."
             action={
@@ -226,7 +226,7 @@ export default function Telemetry() {
       {tab === 'audit' && (
         auditList.length === 0 ? (
           <EmptyState
-            icon={ListOrderedIcon}
+            icon={<ListOrderedIcon size={24} />}
             title="No audit logs yet"
             description="Every create, update and delete in your workspace is recorded here for a full audit trail."
           />

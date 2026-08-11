@@ -38,7 +38,7 @@ export default function WebhookDebugger() {
   const [selectedLog, setSelectedLog] = useState<WebhookLog | null>(null)
   const [showTestPanel, setShowTestPanel] = useState(false)
 
-  const { data: logs, isLoading } = useQuery({
+  const { data: logs } = useQuery({
     queryKey: ['webhook-logs', wsId],
     queryFn: () => api.get(`/workspaces/${wsId}/webhook-debugger/logs`).then((r) => r.data),
     enabled: !!wsId,

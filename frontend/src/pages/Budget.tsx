@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  DollarSignIcon, AlertTriangleIcon, CheckIcon, ShieldIcon, TrendingUpIcon,
-  BellIcon, MailIcon, WebhookIcon, SaveIcon, RefreshCwIcon,
+  DollarSignIcon, AlertTriangleIcon, ShieldIcon, TrendingUpIcon,
+  MailIcon, SaveIcon,
 } from '@/components/Icons'
 import api from '@/services/api'
 import { useWorkspaceStore } from '@/stores/workspaceStore'

@@ -475,7 +475,7 @@ export default function Dashboard() {
               initial="hidden"
               animate="show"
             >
-              {mainStatCards.filter((c) => c.show).map((card, index) => (
+              {mainStatCards.filter((c) => c.show).map((card) => (
                 <motion.div 
                   key={card.label} 
                   variants={staggerItem}

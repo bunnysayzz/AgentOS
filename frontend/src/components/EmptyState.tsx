@@ -1,15 +1,12 @@
 import { motion } from 'framer-motion'
 import { type ReactNode } from 'react'
-import { PlusIcon } from '@/components/Icons'
+
 
 interface EmptyStateProps {
   icon: ReactNode
   title: string
   description: string
-  action?: {
-    label: string
-    onClick: () => void
-  }
+  action?: ReactNode
   className?: string
 }
 
@@ -30,17 +27,7 @@ export function EmptyState({ icon, title, description, action, className }: Empt
       </motion.div>
       <h3 className="text-lg font-medium text-surface-300 mb-2">{title}</h3>
       <p className="text-sm text-surface-500 max-w-sm mx-auto mb-6">{description}</p>
-      {action && (
-        <motion.button
-          onClick={action.onClick}
-          className="btn-primary inline-flex items-center gap-2"
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-        >
-          <PlusIcon size={16} />
-          {action.label}
-        </motion.button>
-      )}
+      {action}
     </motion.div>
   )
 }

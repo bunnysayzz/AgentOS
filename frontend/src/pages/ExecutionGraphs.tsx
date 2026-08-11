@@ -131,7 +131,7 @@ export default function ExecutionGraphs() {
 
       {loadedExec && !graph && !isLoading && (
         <EmptyState
-          icon={GitBranchIcon}
+          icon={<GitBranchIcon size={24} />}
           title="No graph data"
           description="This execution may not have any traced nodes yet, or the ID doesn't match an execution in this workspace."
         />
