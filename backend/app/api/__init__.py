@@ -23,6 +23,10 @@ from app.api.dashboard import router as dashboard_router
 from app.api.demo import router as demo_router
 from app.api.budgets import router as budgets_router
 from app.api.webhook_debugger import router as webhook_debugger_router
+from app.api.evaluations import router as evaluations_router
+from app.api.iac import router as iac_router
+from app.api.ab_testing import router as ab_testing_router
+from app.api.team import router as team_router
 
 router = APIRouter()
 
@@ -48,6 +52,10 @@ router.include_router(dashboard_router)
 router.include_router(demo_router)
 router.include_router(budgets_router)
 router.include_router(webhook_debugger_router)
+router.include_router(evaluations_router)
+router.include_router(iac_router)
+router.include_router(ab_testing_router)
+router.include_router(team_router)
 
 
 @router.get("/")

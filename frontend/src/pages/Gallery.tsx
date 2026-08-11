@@ -22,6 +22,9 @@ interface GalleryAgent {
   author_username: string
   workspace_name: string
   tool_count?: number
+  clone_count?: number
+  tags?: string[]
+  featured?: boolean
   published_at?: string | null
   created_at?: string
 }
@@ -37,6 +40,8 @@ export default function Gallery() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const [detail, setDetail] = useState<GalleryAgent | null>(null)
   const [cloneError, setCloneError] = useState('')
+  const [search, setSearch] = useState('')
+  const [selectedTag, setSelectedTag] = useState<string | null>(null)
 
   const { data: agents, isLoading, isError } = useQuery({
     queryKey: ['gallery'],
@@ -56,6 +61,18 @@ export default function Gallery() {
   })
 
   const list: GalleryAgent[] = Array.isArray(agents) ? agents : []
+
+  // Extract unique tags from all agents
+  const allTags = Array.from(new Set(list.flatMap((a) => a.tags || [])))
+  const filteredList = list.filter((a) => {
+    const matchesSearch = !search || 
+      a.name.toLowerCase().includes(search.toLowerCase()) ||
+      (a.description || '').toLowerCase().includes(search.toLowerCase())
+    const matchesTag = !selectedTag || (a.tags || []).includes(selectedTag)
+    return matchesSearch && matchesTag
+  })
+  const featured = filteredList.filter((a) => a.featured)
+  const regular = filteredList.filter((a) => !a.featured)
 
   const handleUse = (agent: GalleryAgent) => {
     setCloneError('')
@@ -135,6 +152,48 @@ export default function Gallery() {
         </p>
       </section>
 
+      {/* Search & Filters */}
+      <section className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 mb-8">
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex-1 relative">
+            <input
+              type="text"
+              placeholder="Search agents..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="input-field pl-10"
+            />
+            <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+          </div>
+          {allTags.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setSelectedTag(null)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  !selectedTag ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30' : 'bg-surface-800/50 text-surface-400 border border-surface-700/30 hover:bg-surface-800'
+                }`}
+              >
+                All
+              </button>
+              {allTags.slice(0, 6).map((tag) => (
+                <button
+                  key={tag}
+                  onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    selectedTag === tag ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30' : 'bg-surface-800/50 text-surface-400 border border-surface-700/30 hover:bg-surface-800'
+                  }`}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
       {/* Grid */}
       <section className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 pb-20">
         {isError ? (
@@ -167,18 +226,89 @@ export default function Gallery() {
             )}
           </div>
         ) : (
+          <div>
+          {featured.length > 0 && (
+            <div className="mb-8">
+              <h3 className="microlabel mb-4 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary-400" />
+                Featured
+              </h3>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {featured.map((agent) => (
+                  <div
+                    key={agent.id}
+                    onClick={() => { setCloneError(''); setDetail(agent) }}
+                    className="card group cursor-pointer hover-glow flex flex-col relative overflow-hidden"
+                  >
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary-500 to-primary-600" />
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500/20 to-primary-600/20 border border-primary-500/20 flex items-center justify-center">
+                        <BotIcon size={18} className="text-primary-400" />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {agent.clone_count != null && agent.clone_count > 0 && (
+                          <span className="chip text-[10px] bg-primary-500/10 text-primary-400 border-primary-500/20">
+                            {agent.clone_count} clones
+                          </span>
+                        )}
+                        <span className="chip text-[10px]">{agent.model_name}</span>
+                      </div>
+                    </div>
+                    <h3 className="font-medium text-surface-100 group-hover:text-primary-300 transition-colors">
+                      {agent.name}
+                    </h3>
+                    <p className="text-sm text-surface-500 mt-1 mb-4 line-clamp-2 flex-1">
+                      {agent.description || 'No description'}
+                    </p>
+                    {agent.tags && agent.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-3">
+                        {agent.tags.slice(0, 3).map((tag) => (
+                          <span key={tag} className="px-2 py-0.5 rounded text-[10px] bg-surface-800/80 text-surface-400 border border-surface-700/30">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-surface-600">
+                        @{agent.author_username} <span className="text-surface-700">·</span> {agent.workspace_name}
+                      </p>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleUse(agent) }}
+                        disabled={cloning}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                        style={{ color: '#141007', background: 'linear-gradient(120deg, #b8842f, #e3b862)' }}
+                      >
+                        <RocketIcon size={12} />
+                        Use this agent
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Regular Agents */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {list.map((agent) => (
+            {regular.map((agent) => (
               <div
                 key={agent.id}
                 onClick={() => { setCloneError(''); setDetail(agent) }}
-                className="card group cursor-pointer hover:border-primary-500/30 transition-all duration-200 flex flex-col"
+                className="card group cursor-pointer flex flex-col"
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 border border-emerald-500/10 flex items-center justify-center">
                     <BotIcon size={18} className="text-emerald-400" />
                   </div>
-                  <span className="chip text-[10px]">{agent.model_name}</span>
+                  <div className="flex items-center gap-2">
+                    {agent.clone_count != null && agent.clone_count > 0 && (
+                      <span className="chip text-[10px]">
+                        {agent.clone_count} clones
+                      </span>
+                    )}
+                    <span className="chip text-[10px]">{agent.model_name}</span>
+                  </div>
                 </div>
                 <h3 className="font-medium text-surface-100 group-hover:text-primary-300 transition-colors">
                   {agent.name}
@@ -186,6 +316,15 @@ export default function Gallery() {
                 <p className="text-sm text-surface-500 mt-1 mb-4 line-clamp-2 flex-1">
                   {agent.description || 'No description'}
                 </p>
+                {agent.tags && agent.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {agent.tags.slice(0, 3).map((tag) => (
+                      <span key={tag} className="px-2 py-0.5 rounded text-[10px] bg-surface-800/80 text-surface-400 border border-surface-700/30">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-surface-600">
                     @{agent.author_username} <span className="text-surface-700">·</span> {agent.workspace_name}
@@ -203,7 +342,8 @@ export default function Gallery() {
               </div>
             ))}
           </div>
-        )}
+          </div>
+          )}
       </section>
 
       {/* Detail modal */}
