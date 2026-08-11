@@ -52,29 +52,21 @@ def _frontend_dist_dir() -> Path | None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan with startup and shutdown events."""
-    # Best-effort seed of the LLM model registry (Firestore). The superuser is
-    # promoted automatically on first Firebase authentication (FIRST_SUPERUSER_EMAIL).
-    try:
-        from app.services.mcp_service import seed_default_models
-        await seed_default_models(FirestoreDB())
-    except Exception as e:
-        print(f"⚠️  Model registry seed skipped: {e}")
+    """Application lifespan with startup and shutdown events.
 
-    # Warm the Firebase ID-token signing-cert cache so the first login after a
-    # cold start doesn't pay a certificate-fetch round-trip.
-    try:
-        from app.core.firebase import _fetch_firebase_certs
-        _fetch_firebase_certs()
-    except Exception as e:
-        print(f"⚠️  Firebase cert warmup skipped: {e}")
-
-    # Reap executions orphaned by a previous process restart (they were RUNNING
-    # or PENDING but the background engine died with the process).
-    try:
-        await _reap_orphaned_executions()
-    except Exception as e:
-        print(f"⚠️  Execution reaper skipped: {e}")
+    All startup warmups are best-effort and run as BOUNDED BACKGROUND TASKS in
+    worker threads — they are never awaited inline. Firestore calls are
+    synchronous and can retry for 10+ minutes when a credential is dead
+    (expired/revoked refresh token). Awaiting them here was the root cause of
+    Render "Port scan timeout" deploy failures: the server never got a chance
+    to bind its port. With this design the port binds immediately and a broken
+    credential only degrades data endpoints, never startup.
+    """
+    warmup_tasks = [
+        _spawn_bounded_warmup("model registry seed", _seed_models_sync),
+        _spawn_bounded_warmup("firebase cert warmup", _warm_certs_sync),
+        _spawn_bounded_warmup("execution reaper", _reap_sync),
+    ]
 
     # Cron scheduler for schedule-triggered workflows (runs while the process
     # is alive; cancelled cleanly on shutdown).
@@ -92,6 +84,54 @@ async def lifespan(app: FastAPI):
 
     if scheduler_task:
         scheduler_task.cancel()
+    for task in warmup_tasks:
+        task.cancel()
+
+
+def _spawn_bounded_warmup(label: str, fn) -> asyncio.Task:
+    """Run a startup warmup off the event loop, hard-bounded by a timeout.
+
+    Firestore calls are synchronous (google-cloud-firestore) and block the
+    calling thread — with a dead/expired credential gRPC retries for minutes.
+    Running the work in ``to_thread`` and bounding it with ``wait_for`` means
+    startup NEVER blocks on Firebase, and a hung warmup is abandoned instead of
+    stalling the whole service (the Render "Port scan timeout" failure mode).
+    """
+    timeout = settings.STARTUP_WARMUP_TIMEOUT_SECONDS
+
+    async def runner():
+        try:
+            await asyncio.wait_for(asyncio.to_thread(fn), timeout=timeout)
+            print(f"✅ {label} complete")
+        except asyncio.TimeoutError:
+            print(f"⚠️  {label} timed out after {timeout:.0f}s — continuing without it")
+        except Exception as e:
+            print(f"⚠️  {label} skipped: {e}")
+
+    return asyncio.create_task(runner())
+
+
+def _seed_models_sync() -> None:
+    """Best-effort seed of the LLM model registry (sync Firestore calls)."""
+    import asyncio as _asyncio
+
+    from app.services.mcp_service import seed_default_models
+
+    _asyncio.run(seed_default_models(FirestoreDB()))
+
+
+def _warm_certs_sync() -> None:
+    """Warm the Firebase ID-token signing-cert cache (network call)."""
+    from app.core.firebase import _fetch_firebase_certs
+
+    _fetch_firebase_certs()
+
+
+def _reap_sync() -> None:
+    """Reap executions orphaned by a previous process restart."""
+    import asyncio as _asyncio
+
+    _asyncio.run(_reap_orphaned_executions())
 
 
 async def _reap_orphaned_executions(db: FirestoreDB | None = None) -> None:

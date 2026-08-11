@@ -93,6 +93,13 @@ class Settings(BaseSettings):
     SCHEDULER_ENABLED: bool = True
     SCHEDULER_INTERVAL_SECONDS: int = 60
 
+    # Hard cap (seconds) on each startup warmup (model-registry seed, Firebase
+    # cert cache, orphan reaper). Warmups run in background worker threads and
+    # are abandoned when they exceed this — a dead/expired Firebase credential
+    # (gRPC retries for minutes) must NEVER block the server from binding its
+    # port, or Render marks the deploy "Timed out" (port scan timeout).
+    STARTUP_WARMUP_TIMEOUT_SECONDS: float = 10.0
+
     # MCP protocol server (external MCP clients connect at /mcp)
     MCP_ENABLED: bool = True
     # Optional shared secret for MCP HTTP auth (when unset, API keys are used)
