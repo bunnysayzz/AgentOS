@@ -19,6 +19,19 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Split stable vendors out of the app chunk so they load once and
+        // cache across deploys. Firebase is the heaviest dependency by far.
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom', 'zustand', '@tanstack/react-query'],
+          'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
+          'vendor-ui': ['framer-motion', 'lucide-react', 'clsx', 'tailwind-merge', 'axios'],
+        },
+      },
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,
