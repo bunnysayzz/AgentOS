@@ -270,7 +270,7 @@ export default function Profile() {
       <div className="flex items-center gap-3">
         <div>
           <p className="microlabel mb-1">account</p>
-          <h1 className="text-3xl font-light tracking-tight serif-display text-surface-100">Settings</h1>
+          <h1 className="text-3xl font-semibold tracking-tight text-surface-100">Settings</h1>
           <p className="text-surface-400 mt-1.5 text-sm">Manage your profile and account settings</p>
         </div>
       </div>

@@ -18,7 +18,7 @@ export default {
           900: 'hsl(var(--surface-900) / <alpha-value>)',
           950: 'hsl(var(--surface-950) / <alpha-value>)',
         },
-        // Gold accent — the signature hue (was indigo)
+        // Violet accent — the signature hue (was gold)
         primary: {
           50: 'hsl(var(--primary-50) / <alpha-value>)',
           100: 'hsl(var(--primary-100) / <alpha-value>)',
@@ -36,7 +36,7 @@ export default {
         gold: {
           DEFAULT: 'hsl(var(--gold) / <alpha-value>)',
           bright: 'hsl(var(--gold-bright) / <alpha-value>)',
-          soft: 'rgba(227, 184, 98, 0.14)',
+          soft: 'rgba(139, 92, 246, 0.14)',
         },
         bull: {
           DEFAULT: 'hsl(var(--bull) / <alpha-value>)',
@@ -57,8 +57,8 @@ export default {
         '4xl': '2rem',
       },
       boxShadow: {
-        'gold-glow': '0 0 34px rgba(227, 184, 98, 0.35)',
-        'gold-btn': '0 8px 40px -8px rgba(227, 184, 98, 0.25)',
+        'gold-glow': '0 0 34px rgba(139, 92, 246, 0.35)',
+        'gold-btn': '0 8px 40px -8px rgba(139, 92, 246, 0.3)',
         'glass': '0 8px 40px -12px rgba(0, 0, 0, 0.5)',
       },
       keyframes: {

@@ -32,7 +32,7 @@ export default function Layout() {
   return (
     <ErrorBoundary>
     <div className="min-h-screen text-surface-100">
-      {/* Ambient stage — fixed radial glows + film grain (InvestIQ look).
+      {/* Ambient stage — fixed radial glows + film grain (AgentOS look).
           The wrapper above must stay transparent (no bg-*) so the negative-
           z stage shows through; body supplies the base background. */}
       <div className="stage" aria-hidden />

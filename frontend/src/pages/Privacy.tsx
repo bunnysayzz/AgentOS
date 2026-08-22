@@ -58,7 +58,7 @@ export default function Privacy() {
         <Link to="/" className="text-sm text-primary-400 hover:text-primary-300 transition-colors">
           ← Back to AgentOS
         </Link>
-        <h1 className="text-4xl font-light tracking-tight serif-display mt-6">Privacy Policy</h1>
+        <h1 className="text-4xl font-semibold tracking-tight mt-6">Privacy Policy</h1>
         <p className="text-surface-400 text-sm mt-2">Last updated: August 2026</p>
         <p className="text-surface-400 mt-6 leading-relaxed">
           This Privacy Policy explains what information AgentOS Studio collects, how it is used, and the choices you have. By using the Service, you agree to the practices described here.

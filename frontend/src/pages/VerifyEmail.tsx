@@ -111,7 +111,7 @@ export default function VerifyEmail() {
             <LogoIcon size={30} />
           </div>
           <p className="microlabel mb-3">AgentOS Studio | one last step</p>
-          <h1 className="text-4xl font-light tracking-tight serif-display text-surface-100">
+          <h1 className="text-4xl font-semibold tracking-tight text-surface-100">
             {verified ? 'Email verified!' : 'Verify your email'}
           </h1>
           <p className="text-surface-400 text-sm mt-2">

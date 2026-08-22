@@ -119,7 +119,7 @@ export default function Gallery() {
                 <Link
                   to="/login"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold shadow-lg shadow-primary-500/20 transition-all hover:shadow-primary-500/30"
-                  style={{ color: '#141007', background: 'linear-gradient(120deg, #b8842f, #e3b862)' }}
+                  style={{ color: '#fff', background: 'linear-gradient(120deg, #7c3aed, #a78bfa)' }}
                 >
                   <LogInIcon size={15} />
                   Sign in
@@ -143,7 +143,7 @@ export default function Gallery() {
           <GlobeIcon size={13} />
           Community agent gallery
         </div>
-        <h1 className="text-3xl sm:text-4xl font-light tracking-tight serif-display text-surface-100">
+        <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-surface-100">
           Steal a head start. <span className="text-primary-400">Clone a proven agent.</span>
         </h1>
         <p className="text-surface-400 text-sm sm:text-base mt-3 max-w-xl mx-auto">
@@ -277,7 +277,7 @@ export default function Gallery() {
                         onClick={(e) => { e.stopPropagation(); handleUse(agent) }}
                         disabled={cloning}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-                        style={{ color: '#141007', background: 'linear-gradient(120deg, #b8842f, #e3b862)' }}
+                        style={{ color: '#fff', background: 'linear-gradient(120deg, #7c3aed, #a78bfa)' }}
                       >
                         <RocketIcon size={12} />
                         Use this agent
@@ -333,7 +333,7 @@ export default function Gallery() {
                     onClick={(e) => { e.stopPropagation(); handleUse(agent) }}
                     disabled={cloning}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-                    style={{ color: '#141007', background: 'linear-gradient(120deg, #b8842f, #e3b862)' }}
+                    style={{ color: '#fff', background: 'linear-gradient(120deg, #7c3aed, #a78bfa)' }}
                   >
                     <RocketIcon size={12} />
                     Use this agent

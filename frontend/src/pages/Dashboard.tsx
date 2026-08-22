@@ -251,7 +251,7 @@ export default function Dashboard() {
             {isAuthenticated ? (
               <>
                 <motion.h1 
-                  className="text-2xl sm:text-3xl font-light tracking-tight serif-display"
+                  className="text-2xl sm:text-3xl font-semibold tracking-tight"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.3, duration: 0.4 }}
@@ -270,7 +270,7 @@ export default function Dashboard() {
             ) : (
               <>
                 <motion.h1 
-                  className="text-3xl sm:text-4xl font-light tracking-tight serif-display leading-tight"
+                  className="text-3xl sm:text-5xl font-semibold tracking-tight leading-[1.05]"
                   initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.3, duration: 0.5 }}
@@ -331,7 +331,7 @@ export default function Dashboard() {
                     <div className="flex items-center gap-3 py-1.5">
                       <motion.div 
                         className="w-9 h-9 rounded-xl bg-surface-800/80 border border-surface-700/40 flex items-center justify-center flex-shrink-0"
-                        whileHover={{ scale: 1.1, borderColor: "rgba(227, 184, 98, 0.3)" }}
+                        whileHover={{ scale: 1.1, borderColor: "rgba(139, 92, 246, 0.35)" }}
                       >
                         <step.icon size={16} className={step.color} />
                       </motion.div>

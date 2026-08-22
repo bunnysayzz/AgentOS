@@ -66,7 +66,7 @@ export default function Terms() {
         <Link to="/" className="text-sm text-primary-400 hover:text-primary-300 transition-colors">
           ← Back to AgentOS
         </Link>
-        <h1 className="text-4xl font-light tracking-tight serif-display mt-6">Terms of Service</h1>
+        <h1 className="text-4xl font-semibold tracking-tight mt-6">Terms of Service</h1>
         <p className="text-surface-400 text-sm mt-2">Last updated: August 2026</p>
         <p className="text-surface-400 mt-6 leading-relaxed">
           These Terms of Service ("Terms") govern your access to and use of AgentOS Studio. Please read them carefully.

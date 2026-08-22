@@ -365,6 +365,17 @@ export const TrendingUpIcon = ({ className, size = 18 }: IconProps) => (
   </svg>
 )
 
+export const TrophyIcon = ({ className, size = 18 }: IconProps) => (
+  <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+    <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+    <path d="M4 22h16" />
+    <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+    <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+    <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+  </svg>
+)
+
 export const BellIcon = ({ className, size = 18 }: IconProps) => (
   <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
@@ -624,8 +635,7 @@ export const RocketIcon = ({ className, size = 18 }: IconProps) => (
   </svg>
 )
 
-// ─── Logo Icon — neural "A" sigil with gold gradient (brand mark) ──
-// Mirrors the InvestIQ sigil: rounded square, gradient stroke, accent dot.
+// ─── Logo Icon — neural "A" sigil with violet gradient (brand mark) ──
 // Gradient ids are unique per instance (useId) so multiple renders (sidebar,
 // login, banner) never collide.
 
@@ -637,12 +647,12 @@ export const LogoIcon = ({ className, size = 28 }: IconProps) => {
     <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
       <defs>
         <linearGradient id={ring} x1="3" y1="3" x2="21" y2="21">
-          <stop stopColor="#e3b862" />
-          <stop offset="1" stopColor="#b8842f" />
+          <stop stopColor="#a78bfa" />
+          <stop offset="1" stopColor="#7c3aed" />
         </linearGradient>
         <linearGradient id={glyph} x1="7" y1="6.5" x2="17" y2="16.5">
-          <stop stopColor="#e3b862" />
-          <stop offset="1" stopColor="#b8842f" />
+          <stop stopColor="#a78bfa" />
+          <stop offset="1" stopColor="#7c3aed" />
         </linearGradient>
       </defs>
       {/* orbital ring */}
@@ -651,11 +661,11 @@ export const LogoIcon = ({ className, size = 28 }: IconProps) => {
       <path d="M7 16.5 12 6.5l5 10" stroke={glyph ? `url(#${glyph})` : undefined} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M9.2 13h5.6" opacity="0.85" stroke={`url(#${glyph})`} strokeWidth="1.4" strokeLinecap="round" />
       {/* apex node */}
-      <circle cx="12" cy="6.2" r="1.5" fill="#e3b862" />
-      <circle cx="12" cy="6.2" r="3" opacity="0.35" fill="#e3b862" />
+      <circle cx="12" cy="6.2" r="1.5" fill="#a78bfa" />
+      <circle cx="12" cy="6.2" r="3" opacity="0.35" fill="#a78bfa" />
       {/* satellite nodes */}
-      <circle cx="20.2" cy="9" r="0.9" fill="#e3b862" />
-      <circle cx="3.8" cy="15" r="0.9" fill="#e3b862" />
+      <circle cx="20.2" cy="9" r="0.9" fill="#a78bfa" />
+      <circle cx="3.8" cy="15" r="0.9" fill="#a78bfa" />
     </svg>
   )
 }
@@ -737,6 +747,7 @@ const iconMap: Record<string, React.FC<IconProps>> = {
   // Status
   checkcircle: CheckCircleIcon,
   xcircle: XCircleIcon,
+  trophy: TrophyIcon,
   alertcircle: AlertCircleIcon,
   info: InfoIcon,
   refreshcw: RefreshCwIcon,

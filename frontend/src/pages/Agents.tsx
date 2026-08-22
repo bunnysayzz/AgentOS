@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  ActivityIcon, ArrowLeftIcon, BotIcon, ChevronRightIcon, GlobeIcon, MessageSquareIcon,
+  ActivityIcon, ArrowLeftIcon, BotIcon, GlobeIcon, MessageSquareIcon,
   PauseIcon, PlayIcon, PlusIcon, StopIcon, WrenchIcon, KeyIcon,
   Trash2Icon, CheckIcon, XIcon, RefreshCwIcon,
 } from '@/components/Icons'
@@ -406,19 +406,18 @@ export default function Agents() {
           <button onClick={() => setShowCreate(true)} className="btn-primary">Create Agent</button>
         </div>
       ) : (
-        <div className="grid gap-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {list.map((agent) => (
-            <div key={agent.id} onClick={() => { setDetailId(agent.id); setAgentDetailTab('chat') }} className="card flex items-center justify-between group cursor-pointer hover:border-surface-600/50 transition-all duration-200">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 border border-emerald-500/10 flex items-center justify-center">
-                  <BotIcon size={18} className="text-emerald-400" />
+            <div
+              key={agent.id}
+              onClick={() => { setDetailId(agent.id); setAgentDetailTab('chat') }}
+              className="card group cursor-pointer flex flex-col"
+            >
+              {/* Top row: icon tile + publish toggle */}
+              <div className="flex items-start justify-between mb-4">
+                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-primary-500/25 to-primary-700/25 border border-primary-500/15 flex items-center justify-center shadow-lg shadow-primary-500/10">
+                  <BotIcon size={20} className="text-primary-400" />
                 </div>
-                <div>
-                  <p className="font-medium group-hover:text-emerald-400 transition-colors">{agent.name}</p>
-                  <p className="text-sm text-surface-500">{agent.model_name} · {agent.status}{agent.tool_ids?.length ? ` · ${agent.tool_ids.length} tools` : ''}{agent.published ? ' · published' : ''}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
                 <button
                   onClick={(e) => { e.stopPropagation(); togglePublish({ id: agent.id, publish: !agent.published }) }}
                   className={cn(
@@ -431,7 +430,31 @@ export default function Agents() {
                 >
                   <GlobeIcon size={15} />
                 </button>
-                <ChevronRightIcon size={16} className="text-surface-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+
+              <h3 className="font-medium text-surface-100 group-hover:text-primary-300 transition-colors">
+                {agent.name}
+              </h3>
+              <p className="text-sm text-surface-500 mt-1 mb-4 line-clamp-2 flex-1">
+                {agent.description || 'No description'}
+              </p>
+
+              {/* Footer: status + model + tools */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span
+                  className={cn(
+                    'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border',
+                    agent.status === 'active'
+                      ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                      : 'text-amber-400 bg-amber-500/10 border-amber-500/20',
+                  )}
+                >
+                  <span className={cn('w-1.5 h-1.5 rounded-full', agent.status === 'active' ? 'bg-emerald-400 pulse-dot' : 'bg-amber-400')} />
+                  {agent.status}
+                </span>
+                <span className="chip text-[11px] font-mono">{agent.model_name}</span>
+                {agent.tool_ids?.length ? <span className="chip text-[11px]">{agent.tool_ids.length} tools</span> : null}
+                {agent.published ? <span className="chip text-[11px] text-primary-300 bg-primary-500/10 border-primary-500/20">published</span> : null}
               </div>
             </div>
           ))}

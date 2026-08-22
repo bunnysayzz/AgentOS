@@ -1,7 +1,7 @@
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { cn } from '@/utils/cn'
-import { ActivityIcon, ArchiveIcon, BotIcon, BrainIcon, ChevronLeftIcon, ChevronRightIcon, CpuIcon, DashboardIcon, FileTextIcon, GitBranchIcon, GlobeIcon, KeyIcon, LogInIcon, LogoIcon, LogOutIcon, SettingsIcon, UserPlusIcon, UsersIcon, WorkflowIcon, WrenchIcon, XIcon, CheckIcon, ChevronDownIcon, WalletIcon, WebhookIcon } from '@/components/Icons'
+import { ActivityIcon, ArchiveIcon, BarChart3Icon, BotIcon, BrainIcon, ChevronLeftIcon, ChevronRightIcon, CpuIcon, DashboardIcon, FileTextIcon, GitBranchIcon, GlobeIcon, KeyIcon, LogInIcon, LogoIcon, LogOutIcon, ServerIcon, SettingsIcon, TrendingUpIcon, UserPlusIcon, UsersIcon, WorkflowIcon, WrenchIcon, XIcon, CheckIcon, ChevronDownIcon, WalletIcon, WebhookIcon } from '@/components/Icons'
 import { useAuthStore } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
 import { firebaseAuth, firebaseSignOut } from '@/services/firebase'
@@ -48,6 +48,14 @@ const NAV_SECTIONS: { label: string; items: { label: string; path: string; icon:
       { label: 'Telemetry', path: '/telemetry', icon: ActivityIcon },
       { label: 'Budget', path: '/budget', icon: WalletIcon },
       { label: 'Webhook Debugger', path: '/webhook-debugger', icon: WebhookIcon },
+    ],
+  },
+  {
+    label: 'Test & Ship',
+    items: [
+      { label: 'Evaluations', path: '/evaluations', icon: BarChart3Icon },
+      { label: 'A/B Testing', path: '/ab-testing', icon: TrendingUpIcon },
+      { label: 'Infrastructure', path: '/iac', icon: ServerIcon },
     ],
   },
 ]
@@ -168,7 +176,7 @@ export default function Sidebar() {
         {/* Logo */}
         <div className={cn('flex items-center h-16 border-b border-white/[0.06] flex-shrink-0', collapsed ? 'justify-center' : 'px-5')}>
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#16151a] to-[#08080b] border border-primary-600/40 flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#15132a] to-[#0a0818] border border-primary-500/40 flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20">
               <LogoIcon size={17} />
             </div>
             {!collapsed && (
@@ -282,7 +290,7 @@ export default function Sidebar() {
               <Link
                 to="/login"
                 className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[13px] font-semibold shadow-lg shadow-primary-500/20 transition-all duration-200 hover:shadow-primary-500/30"
-                style={{ color: '#141007', background: 'linear-gradient(120deg, #b8842f, #e3b862)' }}
+                style={{ color: '#fff', background: 'linear-gradient(120deg, #7c3aed, #a78bfa)' }}
               >
                 <LogInIcon size={16} />
                 {!collapsed && <span>Sign in</span>}
