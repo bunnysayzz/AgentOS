@@ -3,8 +3,8 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db import FirestoreDB
 from app.core.database import get_db
 from app.api.deps import get_current_active_user
 from app.schemas.user import ApiKeyCreate, ApiKeyResponse, ApiKeyCreatedResponse
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api-keys", tags=["API Keys"])
 @router.get("", response_model=list[ApiKeyResponse])
 @router.get("/", response_model=list[ApiKeyResponse])
 async def list_api_keys(
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """List all API keys for the current user."""
@@ -41,7 +41,7 @@ async def list_api_keys(
 @router.post("/", response_model=ApiKeyCreatedResponse, status_code=status.HTTP_201_CREATED)
 async def create_api_key(
     key_in: ApiKeyCreate,
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """Create a new API key. The full key is only returned once."""
@@ -64,7 +64,7 @@ async def create_api_key(
 @router.delete("/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_api_key(
     key_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """Revoke an API key."""

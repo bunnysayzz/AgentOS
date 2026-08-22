@@ -1,10 +1,18 @@
 """Budget & cost alert service — workspace-level spending limits and alerts (Firestore)."""
 
 from datetime import datetime, timedelta, timezone
-from app.core.db import FirestoreDB, now_iso
+
+import httpx
+
+from app.core.db import FirestoreDB
+from app.services.mcp_service import LLM_CALLS
 
 WORKSPACES = "workspaces"
-MCP_CALLS = "mcp_calls"
+
+# Key on the workspace budget settings that records which alert state was
+# last delivered, so webhook notifications fire once per threshold crossing
+# instead of on every check.
+LAST_NOTIFIED_KEY = "_last_notified_state"
 
 
 # ─── Budget Config ────────────────────────────────────
@@ -40,7 +48,6 @@ def update_budget_settings(db: FirestoreDB, workspace_id: str, budget_in: dict) 
     settings = ws.get("settings") or {}
     current_budget = settings.get("budget") or {}
     updated_budget = {**DEFAULT_BUDGET, **current_budget, **budget_in}
-    # Remove None values for keys that shouldn't be stored
     settings["budget"] = updated_budget
     ws["settings"] = settings
     db.set(WORKSPACES, workspace_id, ws)
@@ -63,14 +70,14 @@ def get_period_costs(db: FirestoreDB, workspace_id: str, period: str = "monthly"
         start_of_period = now - timedelta(days=30)
         period_label = "30d"
     
-    # Query MCP calls for this workspace in the period
+    # Query the LLM-call ledger for this workspace in the period
     start_iso = start_of_period.isoformat()
     total_cost = 0.0
     total_calls = 0
     total_tokens = 0
     by_model = {}
     
-    for call in db.query(MCP_CALLS, "workspace_id", workspace_id):
+    for call in db.query(LLM_CALLS, "workspace_id", workspace_id):
         call_time = call.get("created_at", "")
         if call_time and call_time >= start_iso:
             cost = call.get("cost_usd") or 0
@@ -110,7 +117,8 @@ def check_budget(db: FirestoreDB, workspace_id: str) -> dict:
     # Monthly check
     if budget.get("monthly_limit_usd") is not None:
         limit = budget["monthly_limit_usd"]
-        pct = (monthly["total_cost_usd"] / limit * 100) if limit > 0 else 0
+        cost = monthly["total_cost_usd"]
+        pct = (cost / limit * 100) if limit > 0 else (100 if cost > 0 else 0)
         if pct >= 100:
             alerts.append({"type": "monthly_exceeded", "limit": limit, "current": monthly["total_cost_usd"], "pct": round(pct, 1)})
             if budget.get("hard_limit"):
@@ -121,7 +129,8 @@ def check_budget(db: FirestoreDB, workspace_id: str) -> dict:
     # Daily check
     if budget.get("daily_limit_usd") is not None:
         limit = budget["daily_limit_usd"]
-        pct = (daily["total_cost_usd"] / limit * 100) if limit > 0 else 0
+        cost = daily["total_cost_usd"]
+        pct = (cost / limit * 100) if limit > 0 else (100 if cost > 0 else 0)
         if pct >= 100:
             alerts.append({"type": "daily_exceeded", "limit": limit, "current": daily["total_cost_usd"], "pct": round(pct, 1)})
             if budget.get("hard_limit"):
@@ -136,3 +145,58 @@ def check_budget(db: FirestoreDB, workspace_id: str) -> dict:
         "alerts": alerts,
         "blocked": blocked,
     }
+
+
+async def check_budget_and_notify(db: FirestoreDB, workspace_id: str) -> dict:
+    """Check budget and deliver webhook alerts on newly crossed thresholds.
+
+    Fires at most once per alert state (e.g. monthly_exceeded) until the
+    state clears, so a dashboard page view or repeated checks don't spam the
+    webhook. Email delivery (``alert_emails``) is not implemented — the app
+    has no SMTP transport; webhook delivery covers machine notifications.
+    """
+    result = check_budget(db, workspace_id)
+
+    ws = db.get(WORKSPACES, workspace_id)
+    if ws is None:
+        return result
+
+    webhook = (result.get("budget") or {}).get("alert_webhook")
+    if not webhook:
+        return result
+
+    state = ",".join(sorted(a["type"] for a in result.get("alerts", []))) or "ok"
+    settings = ws.get("settings") or {}
+    budget = settings.get("budget") or {}
+    last_notified = budget.get(LAST_NOTIFIED_KEY)
+    if state == last_notified:
+        return result
+    if state == "ok":
+        # Healthy again — clear the notified marker so the next breach re-alerts.
+        if last_notified and last_notified != "ok":
+            budget[LAST_NOTIFIED_KEY] = "ok"
+            settings["budget"] = budget
+            ws["settings"] = settings
+            db.set(WORKSPACES, workspace_id, ws)
+        return result
+
+    payload = {
+        "event": "budget_alert",
+        "workspace_id": workspace_id,
+        "alerts": result.get("alerts", []),
+        "blocked": result.get("blocked", False),
+        "monthly": result.get("monthly", {}),
+        "daily": result.get("daily", {}),
+        "sent_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.post(webhook, json=payload)
+    except Exception:
+        pass  # Alert delivery is best-effort; never break the budget page.
+
+    budget[LAST_NOTIFIED_KEY] = state
+    settings["budget"] = budget
+    ws["settings"] = settings
+    db.set(WORKSPACES, workspace_id, ws)
+    return result

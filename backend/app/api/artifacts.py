@@ -3,13 +3,11 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db import FirestoreDB
 from app.core.database import get_db
-from app.api.deps import get_current_active_user
 from app.api.workspaces import get_workspace_or_404, require_workspace_role
 from app.schemas.artifact import ArtifactCreate, ArtifactUpdate, ArtifactResponse
-from app.models.user import User
 from app.models.workspace import Workspace, MembershipRole
 from app.services import artifact_service
 
@@ -26,7 +24,7 @@ async def list_artifacts(
     content_type: str | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """List artifacts in a workspace, optionally filtered by content type."""
     artifacts, total = await artifact_service.list_workspace_artifacts(
@@ -40,7 +38,7 @@ async def list_artifacts(
 async def create_artifact(
     artifact_in: ArtifactCreate,
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Register a new artifact."""
     artifact = await artifact_service.create_artifact(db, workspace.id, artifact_in)
@@ -51,7 +49,7 @@ async def create_artifact(
 async def get_artifact(
     artifact_id: UUID,
     workspace: Workspace = Depends(get_workspace_or_404),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Get artifact metadata."""
     artifact = await artifact_service.get_artifact_by_id(db, artifact_id)
@@ -65,7 +63,7 @@ async def update_artifact(
     artifact_id: UUID,
     artifact_in: ArtifactUpdate,
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Update artifact metadata."""
     artifact = await artifact_service.get_artifact_by_id(db, artifact_id)
@@ -80,7 +78,7 @@ async def update_artifact(
 async def delete_artifact(
     artifact_id: UUID,
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.ADMIN)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Soft-delete an artifact."""
     artifact = await artifact_service.get_artifact_by_id(db, artifact_id)

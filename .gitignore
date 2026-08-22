@@ -76,3 +76,6 @@ frontend/blob-report/
 *.whl
 *.tar.gz
 *.egg
+
+# ─── Local session data ───────────────────────────────
+.freebuff/

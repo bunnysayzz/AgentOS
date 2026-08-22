@@ -4,8 +4,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db import FirestoreDB
 from app.core.database import get_db
 from app.api.deps import get_current_active_user
 from app.api.workspaces import get_workspace_or_404, require_workspace_role
@@ -15,7 +15,7 @@ from app.schemas.workflow import (
 )
 from app.models.user import User
 from app.models.workspace import Workspace, MembershipRole
-from app.models.workflow import Workflow, WorkflowStatus
+from app.models.workflow import Workflow
 from app.services import workflow_service
 
 router = APIRouter(
@@ -30,7 +30,7 @@ router = APIRouter(
 async def get_workflow_or_404(
     workflow_id: UUID,
     workspace: Workspace = Depends(get_workspace_or_404),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ) -> Workflow:
     wf = await workflow_service.get_workflow_by_id(db, workflow_id)
     if wf is None or wf.workspace_id != workspace.id:
@@ -47,7 +47,7 @@ async def list_workflows(
     workspace: Workspace = Depends(get_workspace_or_404),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     workflows, total = await workflow_service.list_workspace_workflows(
         db, workspace.id, page=page, page_size=page_size
@@ -60,7 +60,7 @@ async def list_workflows(
 async def create_workflow(
     wf_in: WorkflowCreate,
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     try:
         wf = await workflow_service.create_workflow(db, workspace.id, wf_in)
@@ -79,7 +79,7 @@ async def update_workflow(
     wf_in: WorkflowUpdate,
     workflow: Workflow = Depends(get_workflow_or_404),
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     try:
         wf = await workflow_service.update_workflow(db, workflow, wf_in)
@@ -92,7 +92,7 @@ async def update_workflow(
 async def delete_workflow(
     workflow: Workflow = Depends(get_workflow_or_404),
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.ADMIN)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     await workflow_service.delete_workflow(db, workflow)
     return None
@@ -113,7 +113,7 @@ async def execute_workflow(
     workflow: Workflow = Depends(get_workflow_or_404),
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     try:
         execution = await workflow_service.create_execution(
@@ -132,7 +132,7 @@ async def list_executions(
     workflow: Workflow = Depends(get_workflow_or_404),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     executions, total = await workflow_service.list_executions(
         db, workflow.id, page=page, page_size=page_size
@@ -144,7 +144,7 @@ async def list_executions(
 async def get_execution(
     execution_id: UUID,
     workflow: Workflow = Depends(get_workflow_or_404),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     execution = await workflow_service.get_execution(db, execution_id)
     if execution is None or execution.workflow_id != workflow.id:
@@ -157,7 +157,7 @@ async def start_execution(
     execution_id: UUID,
     workflow: Workflow = Depends(get_workflow_or_404),
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
     auto_run: bool = Query(True, description="Run the workflow DAG immediately in the background"),
 ):
     execution = await workflow_service.get_execution(db, execution_id)
@@ -178,7 +178,7 @@ async def pause_execution(
     execution_id: UUID,
     workflow: Workflow = Depends(get_workflow_or_404),
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     execution = await workflow_service.get_execution(db, execution_id)
     if execution is None or execution.workflow_id != workflow.id:
@@ -195,7 +195,7 @@ async def resume_execution(
     execution_id: UUID,
     workflow: Workflow = Depends(get_workflow_or_404),
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     execution = await workflow_service.get_execution(db, execution_id)
     if execution is None or execution.workflow_id != workflow.id:
@@ -212,7 +212,7 @@ async def cancel_execution(
     execution_id: UUID,
     workflow: Workflow = Depends(get_workflow_or_404),
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     execution = await workflow_service.get_execution(db, execution_id)
     if execution is None or execution.workflow_id != workflow.id:
@@ -229,7 +229,7 @@ async def cancel_execution(
 async def get_webhook_token(
     workflow: Workflow = Depends(get_workflow_or_404),
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.ADMIN)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Get (or lazily generate) the webhook token for a workflow (Admin+).
 
@@ -248,7 +248,7 @@ async def approve_execution(
     execution_id: UUID,
     workflow: Workflow = Depends(get_workflow_or_404),
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.ADMIN)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Approve a workflow execution that's waiting for approval (Admin+)."""
     execution = await workflow_service.get_execution(db, execution_id)

@@ -3,8 +3,8 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db import FirestoreDB
 from app.core.database import get_db
 from app.api.deps import get_current_active_user
 from app.api.workspaces import get_workspace_or_404, require_workspace_role
@@ -28,7 +28,7 @@ router = APIRouter(tags=["Prompts"], redirect_slashes=False)
 
 async def get_prompt_or_404(
     prompt_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Prompt:
     """Get a prompt and verify access."""
@@ -63,7 +63,7 @@ async def list_prompts(
     workspace: Workspace = Depends(get_workspace_or_404),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """List prompts in a workspace."""
     prompts, total = await prompt_service.list_workspace_prompts(
@@ -85,7 +85,7 @@ async def list_prompts(
 async def create_prompt(
     prompt_in: PromptCreate,
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.ADMIN)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Create a prompt in a workspace (Admin+)."""
     try:
@@ -101,7 +101,7 @@ async def create_prompt(
 @router.post("/prompts", response_model=PromptResponse, status_code=status.HTTP_201_CREATED)
 async def create_global_prompt(
     prompt_in: PromptCreate,
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """Create a global prompt (no workspace context)."""
@@ -116,7 +116,7 @@ async def create_global_prompt(
 async def list_public_prompts(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """List all public prompts."""
     prompts, total = await prompt_service.list_workspace_prompts(
@@ -138,7 +138,7 @@ async def get_prompt(prompt: Prompt = Depends(get_prompt_or_404)):
 async def update_prompt(
     prompt_in: PromptUpdate,
     prompt: Prompt = Depends(get_prompt_or_404),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Update prompt metadata."""
     prompt = await prompt_service.update_prompt(db, prompt, prompt_in)
@@ -148,7 +148,7 @@ async def update_prompt(
 @router.delete("/prompts/{prompt_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_prompt(
     prompt: Prompt = Depends(get_prompt_or_404),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Delete a prompt (soft-delete)."""
     await prompt_service.delete_prompt(db, prompt)
@@ -166,7 +166,7 @@ async def list_versions(
     prompt: Prompt = Depends(get_prompt_or_404),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """List all versions of a prompt."""
     versions, total = await prompt_service.list_versions(
@@ -183,7 +183,7 @@ async def list_versions(
 async def create_version(
     version_in: PromptVersionCreate,
     prompt: Prompt = Depends(get_prompt_or_404),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Create a new version of a prompt."""
     version = await prompt_service.create_version(db, prompt, version_in)
@@ -197,7 +197,7 @@ async def create_version(
 async def get_version(
     version: int,
     prompt: Prompt = Depends(get_prompt_or_404),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Get a specific version of a prompt."""
     ver = await prompt_service.get_version(db, prompt.id, version)
@@ -213,7 +213,7 @@ async def get_version(
 async def rollback_version(
     version: int,
     prompt: Prompt = Depends(get_prompt_or_404),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Rollback to a previous version (creates a new version with old content)."""
     try:
@@ -234,7 +234,7 @@ async def render_prompt(
     variables: dict[str, str] | None = None,
     version: int | None = Query(None),
     prompt: Prompt = Depends(get_prompt_or_404),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Render a prompt template with variable substitution."""
     try:

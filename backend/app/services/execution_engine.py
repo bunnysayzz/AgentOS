@@ -573,22 +573,35 @@ async def _run_workflow_agent(
     except ValueError:
         preferred = None
 
-    response = await mcp_service.route_chat_completion(
-        db,
-        ChatCompletionRequest(
-            model=agent.get("model_name") or "gpt-4o",
-            messages=messages,
-            temperature=agent.get("temperature"),
-            max_tokens=agent.get("max_tokens"),
-        ),
-        workspace_id=workflow.get("workspace_id"),
-        agent_id=agent["id"],
-        execution_id=execution["id"],
-        preferred_provider=preferred,
-    )
-    content = response.choices[0]["message"]["content"] if response.choices else ""
-    if _is_all_providers_error(content):
-        raise RuntimeError(content[:200])
+    try:
+        response = await mcp_service.route_chat_completion(
+            db,
+            ChatCompletionRequest(
+                model=agent.get("model_name") or "gpt-4o",
+                messages=messages,
+                temperature=agent.get("temperature"),
+                max_tokens=agent.get("max_tokens"),
+            ),
+            workspace_id=workflow.get("workspace_id"),
+            agent_id=agent["id"],
+            execution_id=execution["id"],
+            preferred_provider=preferred,
+        )
+        content = response.choices[0]["message"]["content"] if response.choices else ""
+        if _is_all_providers_error(content):
+            raise RuntimeError(content[:200])
+    except Exception as exc:
+        # Mirror _run_workflow_tool: a failed LLM call must surface as a
+        # FAILED graph node, never a node left stuck in RUNNING.
+        await execution_graph_service.update_node_status(
+            db,
+            gnode,
+            NodeStatus.FAILED,
+            error_message=str(exc),
+            duration_ms=int((time.monotonic() - started) * 1000),
+        )
+        raise
+
     await execution_graph_service.update_node_status(
         db,
         gnode,

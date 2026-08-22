@@ -1,12 +1,11 @@
 """Infrastructure as Code service — YAML export/import for agents, workflows, prompts."""
 
-import json
-from datetime import datetime, timezone
-from app.core.db import FirestoreDB, now_iso
+from app.core.db import FirestoreDB, now_iso, stamp
 
 AGENTS = "agents"
 WORKFLOWS = "workflows"
 PROMPTS = "prompts"
+PROMPT_VERSIONS = "prompt_versions"
 TOOLS = "tools"
 IAC_VERSION = "1.0"
 
@@ -112,41 +111,60 @@ def import_iac_to_workspace(
             },
         }
     
-    # Import tools first (agents may reference them)
+    # Import tools first (agents may reference them). Each resource is
+    # stamped like the canonical create_* services (UUID id, timestamps) and
+    # carries every field the API response schemas require, so imported
+    # resources are indistinguishable from locally created ones.
     tool_id_map = {}
     for tool_data in resources.get("tools", []):
         try:
-            tool = {
-                "id": now_iso() + "-tool",
+            tool = stamp({
                 "workspace_id": workspace_id,
                 "name": tool_data.get("name"),
                 "slug": tool_data.get("slug"),
                 "description": tool_data.get("description"),
-                "tool_type": tool_data.get("tool_type"),
-                "config": tool_data.get("config"),
-                "created_at": now_iso(),
-            }
+                "tool_type": tool_data.get("tool_type", "custom"),
+                "source": None,
+                "schema_definition": None,
+                "parameters": None,
+                "auth_type": "none",
+                "auth_config": None,
+                "is_public": False,
+                "is_active": True,
+                "version": 1,
+                "tags": None,
+            })
             db.add(TOOLS, tool)
             tool_id_map[tool_data.get("slug", "")] = tool["id"]
             imported["tools"] += 1
         except Exception as e:
             errors.append(f"Tool '{tool_data.get('name')}': {str(e)}")
     
-    # Import prompts
+    # Import prompts (with a matching prompt_version so rendering works)
     for prompt_data in resources.get("prompts", []):
         try:
-            prompt = {
-                "id": now_iso() + "-prompt",
+            version_num = int(prompt_data.get("version", 1) or 1)
+            content = prompt_data.get("content") or ""
+            prompt = stamp({
                 "workspace_id": workspace_id,
                 "name": prompt_data.get("name"),
                 "slug": prompt_data.get("slug"),
-                "content": prompt_data.get("content"),
-                "prompt_type": prompt_data.get("prompt_type", "system"),
-                "variables": prompt_data.get("variables"),
-                "version": prompt_data.get("version", 1),
-                "created_at": now_iso(),
-            }
+                "description": None,
+                "prompt_type": prompt_data.get("prompt_type", "template"),
+                "is_public": False,
+                "tags": None,
+                "current_version": version_num,
+            })
             db.add(PROMPTS, prompt)
+            db.add(PROMPT_VERSIONS, stamp({
+                "prompt_id": prompt["id"],
+                "version": version_num,
+                "content": content,
+                "template_variables": prompt_data.get("variables") or [],
+                "commit_message": "Imported from IaC manifest",
+                "token_count": len(content) // 4,
+                "char_count": len(content),
+            }))
             imported["prompts"] += 1
         except Exception as e:
             errors.append(f"Prompt '{prompt_data.get('name')}': {str(e)}")
@@ -154,17 +172,18 @@ def import_iac_to_workspace(
     # Import workflows
     for wf_data in resources.get("workflows", []):
         try:
-            workflow = {
-                "id": now_iso() + "-wf",
+            workflow = stamp({
                 "workspace_id": workspace_id,
                 "name": wf_data.get("name"),
                 "description": wf_data.get("description"),
-                "trigger_type": wf_data.get("trigger_type", "manual"),
-                "schedule_cron": wf_data.get("schedule_cron"),
                 "dag_definition": wf_data.get("dag_definition"),
+                "trigger_type": wf_data.get("trigger_type", "manual"),
+                "trigger_config": None,
+                "schedule_cron": wf_data.get("schedule_cron"),
+                "timeout_seconds": None,
                 "status": "active",
-                "created_at": now_iso(),
-            }
+                "version": 1,
+            })
             db.add(WORKFLOWS, workflow)
             imported["workflows"] += 1
         except Exception as e:
@@ -176,20 +195,23 @@ def import_iac_to_workspace(
             tool_refs = agent_data.get("tool_refs", [])
             resolved_tools = [tool_id_map.get(ref, ref) for ref in tool_refs]
             
-            agent = {
-                "id": now_iso() + "-agent",
+            agent = stamp({
                 "workspace_id": workspace_id,
                 "name": agent_data.get("name"),
                 "description": agent_data.get("description"),
                 "system_prompt": agent_data.get("system_prompt"),
-                "model_name": agent_data.get("model_name"),
-                "model_provider": agent_data.get("model_provider"),
+                "model_provider": agent_data.get("model_provider") or "openai",
+                "model_name": agent_data.get("model_name") or "gpt-4o",
                 "temperature": agent_data.get("temperature", 0.7),
                 "max_tokens": agent_data.get("max_tokens", 4096),
+                "config": None,
                 "tool_ids": resolved_tools,
                 "status": "active",
-                "created_at": now_iso(),
-            }
+                "version": 1,
+                "published": False,
+                "published_at": None,
+                "cloned_from": None,
+            })
             db.add(AGENTS, agent)
             imported["agents"] += 1
         except Exception as e:

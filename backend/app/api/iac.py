@@ -1,6 +1,6 @@
 """Infrastructure as Code API endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 import yaml
@@ -72,7 +72,7 @@ async def import_iac(
 @router.post("/import/yaml")
 async def import_iac_yaml(
     workspace_id: str,
-    body: str,
+    body: str = Body(..., media_type="text/plain", description="Raw YAML IaC manifest"),
     db: FirestoreDB = Depends(get_db),
     current_user: dict = Depends(get_current_active_user),
 ):
@@ -82,4 +82,6 @@ async def import_iac_yaml(
         manifest = yaml.safe_load(body)
     except yaml.YAMLError as e:
         raise HTTPException(status_code=400, detail=f"Invalid YAML: {str(e)}")
+    if not isinstance(manifest, dict):
+        raise HTTPException(status_code=400, detail="Invalid YAML: expected a mapping at the root")
     return iac_service.import_iac_to_workspace(db, workspace["id"], manifest=manifest)

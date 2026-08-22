@@ -1,6 +1,5 @@
 """A/B Testing service — split test prompts, compare performance metrics."""
 
-from datetime import datetime, timezone
 from app.core.db import FirestoreDB, new_id, now_iso
 
 AB_TESTS = "ab_tests"

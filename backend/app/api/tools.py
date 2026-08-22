@@ -3,8 +3,8 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db import FirestoreDB
 from app.core.database import get_db
 from app.api.deps import get_current_active_user, require_superuser
 from app.api.workspaces import get_workspace_or_404, require_workspace_role
@@ -27,7 +27,7 @@ router = APIRouter(tags=["Tools"], redirect_slashes=False)
 
 async def get_tool_or_404(
     tool_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Tool:
     """Get a tool and verify the user has access."""
@@ -66,7 +66,7 @@ async def list_tools(
     workspace: Workspace = Depends(get_workspace_or_404),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """List tools available in a workspace (own + public)."""
     tools, total = await tool_service.list_workspace_tools(
@@ -88,7 +88,7 @@ async def list_tools(
 async def create_tool(
     tool_in: ToolCreate,
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.ADMIN)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Create a new tool in a workspace (Admin+)."""
     try:
@@ -105,7 +105,7 @@ async def create_tool(
 async def list_public_tools(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """List all public/builtin tools."""
     tools, total = await tool_service.list_public_tools(db, page=page, page_size=page_size)
@@ -115,7 +115,7 @@ async def list_public_tools(
 @router.post("/tools", response_model=ToolResponse, status_code=status.HTTP_201_CREATED)
 async def create_global_tool(
     tool_in: ToolCreate,
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
     current_user: User = Depends(require_superuser),
 ):
     """Create a global/public tool (Superuser only)."""
@@ -129,7 +129,7 @@ async def create_global_tool(
 async def require_tool_edit_permission(
     tool: Tool = Depends(get_tool_or_404),
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ) -> Tool:
     """Require admin role for workspace tools, superuser for global tools."""
     if tool.workspace_id:
@@ -163,7 +163,7 @@ async def get_tool(tool: Tool = Depends(get_tool_or_404)):
 async def update_tool(
     tool_in: ToolUpdate,
     tool: Tool = Depends(require_tool_edit_permission),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Update a tool."""
 
@@ -174,7 +174,7 @@ async def update_tool(
 @router.delete("/tools/{tool_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_tool(
     tool: Tool = Depends(require_tool_edit_permission),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Delete a tool (soft-delete)."""
 
@@ -190,7 +190,7 @@ async def list_tool_executions(
     tool: Tool = Depends(get_tool_or_404),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """List executions for a tool."""
     executions, total = await tool_service.list_tool_executions(

@@ -1,6 +1,5 @@
 """Team management service — invites, RBAC, activity feed."""
 
-from datetime import datetime, timezone
 from app.core.db import FirestoreDB, new_id, now_iso
 
 WORKSPACE_MEMBERS = "workspace_members"

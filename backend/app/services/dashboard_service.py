@@ -18,7 +18,7 @@ from app.services import (
     provider_service,
     workspace_service,
 )
-from app.services.telemetry_service import EVENTS, AUDIT
+from app.services.telemetry_service import EVENTS
 
 
 async def get_dashboard_stats(

@@ -48,6 +48,9 @@ AgentOS Studio turns that pile into one self-hosted control plane: **workspaces 
 | 🔌 **MCP Gateway** | Model routing, usage analytics, and live completions |
 | 🔀 **Execution Graphs** | Node-level execution tracing & debugging |
 | 📊 **Telemetry** | Event logging, audit trails, cost & duration dashboards |
+| 🎯 **Evaluations** | Test-case suites, LLM-judged runs, pass rates & regression detection |
+| 🔀 **A/B Testing** | Split-test prompt variants, compare scores, latency & feedback |
+| 🏗️ **Infrastructure as Code** | Export / import agents, workflows, prompts & tools as YAML manifests |
 | 🌐 **Community Gallery** | Publish an agent, or clone one someone else built, with one click |
 | 👥 **Workspaces** | Multi-tenant isolation with Owner / Admin / Member / Viewer roles |
 
@@ -137,8 +140,8 @@ make test   # backend + frontend + E2E
 
 | Suite | Command | Count |
 |---|---|---|
-| Backend (pytest) | `cd backend && pytest -q` | 291 tests |
-| Frontend unit (Vitest) | `cd frontend && npm test` | 98 tests |
+| Backend (pytest) | `cd backend && pytest -q` | 349 tests |
+| Frontend unit (Vitest) | `cd frontend && npm test` | 113 tests |
 | Frontend typecheck | `cd frontend && npm run typecheck` | — |
 | Frontend lint | `cd frontend && npm run lint` | — |
 
@@ -173,7 +176,7 @@ AgentOS/
 - [x] Agents, workflows, memory, tools, prompts, secrets, artifacts, MCP gateway, tracing, telemetry
 - [x] Guest mode (no login wall) + community agent gallery
 - [x] GDPR: account data export & deletion
-- [ ] Agent evals & regression testing (trace-level scoring)
+- [x] Agent evals & regression testing (trace-level scoring)
 - [ ] Shared agent templates & one-click provider presets
 - [ ] MCP server marketplace
 

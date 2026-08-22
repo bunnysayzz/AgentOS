@@ -1,8 +1,8 @@
 """Provider Config API routes - manage LLM API keys, test connections."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db import FirestoreDB
 from app.core.database import get_db
 from app.api.deps import get_current_active_user
 from app.schemas.mcp import ProviderConfigCreate, ProviderConfigResponse
@@ -65,7 +65,7 @@ async def detect_provider(
 @router.get("", response_model=list[ProviderConfigResponse])
 @router.get("/", response_model=list[ProviderConfigResponse])
 async def list_providers(
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """List all configured LLM providers."""
@@ -85,7 +85,7 @@ async def list_providers(
 @router.get("/{provider}", response_model=ProviderConfigResponse | None)
 async def get_provider(
     provider: LLMProvider,
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """Get config for a specific provider."""
@@ -108,7 +108,7 @@ async def get_provider(
 async def upsert_provider(
     provider: LLMProvider,
     config_in: ProviderConfigCreate,
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """Create or update an LLM provider config (API key, base URL, etc.)."""
@@ -129,7 +129,7 @@ async def upsert_provider(
 @router.delete("/{provider}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_provider(
     provider: LLMProvider,
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """Delete a provider config."""
@@ -145,7 +145,7 @@ async def delete_provider(
 @router.post("/{provider}/test")
 async def test_provider_connection(
     provider: LLMProvider,
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """Test the connection to a configured provider."""

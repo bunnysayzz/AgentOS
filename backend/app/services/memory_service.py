@@ -1,6 +1,6 @@
 """Memory Engine service — CRUD, keyword search, session management (Firestore)."""
 
-from app.core.db import FirestoreDB, now_iso, stamp
+from app.core.db import FirestoreDB, stamp
 from app.schemas.memory import MemoryEntryCreate
 
 MEMORY = "memory_entries"

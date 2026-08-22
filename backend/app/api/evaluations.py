@@ -185,6 +185,21 @@ async def complete_run(
     return eval_service.complete_eval_run(db, run_id)
 
 
+@router.post("/runs/{run_id}/execute")
+async def execute_run(
+    workspace_id: str,
+    run_id: str,
+    db: FirestoreDB = Depends(get_db),
+    current_user: dict = Depends(get_current_active_user),
+):
+    """Auto-execute every test case in a run and judge the outputs."""
+    workspace = await get_workspace_or_404(workspace_id, db, current_user)
+    run = eval_service.get_eval_run(db, run_id)
+    if not run or run.get("workspace_id") != workspace["id"]:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return await eval_service.execute_eval_run(db, run_id)
+
+
 @router.get("/runs/{run_id}/regression")
 async def check_regression(
     workspace_id: str,

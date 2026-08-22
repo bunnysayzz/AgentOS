@@ -3,10 +3,9 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db import FirestoreDB
 from app.core.database import get_db
-from app.api.deps import get_current_active_user
 from app.api.workspaces import get_workspace_or_404, require_workspace_role
 from app.schemas.agent import (
     AgentCreate,
@@ -15,9 +14,8 @@ from app.schemas.agent import (
     AgentExecutionCreate,
     AgentExecutionResponse,
 )
-from app.models.user import User
 from app.models.workspace import Workspace, MembershipRole
-from app.models.agent import Agent, AgentExecution, AgentStatus, ExecutionStatus
+from app.models.agent import Agent, AgentStatus, ExecutionStatus
 from app.services import agent_service
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/agents", tags=["Agents"])
@@ -29,7 +27,7 @@ router = APIRouter(prefix="/workspaces/{workspace_id}/agents", tags=["Agents"])
 async def get_agent_or_404(
     agent_id: UUID,
     workspace: Workspace = Depends(get_workspace_or_404),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ) -> Agent:
     """Get an agent and verify it belongs to the workspace."""
     agent = await agent_service.get_agent_by_id(db, agent_id)
@@ -47,7 +45,7 @@ async def list_agents(
     workspace: Workspace = Depends(get_workspace_or_404),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """List all agents in a workspace."""
     agents, total = await agent_service.list_workspace_agents(
@@ -61,7 +59,7 @@ async def list_agents(
 async def create_agent(
     agent_in: AgentCreate,
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Create a new agent (Member+ required)."""
     agent = await agent_service.create_agent(db, workspace.id, agent_in)
@@ -81,7 +79,7 @@ async def update_agent(
     agent_in: AgentUpdate,
     agent: Agent = Depends(get_agent_or_404),
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Update an agent (Member+)."""
     agent = await agent_service.update_agent(db, agent, agent_in)
@@ -92,7 +90,7 @@ async def update_agent(
 async def delete_agent(
     agent: Agent = Depends(get_agent_or_404),
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.ADMIN)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Delete an agent (Admin+)."""
     await agent_service.delete_agent(db, agent)
@@ -106,7 +104,7 @@ async def delete_agent(
 async def publish_agent(
     agent: Agent = Depends(get_agent_or_404),
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Publish an agent to the public community gallery (Member+)."""
     try:
@@ -120,7 +118,7 @@ async def publish_agent(
 async def unpublish_agent(
     agent: Agent = Depends(get_agent_or_404),
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Remove an agent from the public community gallery (Member+)."""
     agent = await agent_service.set_published(db, agent, False)
@@ -135,7 +133,7 @@ async def execute_agent(
     exec_in: AgentExecutionCreate | None = None,
     agent: Agent = Depends(get_agent_or_404),
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Execute an agent (creates a new execution)."""
     if agent.status != AgentStatus.ACTIVE:
@@ -154,7 +152,7 @@ async def list_executions(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     status_filter: ExecutionStatus | None = Query(None),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """List all executions for an agent."""
     executions, total = await agent_service.list_agent_executions(
@@ -167,7 +165,7 @@ async def list_executions(
 async def get_execution(
     execution_id: UUID,
     agent: Agent = Depends(get_agent_or_404),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Get an execution by ID."""
     execution = await agent_service.get_execution_by_id(db, execution_id)
@@ -181,7 +179,7 @@ async def start_execution(
     execution_id: UUID,
     agent: Agent = Depends(get_agent_or_404),
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
     auto_run: bool = Query(True, description="Run the agent immediately in the background"),
 ):
     """Start a pending execution and run the agent in the background."""
@@ -203,7 +201,7 @@ async def cancel_execution(
     execution_id: UUID,
     agent: Agent = Depends(get_agent_or_404),
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Cancel a running/paused execution."""
     execution = await agent_service.get_execution_by_id(db, execution_id)
@@ -221,7 +219,7 @@ async def pause_execution(
     execution_id: UUID,
     agent: Agent = Depends(get_agent_or_404),
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Pause a running execution."""
     execution = await agent_service.get_execution_by_id(db, execution_id)
@@ -239,7 +237,7 @@ async def resume_execution(
     execution_id: UUID,
     agent: Agent = Depends(get_agent_or_404),
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Resume a paused execution."""
     execution = await agent_service.get_execution_by_id(db, execution_id)
@@ -259,7 +257,7 @@ async def resume_execution(
 async def list_session_executions(
     session_id: str,
     workspace: Workspace = Depends(get_workspace_or_404),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """List all executions in a session (scoped to workspace)."""
     executions = await agent_service.list_session_executions(

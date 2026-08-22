@@ -386,6 +386,49 @@ class TestWorkflowExecution:
         assert done["status"] == WorkflowExecutionStatus.FAILED.value
         assert "not found" in (done["error_message"] or "")
 
+    async def test_workflow_agent_llm_failure_marks_node_failed(
+        self, db_session: FirestoreDB, ws: dict, agent: dict, monkeypatch
+    ):
+        """A failing LLM call must surface as a FAILED graph node, never a node
+        stuck in RUNNING while the execution fails."""
+        from app.services import execution_engine as ee
+        from app.services.execution_engine import run_workflow_execution
+
+        async def failing_gateway(*args, **kwargs):
+            raise RuntimeError("LLM provider exploded")
+
+        monkeypatch.setattr(ee.mcp_service, "route_chat_completion", failing_gateway)
+
+        wf = await workflow_service.create_workflow(
+            db_session,
+            ws["id"],
+            WorkflowCreate(
+                name="Failing Agent Flow",
+                dag_definition={
+                    "nodes": [{"id": "a1", "type": "agent", "name": "Engine Agent"}],
+                    "edges": [],
+                },
+            ),
+        )
+        wf["status"] = WorkflowStatus.ACTIVE.value
+        db_session.set(workflow_service.WORKFLOWS, wf["id"], wf)
+
+        execution = await workflow_service.create_execution(db_session, wf)
+        execution = await workflow_service.start_execution(db_session, execution)
+
+        await run_workflow_execution(db_session, execution["id"])
+
+        done = await workflow_service.get_execution(db_session, execution["id"])
+        assert done["status"] == WorkflowExecutionStatus.FAILED.value
+        assert "exploded" in (done["error_message"] or "")
+
+        nodes = await execution_graph_service.list_execution_nodes(
+            db_session, execution["id"]
+        )
+        assert len(nodes) == 1
+        assert nodes[0]["status"] == NodeStatus.FAILED.value
+        assert "exploded" in (nodes[0].get("error_message") or "")
+
 
 # ─── Provider encryption + test connection ────────────
 

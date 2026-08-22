@@ -10,6 +10,7 @@ import {
   SearchIcon, UsersIcon, BotIcon, WorkflowIcon, BrainIcon, WrenchIcon,
   CpuIcon, FileTextIcon, KeyIcon, ArchiveIcon, GitBranchIcon, ActivityIcon,
   GlobeIcon, DashboardIcon, PlusIcon, ArrowRightIcon, LayersIcon,
+  BarChart3Icon, TrendingUpIcon, ServerIcon,
 } from '@/components/Icons'
 
 // ─── Open/close state (module-level so any component can trigger it) ──
@@ -70,6 +71,14 @@ const NAV: { group: string; items: { label: string; path: string; icon: React.FC
       { label: 'Artifacts', path: '/artifacts', icon: ArchiveIcon, keywords: 'files assets versions' },
       { label: 'Graphs', path: '/graphs', icon: GitBranchIcon, keywords: 'execution traces nodes' },
       { label: 'Telemetry', path: '/telemetry', icon: ActivityIcon, keywords: 'events audit logs metrics' },
+    ],
+  },
+  {
+    group: 'Test & Ship',
+    items: [
+      { label: 'Evaluations', path: '/evaluations', icon: BarChart3Icon, keywords: 'eval suites test cases regression scoring' },
+      { label: 'A/B Testing', path: '/ab-testing', icon: TrendingUpIcon, keywords: 'split test variants experiment prompts' },
+      { label: 'Infrastructure', path: '/iac', icon: ServerIcon, keywords: 'iac manifest yaml import export infrastructure' },
     ],
   },
 ]
@@ -176,7 +185,7 @@ export default function CommandPalette() {
 
   // Group for display
   const groups = useMemo(() => {
-    const order = ['Overview', 'Build', 'Integrate', 'Observe', 'Workspaces', 'Actions']
+    const order = ['Overview', 'Build', 'Integrate', 'Observe', 'Test & Ship', 'Workspaces', 'Actions']
     const map = new Map<string, CmdItem[]>()
     for (const item of items) {
       if (!map.has(item.group)) map.set(item.group, [])

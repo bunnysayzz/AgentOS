@@ -29,8 +29,7 @@ async def get_budget(
 ):
     """Get budget settings and current usage for a workspace."""
     workspace = await get_workspace_or_404(workspace_id, db, current_user)
-    result = budget_service.check_budget(db, workspace["id"])
-    return result
+    return await budget_service.check_budget_and_notify(db, workspace["id"])
 
 
 @router.patch("")

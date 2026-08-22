@@ -3,18 +3,18 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db import FirestoreDB
 from app.core.database import get_db
 from app.api.deps import get_current_active_user
-from app.api.workspaces import get_workspace_or_404, require_workspace_role
+from app.api.workspaces import get_workspace_or_404
 from app.schemas.telemetry import (
     TelemetryEventCreate,
     TelemetryEventResponse,
     AuditLogResponse,
 )
 from app.models.user import User
-from app.models.workspace import Workspace, MembershipRole
+from app.models.workspace import Workspace
 from app.models.telemetry import EventSeverity, AuditAction
 from app.services import telemetry_service
 
@@ -31,7 +31,7 @@ router = APIRouter(
 async def create_event(
     event_in: TelemetryEventCreate,
     workspace: Workspace = Depends(get_workspace_or_404),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """Record a telemetry event."""
@@ -49,7 +49,7 @@ async def list_events(
     execution_id: UUID | None = Query(None),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """List telemetry events with optional filters."""
     events, total = await telemetry_service.list_events(
@@ -68,7 +68,7 @@ async def list_events(
 async def get_event_stats(
     workspace: Workspace = Depends(get_workspace_or_404),
     days: int = Query(7, ge=1, le=90),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Get workspace dashboard statistics."""
     stats = await telemetry_service.get_workspace_stats(db, workspace.id, days=days)
@@ -79,7 +79,7 @@ async def get_event_stats(
 async def get_event(
     event_id: UUID,
     workspace: Workspace = Depends(get_workspace_or_404),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Get a specific telemetry event."""
     event = await telemetry_service.get_event_by_id(db, event_id)
@@ -98,7 +98,7 @@ async def list_audit_logs(
     resource_type: str | None = Query(None),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """List audit logs for a workspace."""
     logs, total = await telemetry_service.list_audit_logs(

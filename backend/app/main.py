@@ -149,11 +149,13 @@ async def _reap_orphaned_executions(db: FirestoreDB | None = None) -> None:
     cutoff = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
     reaped = 0
 
-    # Agent executions that were started > 10 min ago and never finished.
+    # Agent executions that have been idle since before the cutoff. Use
+    # started_at (falling back to created_at for never-started PENDING rows)
+    # so a long-queued execution that only just began is not reaped.
     for row in db.query(agent_service.EXECUTIONS):
         if row.get("status") not in (ExecutionStatus.RUNNING.value, ExecutionStatus.PENDING.value):
             continue
-        if (row.get("created_at") or "") < cutoff:
+        if (row.get("started_at") or row.get("created_at") or "") < cutoff:
             row["status"] = ExecutionStatus.FAILED.value
             row["error_message"] = "Execution interrupted by service restart"
             row["completed_at"] = datetime.now(timezone.utc).isoformat()
@@ -167,7 +169,7 @@ async def _reap_orphaned_executions(db: FirestoreDB | None = None) -> None:
             WorkflowExecutionStatus.PENDING.value,
         ):
             continue
-        if (row.get("created_at") or "") < cutoff:
+        if (row.get("started_at") or row.get("created_at") or "") < cutoff:
             row["status"] = WorkflowExecutionStatus.FAILED.value
             row["error_message"] = "Execution interrupted by service restart"
             row["completed_at"] = datetime.now(timezone.utc).isoformat()
@@ -211,6 +213,8 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 def _mcp_auth_middleware(mcp_app):
     """ASGI middleware: require a valid Bearer API key (or MCP_ACCESS_TOKEN)."""
+    import hmac
+
     from starlette.responses import JSONResponse
 
     async def mcp_auth(scope, receive, send):
@@ -227,7 +231,8 @@ def _mcp_auth_middleware(mcp_app):
 
         shared = (settings.MCP_ACCESS_TOKEN or "").strip()
         if shared:
-            valid = bool(token) and token == shared
+            # Constant-time compare — never leak the shared secret via timing.
+            valid = bool(token) and hmac.compare_digest(token, shared)
         elif token.startswith("agos_"):  # cheap pre-check before touching Firestore
             from app.services import api_key_service
             db = FirestoreDB()

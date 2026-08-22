@@ -3,8 +3,8 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db import FirestoreDB
 from app.core.database import get_db
 from app.api.deps import get_current_active_user
 from app.schemas.workspace import (
@@ -16,7 +16,7 @@ from app.schemas.workspace import (
     WorkspaceMemberUpdate,
 )
 from app.models.user import User
-from app.models.workspace import Workspace, MembershipRole, WorkspaceMember
+from app.models.workspace import Workspace, MembershipRole
 from app.services import workspace_service
 from app.services.auth_service import get_user_by_id
 
@@ -28,7 +28,7 @@ router = APIRouter(prefix="/workspaces", tags=["Workspaces"])
 
 async def get_workspace_or_404(
     workspace_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Workspace:
     """Get a workspace and verify the user has access."""
@@ -58,7 +58,7 @@ def require_workspace_role(required_role: MembershipRole):
     async def _check_role(
         workspace: Workspace = Depends(get_workspace_or_404),
         current_user: User = Depends(get_current_active_user),
-        db: AsyncSession = Depends(get_db),
+        db: FirestoreDB = Depends(get_db),
     ) -> Workspace:
         # Superusers bypass role checks
         if current_user.is_superuser:
@@ -88,7 +88,7 @@ def require_workspace_role(required_role: MembershipRole):
 async def list_workspaces(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """List all workspaces the current user has access to."""
@@ -110,7 +110,7 @@ async def list_workspaces(
 @router.post("/", response_model=WorkspaceResponse, status_code=status.HTTP_201_CREATED)
 async def create_workspace(
     workspace_in: WorkspaceCreate,
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """Create a new workspace."""
@@ -134,7 +134,7 @@ async def create_workspace(
 @router.get("/{workspace_id}/", response_model=WorkspaceResponse)
 async def get_workspace(
     workspace: Workspace = Depends(get_workspace_or_404),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """Get workspace details."""
@@ -153,7 +153,7 @@ async def get_workspace(
 async def update_workspace(
     workspace_in: WorkspaceUpdate,
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.ADMIN)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Update a workspace (Admin+ required)."""
     workspace = await workspace_service.update_workspace(db, workspace, workspace_in)
@@ -167,7 +167,7 @@ async def update_workspace(
 @router.delete("/{workspace_id}/", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_workspace(
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.OWNER)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Delete a workspace (Owner only)."""
     await workspace_service.delete_workspace(db, workspace)
@@ -181,7 +181,7 @@ async def delete_workspace(
 @router.get("/{workspace_id}/members/", response_model=list[WorkspaceMemberResponse])
 async def list_members(
     workspace: Workspace = Depends(get_workspace_or_404),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """List all members of a workspace."""
     members = await workspace_service.list_members(db, workspace)
@@ -196,7 +196,7 @@ async def list_members(
 async def add_member(
     member_in: WorkspaceMemberAdd,
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.ADMIN)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Add a member to a workspace (Admin+)."""
     try:
@@ -220,7 +220,7 @@ async def update_member_role(
     user_id: UUID,
     member_in: WorkspaceMemberUpdate,
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.ADMIN)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Update a member's role (Admin+). Cannot change the owner's role."""
     try:
@@ -246,7 +246,7 @@ async def update_member_role(
 async def remove_member(
     user_id: UUID,
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.ADMIN)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Remove a member from a workspace (Admin+). Cannot remove the owner."""
     try:

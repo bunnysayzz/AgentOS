@@ -3,13 +3,11 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db import FirestoreDB
 from app.core.database import get_db
-from app.api.deps import get_current_active_user
 from app.api.workspaces import get_workspace_or_404, require_workspace_role
 from app.schemas.secret import SecretCreate, SecretUpdate, SecretResponse
-from app.models.user import User
 from app.models.workspace import Workspace, MembershipRole
 from app.services import secret_service
 
@@ -25,7 +23,7 @@ async def list_secrets(
     workspace: Workspace = Depends(get_workspace_or_404),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """List secrets in a workspace. Values are NEVER returned."""
     secrets, total = await secret_service.list_workspace_secrets(
@@ -39,7 +37,7 @@ async def list_secrets(
 async def create_secret(
     secret_in: SecretCreate,
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.ADMIN)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Create a secret. The value is encrypted at rest and NEVER returned."""
     try:
@@ -53,7 +51,7 @@ async def create_secret(
 async def get_secret(
     secret_id: UUID,
     workspace: Workspace = Depends(get_workspace_or_404),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Get secret metadata. Value is NEVER returned."""
     secret = await secret_service.get_secret_by_id(db, secret_id)
@@ -67,7 +65,7 @@ async def update_secret(
     secret_id: UUID,
     secret_in: SecretUpdate,
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.ADMIN)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Update a secret. Value is re-encrypted and NEVER returned."""
     secret = await secret_service.get_secret_by_id(db, secret_id)
@@ -82,7 +80,7 @@ async def update_secret(
 async def delete_secret(
     secret_id: UUID,
     workspace: Workspace = Depends(require_workspace_role(MembershipRole.ADMIN)),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """Soft-delete a secret (Admin+)."""
     secret = await secret_service.get_secret_by_id(db, secret_id)

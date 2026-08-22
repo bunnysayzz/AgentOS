@@ -5,12 +5,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db import FirestoreDB
 from app.core.database import get_db
-from app.core.config import settings
 from app.api.deps import get_current_active_user, get_optional_user
-from app.api.workspaces import get_workspace_or_404, require_workspace_role
 from app.schemas.mcp import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -21,8 +19,6 @@ from app.schemas.mcp import (
     CostByModel,
     CostDashboardResponse,
 )
-from app.models.user import User
-from app.models.workspace import Workspace, MembershipRole
 from app.models.mcp import LLMProvider
 from app.services import mcp_service
 
@@ -36,8 +32,8 @@ router = APIRouter(tags=["MCP Gateway"])
 async def chat_completions(
     request: ChatCompletionRequest,
     workspace_id: UUID | None = Query(None),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_optional_user),
+    db: FirestoreDB = Depends(get_db),
+    current_user: dict | None = Depends(get_optional_user),
 ):
     """Send a chat completion request to an LLM model.
     
@@ -58,20 +54,23 @@ async def chat_completions(
         if membership is None and not current_user.is_superuser:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to workspace")
 
-    response = await mcp_service.route_chat_completion(
-        db=db,
-        request=request,
-        workspace_id=workspace_id,
-    )
-    return response
+    try:
+        response = await mcp_service.route_chat_completion(
+            db=db,
+            request=request,
+            workspace_id=workspace_id,
+        )
+        return response
+    except mcp_service.MCPError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
 
 
 @router.post("/mcp/chat/stream")
 async def chat_stream(
     request: ChatCompletionRequest,
     workspace_id: UUID | None = Query(None),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_optional_user),
+    db: FirestoreDB = Depends(get_db),
+    current_user: dict | None = Depends(get_optional_user),
 ):
     """Stream a chat completion to an LLM model (Server-Sent Events).
 
@@ -116,7 +115,7 @@ async def chat_stream(
 @router.get("/mcp/models", response_model=ModelListResponse)
 async def list_models(
     provider: LLMProvider | None = Query(None),
-    db: AsyncSession = Depends(get_db),
+    db: FirestoreDB = Depends(get_db),
 ):
     """List all available LLM models with pricing and capabilities."""
     models = await mcp_service.get_available_models(db, provider=provider)
@@ -163,8 +162,8 @@ async def list_models(
 
 @router.post("/mcp/models/seed", status_code=status.HTTP_200_OK)
 async def seed_models(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    db: FirestoreDB = Depends(get_db),
+    current_user: dict = Depends(get_current_active_user),
 ):
     """Seed default model pricing into the registry (idempotent)."""
     count = await mcp_service.seed_default_models(db)
@@ -178,8 +177,8 @@ async def seed_models(
 async def get_cost_dashboard(
     workspace_id: UUID | None = Query(None),
     days: int = Query(30, ge=1, le=365),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_optional_user),
+    db: FirestoreDB = Depends(get_db),
+    current_user: dict | None = Depends(get_optional_user),
 ):
     """Get LLM cost dashboard with breakdowns by provider and model."""
     summary = await mcp_service.get_cost_summary(db, workspace_id=workspace_id, days=days)
@@ -197,8 +196,8 @@ async def get_cost_dashboard(
 async def list_recent_calls(
     workspace_id: UUID | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_optional_user),
+    db: FirestoreDB = Depends(get_db),
+    current_user: dict | None = Depends(get_optional_user),
 ):
     """List recent LLM calls for observability."""
     calls = await mcp_service.get_recent_calls(db, workspace_id=workspace_id, limit=limit)

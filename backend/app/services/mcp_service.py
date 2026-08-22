@@ -325,6 +325,32 @@ def _get_model_for_provider(provider: LLMProvider) -> str | None:
     return model_map.get(provider)
 
 
+async def _enforce_hard_limit(db: FirestoreDB, workspace_id: str | None) -> None:
+    """Block an LLM call when the workspace's hard budget limit is exceeded.
+
+    Only kicks in for workspace-scoped calls where a budget with
+    ``hard_limit`` is configured (a single workspace-doc read otherwise), so
+    the common path stays cheap.
+    """
+    if not workspace_id:
+        return
+    from app.services import budget_service
+
+    budget = budget_service.get_budget_settings(db, str(workspace_id))
+    if not budget.get("hard_limit"):
+        return
+    if budget.get("monthly_limit_usd") is None and budget.get("daily_limit_usd") is None:
+        return
+
+    result = budget_service.check_budget(db, str(workspace_id))
+    if result.get("blocked"):
+        raise MCPError(
+            "Workspace budget exceeded — calls are blocked by the hard spending limit. "
+            "Raise the limit or disable the hard limit in the Budget page.",
+            status_code=402,
+        )
+
+
 async def route_chat_completion(
     db: FirestoreDB,
     request: ChatCompletionRequest,
@@ -340,6 +366,7 @@ async def route_chat_completion(
     workflow execution so an agent's declared provider is honored); the
     normal model-prefix detection + fallback chain still applies afterwards.
     """
+    await _enforce_hard_limit(db, workspace_id)
     model_name = request.model
     system_prompt = _build_system_message(request.messages)
     temperature = request.temperature if request.temperature is not None else 0.7
@@ -615,6 +642,7 @@ async def route_chat_completion_raw(
     tools. The call is recorded in the ledger, and a ``MCPError`` is raised if
     every configured provider fails.
     """
+    await _enforce_hard_limit(db, workspace_id)
     model_name = request.model
     system_prompt = _build_system_message(request.messages)
     temperature = request.temperature if request.temperature is not None else 0.7
@@ -802,6 +830,11 @@ async def stream_chat_completion(
     failure yields ``{"type": "error", "message": ...}``. The call is recorded
     in the LLM-call ledger exactly like the non-streaming path.
     """
+    try:
+        await _enforce_hard_limit(db, workspace_id)
+    except MCPError as e:
+        yield {"type": "error", "message": e.message}
+        return
     model_name = request.model
     system_prompt = _build_system_message(request.messages)
     temperature = request.temperature if request.temperature is not None else 0.7

@@ -16,7 +16,7 @@ intentionally not part of a single account's data.
 
 from datetime import datetime, timezone
 
-from app.core.db import FirestoreDB, now_iso
+from app.core.db import FirestoreDB
 from app.services import auth_service, workspace_service
 
 USERS = "users"
