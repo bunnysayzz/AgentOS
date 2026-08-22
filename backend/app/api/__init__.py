@@ -5,7 +5,7 @@ from fastapi import APIRouter
 from app.api.auth import router as auth_router
 from app.api.users import router as users_router
 from app.api.workspaces import router as workspaces_router
-from app.api.agents import router as agents_router
+from app.api.agents import router as agents_router, templates_router
 from app.api.tools import router as tools_router
 from app.api.mcp import router as mcp_router
 from app.api.prompts import router as prompts_router
@@ -37,6 +37,7 @@ router.include_router(gallery_router)
 router.include_router(users_router)
 router.include_router(workspaces_router)
 router.include_router(agents_router)
+router.include_router(templates_router)
 router.include_router(tools_router)
 router.include_router(mcp_router)
 router.include_router(provider_configs_router)

@@ -106,3 +106,18 @@ class ProviderConfigResponse(BaseModel):
     is_configured: bool
     base_url: str | None
     created_at: datetime
+
+
+# ─── MCP Server Marketplace ─────────────────────────
+
+class MCPMarketplaceItem(BaseModel):
+    """A curated MCP server listing for one-click discovery."""
+
+    id: str
+    name: str
+    description: str
+    command: str
+    args: list[str]
+    env_vars: list[str]
+    homepage: str
+    category: str

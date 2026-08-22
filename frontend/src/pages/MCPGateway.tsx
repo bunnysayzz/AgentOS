@@ -1,16 +1,43 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CpuIcon, DatabaseIcon, DollarSignIcon, MessageSquareIcon, PhoneIcon, ActivityIcon, ClockIcon, CheckCircleIcon } from '@/components/Icons'
+import { CpuIcon, DatabaseIcon, DollarSignIcon, MessageSquareIcon, PhoneIcon, ActivityIcon, ClockIcon, CheckCircleIcon, CopyIcon, GlobeIcon } from '@/components/Icons'
 import api from '@/services/api'
 import ChatInterface from '@/components/ChatInterface'
+import { toast } from '@/components/Toast'
 import { cn } from '@/utils/cn'
 
 interface Model { id: string; model_name: string; provider: string; input_price: number; output_price: number; is_active: boolean }
 interface Call { id: string; model_name: string; provider: string; prompt_tokens: number; completion_tokens: number; cost_usd: number; created_at: string; status: string }
+interface MarketplaceServer {
+  id: string; name: string; description: string; command: string;
+  args: string[]; env_vars: string[]; homepage: string; category: string
+}
 
 export default function MCPGateway() {
   const qc = useQueryClient()
-  const [tab, setTab] = useState<'chat' | 'models' | 'costs' | 'calls'>('chat')
+  const [tab, setTab] = useState<'chat' | 'models' | 'costs' | 'calls' | 'servers'>('chat')
+
+  const { data: marketplace } = useQuery({
+    queryKey: ['mcp-marketplace'],
+    queryFn: () => api.get('/mcp/marketplace').then((r) => r.data),
+    staleTime: 30 * 60_000,
+  })
+  const serverList: MarketplaceServer[] = Array.isArray(marketplace) ? marketplace : []
+
+  const copyServerConfig = async (server: MarketplaceServer) => {
+    const lines = [
+      `# ${server.name}`,
+      `# ${server.description}`,
+      `"${server.command}", ${server.args.map((a) => `"${a}"`).join(', ')}`,
+      ...(server.env_vars.length ? [`# env: ${server.env_vars.join(', ')}`] : []),
+    ]
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'))
+      toast.success('Config copied', `${server.name} command copied to clipboard.`)
+    } catch {
+      toast.error('Copy failed', 'Clipboard not available in this browser.')
+    }
+  }
 
   const { data: models } = useQuery({
     queryKey: ['mcp-models'],
@@ -47,7 +74,7 @@ export default function MCPGateway() {
 
       {/* Tabs */}
       <div className="flex gap-1 p-1 rounded-xl bg-surface-800/50 w-fit flex-wrap">
-        {(['chat', 'models', 'calls', 'costs'] as const).map((t) => (
+        {(['chat', 'models', 'calls', 'costs', 'servers'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -60,10 +87,75 @@ export default function MCPGateway() {
             {t === 'models' && <CpuIcon size={14} className="inline mr-1.5" />}
             {t === 'calls' && <PhoneIcon size={14} className="inline mr-1.5" />}
             {t === 'costs' && <DollarSignIcon size={14} className="inline mr-1.5" />}
+            {t === 'servers' && <DatabaseIcon size={14} className="inline mr-1.5" />}
             {t}
           </button>
         ))}
       </div>
+
+      {/* ── SERVERS TAB — curated MCP marketplace ── */}
+      {tab === 'servers' && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <h2 className="microlabel">Popular MCP servers</h2>
+            <span className="h-px flex-1 bg-white/[0.06]" />
+          </div>
+          {serverList.length === 0 ? (
+            <div className="glass-panel p-12 text-center">
+              <DatabaseIcon className="w-12 h-12 text-surface-600 mx-auto mb-3" />
+              <h3 className="text-lg font-medium text-surface-400">No servers available</h3>
+              <p className="text-sm text-surface-500 mt-1">The marketplace catalog is empty.</p>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {serverList.map((server) => (
+                <div key={server.id} className="card flex flex-col">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500/25 to-primary-700/25 border border-primary-500/15 flex items-center justify-center flex-shrink-0">
+                        <DatabaseIcon size={18} className="text-primary-400" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm truncate">{server.name}</p>
+                        <span className="chip text-[10px]">{server.category}</span>
+                      </div>
+                    </div>
+                    <a
+                      href={server.homepage}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-surface-500 hover:text-primary-400 transition-colors p-1"
+                      title="Open docs"
+                    >
+                      <GlobeIcon size={15} />
+                    </a>
+                  </div>
+                  <p className="text-xs text-surface-500 leading-snug mb-3 flex-1">{server.description}</p>
+                  <div className="rounded-xl bg-surface-900/70 border border-surface-700/30 px-3 py-2 font-mono text-[11px] text-surface-300 break-all">
+                    {server.command} {server.args.join(' ')}
+                  </div>
+                  {server.env_vars.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {server.env_vars.map((env) => (
+                        <span key={env} className="px-2 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono">
+                          {env}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => copyServerConfig(server)}
+                    className="btn-secondary mt-3 flex items-center justify-center gap-2 text-xs py-1.5"
+                  >
+                    <CopyIcon size={13} />
+                    Copy config
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── CHAT TAB ── */}
       {tab === 'chat' && (

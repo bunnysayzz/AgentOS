@@ -13,6 +13,117 @@ from app.services.provider_metadata import get_fallback_chain, is_rate_limit_err
 LLM_CALLS = "llm_calls"
 MODEL_REGISTRY = "model_registry"
 
+# ─── Curated MCP server catalog (marketplace) ────────
+# Popular, well-maintained reference servers users can wire into their own
+# MCP gateways. Config snippets are copy-paste ready for Claude Code / Cursor.
+MCP_MARKETPLACE: list[dict] = [
+    {
+        "id": "filesystem",
+        "name": "Filesystem",
+        "description": "Read, write, and organize files on the local machine with sandboxed path access.",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/dir"],
+        "env_vars": [],
+        "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
+        "category": "Files & Storage",
+    },
+    {
+        "id": "github",
+        "name": "GitHub",
+        "description": "Search repos, read issues and PRs, and manage the GitHub workflow from your agent.",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-github"],
+        "env_vars": ["GITHUB_PERSONAL_ACCESS_TOKEN"],
+        "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/github",
+        "category": "Developer Tools",
+    },
+    {
+        "id": "postgres",
+        "name": "PostgreSQL",
+        "description": "Query schemas, run read-only SQL, and inspect tables in a Postgres database.",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://user:pass@host:5432/db"],
+        "env_vars": [],
+        "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/postgres",
+        "category": "Databases",
+    },
+    {
+        "id": "brave-search",
+        "name": "Brave Search",
+        "description": "Web search with the Brave Search API — fresh, ranked results for research agents.",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+        "env_vars": ["BRAVE_API_KEY"],
+        "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/brave-search",
+        "category": "Search & Web",
+    },
+    {
+        "id": "firecrawl",
+        "name": "Firecrawl",
+        "description": "Crawl and scrape websites into clean markdown for grounding and research.",
+        "command": "npx",
+        "args": ["-y", "firecrawl-mcp"],
+        "env_vars": ["FIRECRAWL_API_KEY"],
+        "homepage": "https://github.com/mendableai/firecrawl-mcp-server",
+        "category": "Search & Web",
+    },
+    {
+        "id": "playwright",
+        "name": "Playwright",
+        "description": "Drive a real browser: navigate pages, click, fill forms, and take screenshots.",
+        "command": "npx",
+        "args": ["-y", "@playwright/mcp@latest"],
+        "env_vars": [],
+        "homepage": "https://github.com/microsoft/playwright-mcp",
+        "category": "Browser & Testing",
+    },
+    {
+        "id": "slack",
+        "name": "Slack",
+        "description": "Read channels, search messages, and send posts to a Slack workspace.",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-slack"],
+        "env_vars": ["SLACK_BOT_TOKEN", "SLACK_TEAM_ID"],
+        "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/slack",
+        "category": "Communication",
+    },
+    {
+        "id": "memory",
+        "name": "Memory (Knowledge Graph)",
+        "description": "Persistent knowledge-graph memory so agents remember facts across sessions.",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-memory"],
+        "env_vars": [],
+        "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/memory",
+        "category": "Memory & Context",
+    },
+    {
+        "id": "fetch",
+        "name": "Fetch",
+        "description": "Fetch any URL and convert it to markdown for reading by an agent.",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-fetch"],
+        "env_vars": [],
+        "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/fetch",
+        "category": "Search & Web",
+    },
+    {
+        "id": "sequential-thinking",
+        "name": "Sequential Thinking",
+        "description": "Structured step-by-step reasoning for complex problems — better than one-shot answers.",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+        "env_vars": [],
+        "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking",
+        "category": "Reasoning",
+    },
+]
+
+
+def list_marketplace() -> list[dict]:
+    """Return the curated MCP server catalog."""
+    return MCP_MARKETPLACE
+
 
 # ─── Default model pricing (per 1K tokens in USD) ──
 

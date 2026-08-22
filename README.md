@@ -140,12 +140,14 @@ make test   # backend + frontend + E2E
 
 | Suite | Command | Count |
 |---|---|---|
-| Backend (pytest) | `cd backend && pytest -q` | 349 tests |
+| Backend (pytest) | `cd backend && pytest -q` | 354 tests |
 | Frontend unit (Vitest) | `cd frontend && npm test` | 113 tests |
 | Frontend typecheck | `cd frontend && npm run typecheck` | — |
 | Frontend lint | `cd frontend && npm run lint` | — |
+| E2E (Playwright) | `cd frontend && npm run test:e2e` | 9 pass / 1 skip |
+| Live smoke (real Firebase) | `cd backend && python ../scripts/smoke_live.py` | 5 read-only checks |
 
-Backend tests run against an in-memory fake Firestore — they never touch your real data. The full pipeline is enforced in CI (`.github/workflows/ci.yml`).
+Backend tests run against an in-memory fake Firestore — they never touch your real data. `scripts/smoke_live.py` boots the app with `backend/.env` and probes read-only endpoints against real Firebase (exit 0 = all green). The full pipeline is enforced in CI (`.github/workflows/ci.yml`).
 
 ---
 
@@ -177,8 +179,8 @@ AgentOS/
 - [x] Guest mode (no login wall) + community agent gallery
 - [x] GDPR: account data export & deletion
 - [x] Agent evals & regression testing (trace-level scoring)
-- [ ] Shared agent templates & one-click provider presets
-- [ ] MCP server marketplace
+- [x] Shared agent templates (one-click creation) & provider presets
+- [x] MCP server marketplace (curated catalog + copy-paste configs)
 
 ## License
 

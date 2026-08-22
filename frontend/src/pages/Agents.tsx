@@ -86,6 +86,27 @@ export default function Agents() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['agents', wsId] }); setShowCreate(false); setForm({ name: '', description: '', system_prompt: '', model_name: 'gpt-4o' }) },
   })
 
+  // ── Curated templates: one-click creation ──
+  const { data: templates } = useQuery({
+    queryKey: ['agent-templates'],
+    queryFn: () => api.get('/templates').then((r) => r.data),
+    staleTime: 5 * 60_000,
+  })
+  const templateList: { id: string; name: string; description?: string }[] = Array.isArray(templates) ? templates : []
+
+  const { mutate: createFromTemplate, isPending: creatingFromTemplate } = useMutation({
+    mutationFn: (templateId: string) =>
+      api.post(`/workspaces/${wsId}/agents/from-template`, { template_id: templateId }).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['agents', wsId] })
+      qc.invalidateQueries({ queryKey: ['dashboard-stats'] })
+      setShowCreate(false)
+      toast.success('Agent created', 'Template agent added to your workspace.')
+    },
+    onError: (err: any) =>
+      toast.error('Could not create agent', err?.response?.data?.detail || 'Failed to create from template.'),
+  })
+
   const [executeError, setExecuteError] = useState<string | null>(null)
 
   const { mutate: execute } = useMutation({
@@ -462,8 +483,41 @@ export default function Agents() {
       )}
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setShowCreate(false)}>
-          <div className="w-full max-w-md glass-panel p-6" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold mb-4">Create Agent</h2>
+          <div className="w-full max-w-lg glass-panel p-6" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold mb-3">Create Agent</h2>
+
+            {/* One-click templates */}
+            {templateList.length > 0 && (
+              <div className="mb-4">
+                <p className="microlabel mb-2">Start from a template</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-44 overflow-y-auto pr-1">
+                  {templateList.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => createFromTemplate(t.id)}
+                      disabled={creatingFromTemplate}
+                      className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-surface-800/50 border border-surface-700/30 hover:border-primary-500/40 hover:bg-surface-800 text-left transition-all group disabled:opacity-50"
+                    >
+                      <BotIcon size={15} className="text-primary-400 mt-0.5 flex-shrink-0" />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-surface-200 group-hover:text-primary-300 transition-colors">
+                          {t.name}
+                        </span>
+                        <span className="block text-[11px] text-surface-500 leading-snug line-clamp-2 mt-0.5">
+                          {t.description || 'Ready-to-use agent template'}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-3 my-3">
+                  <span className="h-px flex-1 bg-white/[0.06]" />
+                  <span className="text-[10px] text-surface-500 uppercase tracking-widest">or build from scratch</span>
+                  <span className="h-px flex-1 bg-white/[0.06]" />
+                </div>
+              </div>
+            )}
+
             <div className="space-y-4">
               <div><label className="block text-sm font-medium text-surface-300 mb-1.5">Name</label><input type="text" placeholder="My Agent" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input-field" /></div>
               <div><label className="block text-sm font-medium text-surface-300 mb-1.5">Description</label><textarea placeholder="What does this agent do?" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="input-field min-h-[60px] resize-none" rows={2} /></div>

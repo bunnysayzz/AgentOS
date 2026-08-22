@@ -86,9 +86,27 @@ interface TestResult {
 
 type AddStatus = 'idle' | 'detecting' | 'saving' | 'done' | 'error'
 
+// One-click provider presets: pick a provider, paste the key, save.
+// base_url is left null so the backend fills its own default for the provider.
+interface ProviderPreset {
+  provider: string
+  label: string
+  default_model: string
+}
+
+const PROVIDER_PRESETS: ProviderPreset[] = [
+  { provider: 'openai', label: 'OpenAI', default_model: 'gpt-4o' },
+  { provider: 'anthropic', label: 'Anthropic', default_model: 'claude-3-5-sonnet' },
+  { provider: 'google', label: 'Google Gemini', default_model: 'gemini-1.5-pro' },
+  { provider: 'groq', label: 'Groq', default_model: 'llama-3.3-70b-versatile' },
+  { provider: 'deepseek', label: 'DeepSeek', default_model: 'deepseek-chat' },
+  { provider: 'openrouter', label: 'OpenRouter', default_model: 'openai/gpt-4o-mini' },
+]
+
 export default function Providers() {
   const qc = useQueryClient()
   const [apiKeyInput, setApiKeyInput] = useState('')
+  const [preset, setPreset] = useState<ProviderPreset | null>(null)
   const [addStatus, setAddStatus] = useState<AddStatus>('idle')
   const [addResult, setAddResult] = useState<{ label: string; provider: string; color: string } | null>(null)
   const [addError, setAddError] = useState('')
@@ -116,17 +134,30 @@ export default function Providers() {
     setAddError('')
 
     try {
-      // Step 1: Detect provider
-      const detectRes = await api.get('/mcp/providers/detect', { params: { api_key: key } })
-      const detected: DetectResult = detectRes.data
+      let detected: DetectResult
 
-      if (!detected.detected) {
-        setAddStatus('error')
-        setAddError('Could not identify this key. Try a different key format.')
-        return
+      if (preset) {
+        // One-click preset: provider known, skip key detection.
+        detected = {
+          detected: true,
+          provider: preset.provider,
+          label: preset.label,
+          base_url: null,
+          default_model: preset.default_model,
+        }
+      } else {
+        // Step 1: Detect provider from the key format
+        const detectRes = await api.get('/mcp/providers/detect', { params: { api_key: key } })
+        detected = detectRes.data
+
+        if (!detected.detected) {
+          setAddStatus('error')
+          setAddError('Could not identify this key. Try a different key format or pick a provider below.')
+          return
+        }
       }
 
-      // Step 2: Save provider
+      // Step 2: Save provider (base_url null → backend default for the provider)
       setAddStatus('saving')
       await api.put(`/mcp/providers/${detected.provider}`, {
         provider: detected.provider,
@@ -152,6 +183,7 @@ export default function Providers() {
       setTimeout(() => {
         setAddStatus('idle')
         setAddResult(null)
+        setPreset(null)
         setApiKeyInput('')
       }, 3000)
 
@@ -232,6 +264,32 @@ export default function Providers() {
           </div>
         </div>
 
+        {/* One-click provider presets */}
+        <div className="flex flex-wrap items-center gap-1.5 mb-3">
+          <span className="text-[11px] text-surface-500 mr-1">Quick add:</span>
+          {PROVIDER_PRESETS.map((p) => (
+            <button
+              key={p.provider}
+              onClick={() => {
+                setPreset(preset?.provider === p.provider ? null : p)
+                setAddStatus('idle')
+                setAddResult(null)
+                setAddError('')
+              }}
+              className={cn(
+                'px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all duration-150',
+                preset?.provider === p.provider
+                  ? 'bg-primary-500/15 text-primary-300 border-primary-500/40'
+                  : 'bg-surface-800/60 text-surface-400 border-surface-700/40 hover:text-surface-200 hover:border-surface-600/60',
+              )}
+              title={`${p.label} · default model ${p.default_model}`}
+            >
+              {preset?.provider === p.provider && <CheckIcon size={10} className="inline mr-1" />}
+              {p.label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex gap-3">
           <input
             type="text"
@@ -260,7 +318,7 @@ export default function Providers() {
             ) : (
               <>
                 <PlusIcon size={16} />
-                Add Provider
+                {preset ? `Add ${preset.label}` : 'Add Provider'}
               </>
             )}
           </button>

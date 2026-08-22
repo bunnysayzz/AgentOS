@@ -25,6 +25,23 @@ class AgentCreate(AgentBase):
     pass
 
 
+class AgentFromTemplateCreate(BaseModel):
+    """Create an agent from a curated template."""
+
+    template_id: str = Field(..., min_length=1, max_length=64)
+
+
+class AgentTemplate(BaseModel):
+    """A curated, ready-to-use agent template."""
+
+    id: str
+    name: str
+    description: str | None = None
+    system_prompt: str | None = None
+    model_provider: str = "openai"
+    model_name: str = "gpt-4o"
+
+
 class AgentUpdate(BaseModel):
     name: str | None = Field(None, max_length=256)
     description: str | None = Field(None, max_length=4096)

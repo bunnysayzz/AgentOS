@@ -13,12 +13,25 @@ from app.schemas.agent import (
     AgentResponse,
     AgentExecutionCreate,
     AgentExecutionResponse,
+    AgentFromTemplateCreate,
+    AgentTemplate,
 )
 from app.models.workspace import Workspace, MembershipRole
 from app.models.agent import Agent, AgentStatus, ExecutionStatus
-from app.services import agent_service
+from app.services import agent_service, agent_templates
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/agents", tags=["Agents"])
+
+# Curated agent templates are global (not workspace-scoped), so they live on
+# their own router registered alongside the workspace agents routes.
+templates_router = APIRouter(prefix="/templates", tags=["Agent Templates"])
+
+
+@templates_router.get("", response_model=list[AgentTemplate])
+@templates_router.get("/", response_model=list[AgentTemplate])
+async def list_agent_templates() -> list[dict]:
+    """List curated agent templates for one-click creation."""
+    return agent_templates.list_templates()
 
 
 # ─── Dependency ─────────────────────────────────────
@@ -62,6 +75,31 @@ async def create_agent(
     db: FirestoreDB = Depends(get_db),
 ):
     """Create a new agent (Member+ required)."""
+    agent = await agent_service.create_agent(db, workspace.id, agent_in)
+    return AgentResponse.model_validate(agent)
+
+
+@router.post(
+    "/from-template",
+    response_model=AgentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_agent_from_template(
+    body: AgentFromTemplateCreate,
+    workspace: Workspace = Depends(require_workspace_role(MembershipRole.MEMBER)),
+    db: FirestoreDB = Depends(get_db),
+):
+    """Create a new agent from a curated template (Member+ required)."""
+    template = agent_templates.get_template(body.template_id)
+    if template is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown agent template")
+    agent_in = AgentCreate(
+        name=template["name"],
+        description=template["description"],
+        system_prompt=template["system_prompt"],
+        model_provider=template["model_provider"],
+        model_name=template["model_name"],
+    )
     agent = await agent_service.create_agent(db, workspace.id, agent_in)
     return AgentResponse.model_validate(agent)
 

@@ -18,11 +18,21 @@ from app.schemas.mcp import (
     CostByProvider,
     CostByModel,
     CostDashboardResponse,
+    MCPMarketplaceItem,
 )
 from app.models.mcp import LLMProvider
 from app.services import mcp_service
 
 router = APIRouter(tags=["MCP Gateway"])
+
+
+# ─── Marketplace ────────────────────────────────────
+
+
+@router.get("/mcp/marketplace", response_model=list[MCPMarketplaceItem])
+async def mcp_marketplace() -> list[dict]:
+    """List curated MCP servers for one-click discovery."""
+    return mcp_service.list_marketplace()
 
 
 # ─── Chat/Completion ────────────────────────────────
