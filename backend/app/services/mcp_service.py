@@ -590,8 +590,7 @@ async def route_chat_completion(
     for attempt_idx, provider in enumerate(providers_to_try):
         provider_config = await get_provider_config(db, provider)
         api_key = get_api_key_for_provider(provider_config)
-        is_fallback = attempt_idx > 0
-
+        is_fallback = provider != primary_provider
         if not api_key:
             continue  # Skip if no key configured for this provider
 
@@ -850,7 +849,7 @@ async def route_chat_completion_raw(
     for attempt_idx, provider in enumerate(providers_to_try):
         provider_config = await get_provider_config(db, provider)
         api_key = get_api_key_for_provider(provider_config)
-        is_fallback = attempt_idx > 0
+        is_fallback = provider != primary_provider
         if not api_key:
             continue
 
@@ -1043,7 +1042,7 @@ async def stream_chat_completion(
     for attempt_idx, provider in enumerate(providers_to_try):
         provider_config = await get_provider_config(db, provider)
         api_key = get_api_key_for_provider(provider_config)
-        is_fallback = attempt_idx > 0
+        is_fallback = provider != primary_provider
         if not api_key:
             continue  # Skip providers without a configured key
         start_time = time.monotonic()
