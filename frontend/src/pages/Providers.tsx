@@ -33,6 +33,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   openrouter: 'OpenRouter', cerebras: 'Cerebras',
   huggingface: 'HuggingFace', together_ai: 'Together AI',
   ollama: 'Ollama', azure: 'Azure OpenAI',
+  agentrouter: 'AgentRouter (DeepSeek V4)',
   custom: 'Custom',
 }
 

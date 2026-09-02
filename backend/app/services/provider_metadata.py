@@ -316,7 +316,7 @@ PROVIDER_METADATA: dict[str, dict] = {
         "fallback_priority": 99,
     },
     "agentrouter": {
-        "label": "AgentRouter",
+        "label": "AgentRouter (DeepSeek V4)",
         "color": "from-violet-600 to-indigo-600",
         "icon": "agentrouter",
         "tagline": "DeepSeek V4 Flash & Pro — fast reasoning via proxy",
