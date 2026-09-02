@@ -33,7 +33,7 @@ async def detect_provider(
         ("AIzaSy", {"provider": "google", "label": "Google Gemini", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", "default_model": "gemini-2.0-flash"}),
         ("gsk_", {"provider": "groq", "label": "Groq", "base_url": "https://api.groq.com/openai/v1", "default_model": "llama-3.3-70b-versatile"}),
         ("csk-", {"provider": "cerebras", "label": "Cerebras", "base_url": "https://api.cerebras.ai/v1", "default_model": "gpt-oss-120b"}),
-        ("dsk-", {"provider": "deepseek", "label": "DeepSeek", "base_url": "https://api.deepseek.com", "default_model": "deepseek-chat"}),
+        ("dsk-", {"provider": "agentrouter", "label": "AgentRouter (DeepSeek V4)", "base_url": "https://deepseek-console-913582f071dc.herokuapp.com/v1", "default_model": "deepseek/deepseek-v4-flash"}),
         ("dinfra_", {"provider": "deepinfra", "label": "DeepInfra", "base_url": "https://api.deepinfra.com/v1/openai", "default_model": "meta-llama/Meta-Llama-3.1-70B-Instruct"}),
         ("fw_", {"provider": "fireworks", "label": "Fireworks AI", "base_url": "https://api.fireworks.ai/inference/v1", "default_model": "accounts/fireworks/models/llama-v3p3-70b-instruct"}),
         ("hf_", {"provider": "huggingface", "label": "HuggingFace", "base_url": "https://router.huggingface.co/v1", "default_model": "meta-llama/Llama-3.3-70B-Instruct"}),
