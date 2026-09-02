@@ -84,11 +84,11 @@ async def list_providers(
     configs = await provider_service.list_provider_configs(db)
     return [
         ProviderConfigResponse(
-            provider=c.provider,
-            default_model=c.default_model,
-            is_configured=c.is_active,
-            base_url=c.base_url,
-            created_at=c.created_at,
+            provider=c["provider"],
+            default_model=c.get("default_model"),
+            is_configured=c.get("is_active", False),
+            base_url=c.get("base_url"),
+            created_at=c.get("created_at"),
         )
         for c in configs
     ]
