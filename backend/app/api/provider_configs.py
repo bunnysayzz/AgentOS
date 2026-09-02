@@ -23,23 +23,35 @@ async def detect_provider(
 ):
     """Detect the provider from an API key prefix."""
     # Key prefix patterns for auto-detection
-    PROVIDER_SIGNATURES: dict[str, dict] = {
-        "sk-proj-": {"provider": "openai", "label": "OpenAI (Project Key)", "base_url": "https://api.openai.com/v1", "default_model": "gpt-4o-mini"},
-        "sk-": {"provider": "openai", "label": "OpenAI", "base_url": "https://api.openai.com/v1", "default_model": "gpt-4o-mini"},
-        "sk-or-v1": {"provider": "openrouter", "label": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "default_model": "meta-llama/llama-3.3-70b-instruct:free"},
-        "gsk_": {"provider": "groq", "label": "Groq", "base_url": "https://api.groq.com/openai/v1", "default_model": "llama-3.3-70b-versatile"},
-        "csk-": {"provider": "cerebras", "label": "Cerebras", "base_url": "https://api.cerebras.ai/v1", "default_model": "gpt-oss-120b"},
-        "AIzaSy": {"provider": "google", "label": "Google Gemini", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", "default_model": "gemini-2.0-flash"},
-        "hf_": {"provider": "huggingface", "label": "HuggingFace", "base_url": "https://router.huggingface.co/v1", "default_model": "meta-llama/Llama-3.3-70B-Instruct"},
-        "nvapi-": {"provider": "nvidia_nim", "label": "NVIDIA NIM", "base_url": "https://integrate.api.nvidia.com/v1", "default_model": "meta/llama-3.1-8b-instruct"},
-        "github_pat": {"provider": "github_models", "label": "GitHub Models", "base_url": "https://models.inference.ai.azure.com", "default_model": "gpt-4o-mini"},
-        "tgp_v1": {"provider": "together_ai", "label": "Together AI", "base_url": "https://api.together.xyz/v1", "default_model": "meta-llama/Llama-3.3-70B-Instruct-Turbo"},
-        "fw_": {"provider": "fireworks", "label": "Fireworks AI", "base_url": "https://api.fireworks.ai/inference/v1", "default_model": "accounts/fireworks/models/llama-v3p3-70b-instruct"},
-        "v2Sq": {"provider": "mistral", "label": "Mistral AI", "base_url": "https://api.mistral.ai/v1", "default_model": "open-mistral-nemo"},
-        "apf_": {"provider": "apifreellm", "label": "API Free LLM", "base_url": "https://apifreellm.com/api/v1/chat/", "default_model": "apifreellm"},
-        "llmapi": {"provider": "llmapi", "label": "LLM API", "base_url": "https://api.llmapi.ai/v1", "default_model": "gpt-4o"},
-        "ghp_": {"provider": "github_models", "label": "GitHub (PAT)", "base_url": "https://models.inference.ai.azure.com", "default_model": "gpt-4o-mini"},
-    }
+    # List of (prefix, info) tuples — checked longest-prefix-first
+    _SIGS: list[tuple[str, dict]] = [
+        ("sk-proj-", {"provider": "openai", "label": "OpenAI (Project Key)", "base_url": "https://api.openai.com/v1", "default_model": "gpt-4o-mini"}),
+        ("sk-or-v1", {"provider": "openrouter", "label": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "default_model": "meta-llama/llama-3.3-70b-instruct:free"}),
+        ("sk-ant-", {"provider": "anthropic", "label": "Anthropic", "base_url": "https://api.anthropic.com/v1", "default_model": "claude-3-5-sonnet"}),
+        ("sk-moon-", {"provider": "moonshotai", "label": "Moonshot AI (Kimi)", "base_url": "https://api.moonshot.ai/v1", "default_model": "moonshot-v1-128k"}),
+        ("sk-", {"provider": "openai", "label": "OpenAI", "base_url": "https://api.openai.com/v1", "default_model": "gpt-4o-mini"}),
+        ("AIzaSy", {"provider": "google", "label": "Google Gemini", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", "default_model": "gemini-2.0-flash"}),
+        ("gsk_", {"provider": "groq", "label": "Groq", "base_url": "https://api.groq.com/openai/v1", "default_model": "llama-3.3-70b-versatile"}),
+        ("csk-", {"provider": "cerebras", "label": "Cerebras", "base_url": "https://api.cerebras.ai/v1", "default_model": "gpt-oss-120b"}),
+        ("dsk-", {"provider": "deepseek", "label": "DeepSeek", "base_url": "https://api.deepseek.com", "default_model": "deepseek-chat"}),
+        ("dinfra_", {"provider": "deepinfra", "label": "DeepInfra", "base_url": "https://api.deepinfra.com/v1/openai", "default_model": "meta-llama/Meta-Llama-3.1-70B-Instruct"}),
+        ("fw_", {"provider": "fireworks", "label": "Fireworks AI", "base_url": "https://api.fireworks.ai/inference/v1", "default_model": "accounts/fireworks/models/llama-v3p3-70b-instruct"}),
+        ("hf_", {"provider": "huggingface", "label": "HuggingFace", "base_url": "https://router.huggingface.co/v1", "default_model": "meta-llama/Llama-3.3-70B-Instruct"}),
+        ("hyp-", {"provider": "hyperbolic", "label": "Hyperbolic", "base_url": "https://api.hyperbolic.xyz/v1", "default_model": "meta-llama/Meta-Llama-3.1-70B-Instruct"}),
+        ("nb-", {"provider": "nebius", "label": "Nebius", "base_url": "https://api.tokenfactory.nebius.com/v1", "default_model": "meta-llama/Meta-Llama-3.1-70B-Instruct"}),
+        ("nvapi-", {"provider": "nvidia_nim", "label": "NVIDIA NIM", "base_url": "https://integrate.api.nvidia.com/v1", "default_model": "meta/llama-3.1-8b-instruct"}),
+        ("nvita-", {"provider": "novita", "label": "Novita AI", "base_url": "https://api.novita.ai/v3/openai", "default_model": "meta-llama/llama-3.3-70b-instruct"}),
+        ("pplx-", {"provider": "perplexity", "label": "Perplexity", "base_url": "https://api.perplexity.ai", "default_model": "sonar-pro"}),
+        ("tgp_v1", {"provider": "togetherai", "label": "Together AI", "base_url": "https://api.together.xyz/v1", "default_model": "meta-llama/Llama-3.3-70B-Instruct-Turbo"}),
+        ("up_", {"provider": "upstage", "label": "Upstage", "base_url": "https://api.upstage.ai/v1/solar", "default_model": "solar-pro-2-preview"}),
+        ("v2Sq", {"provider": "mistral", "label": "Mistral AI", "base_url": "https://api.mistral.ai/v1", "default_model": "open-mistral-nemo"}),
+        ("xai-", {"provider": "xai", "label": "xAI (Grok)", "base_url": "https://api.x.ai/v1", "default_model": "grok-2-1212"}),
+        ("github_pat", {"provider": "github_models", "label": "GitHub Models", "base_url": "https://models.inference.ai.azure.com", "default_model": "gpt-4o-mini"}),
+        ("ghp_", {"provider": "github_models", "label": "GitHub (PAT)", "base_url": "https://models.inference.ai.azure.com", "default_model": "gpt-4o-mini"}),
+        ("apf_", {"provider": "apifreellm", "label": "API Free LLM", "base_url": "https://apifreellm.com/api/v1/chat/", "default_model": "apifreellm"}),
+        ("llmapi", {"provider": "llmapi", "label": "LLM API", "base_url": "https://api.llmapi.ai/v1", "default_model": "gpt-4o"}),
+    ]
+    PROVIDER_SIGNATURES = dict(sorted(_SIGS, key=lambda x: -len(x[0])))
     
     # Sort by longest prefix first
     sorted_sigs = sorted(PROVIDER_SIGNATURES.items(), key=lambda x: (-len(x[0]), x[0]))
