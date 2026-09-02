@@ -113,12 +113,17 @@ def _spawn_bounded_warmup(label: str, fn) -> asyncio.Task:
 
 
 def _seed_models_sync() -> None:
-    """Best-effort seed of the LLM model registry (sync Firestore calls)."""
+    """Best-effort seed of the LLM model registry (sync Firestore calls).
+
+    Only seeds if the registry is EMPTY — never overwrites existing data.
+    """
     import asyncio as _asyncio
 
-    from app.services.mcp_service import seed_default_models
-
-    _asyncio.run(seed_default_models(FirestoreDB()))
+    try:
+        from app.services.mcp_service import seed_default_models
+        _asyncio.run(seed_default_models(FirestoreDB()))
+    except Exception as e:
+        print(f"⚠️  Model registry seed skipped: {e}")
 
 
 def _seed_agentrouter_sync() -> None:
@@ -196,15 +201,24 @@ def _seed_agentrouter_sync() -> None:
         (settings.GITLAB_TOKEN, LLMProvider.GITLAB, None, None),
     ]
 
+    # SAFETY: First do a dry-run to check if ANY providers already exist.
+    # If Firestore is unreachable or slow, we MUST NOT seed — creating fresh
+    # configs would overwrite the user's manually-configured keys.
+    try:
+        all_configs = _asyncio.run(provider_service.list_provider_configs(db))
+        configured_slugs = {c.get("provider") for c in all_configs if c.get("encrypted_api_key")}
+    except Exception as e:
+        print(f"⚠️  Provider auto-seed skipped: Firestore unreachable ({e})")
+        return
+
     for api_key, provider_enum, base_url_override, default_model in env_providers:
         api_key = (api_key or "").strip()
         if not api_key:
             continue
 
-        # Check if already configured (don't overwrite user changes)
-        existing = _asyncio.run(provider_service.get_provider_config(db, provider_enum))
-        if existing and existing.get("encrypted_api_key"):
-            continue  # Already seeded
+        # NEVER overwrite a provider the user already configured
+        if provider_enum.value in configured_slugs:
+            continue
 
         meta = get_provider_metadata(provider_enum)
         base_url = base_url_override or meta.get("base_url") or None
