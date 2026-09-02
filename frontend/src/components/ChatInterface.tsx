@@ -64,7 +64,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   unbound: 'Unbound', vero: 'Vero', vercel: 'Vercel',
   vllm: 'vLLM', xinference: 'Xinference', skyrogue: 'SkyRogue',
   skybridge: 'SkyBridge', kai: 'KAI', gitee: 'Gitee AI',
- 万丁: '万丁', volcengine_maas: 'Volcengine MaaS', zeabur: 'Zeabur',
+  volcengine_maas: 'Volcengine MaaS', zeabur: 'Zeabur',
   zai: 'Z.AI', aws_bedrock: 'AWS Bedrock', zhipuai: 'ZhipuAI',
   baichuan2: 'Baichuan 2', xinghuo: 'Xinghuo', streamer: 'Streamer',
   edge: 'Edge AI', openchat: 'OpenChat', anyscale: 'Anyscale',
@@ -114,7 +114,7 @@ export default function ChatInterface({
 
   const providerList: ProviderConfig[] = Array.isArray(providers) ? providers.filter((p) => p.is_configured) : []
 
-  // Auto-select first provider and sync model when provider changes
+  // Auto-select first provider and sync model
   useEffect(() => {
     if (providerList.length > 0 && !selectedProvider) {
       const first = providerList[0]
@@ -125,7 +125,7 @@ export default function ChatInterface({
     }
   }, [providerList, selectedProvider])
 
-  // When provider dropdown changes, auto-fill model from provider's default
+  // When provider changes, auto-fill model from provider's default
   const handleProviderChange = (provider: string) => {
     setSelectedProvider(provider)
     const config = providerList.find((p) => p.provider === provider)
@@ -325,30 +325,31 @@ export default function ChatInterface({
 
   const hasProviders = providerList.length > 0
   const currentConfig = providerList.find((p) => p.provider === selectedProvider)
+  const displayProvider = currentConfig ? getProviderLabel(selectedProvider) : ''
   const displayModel = selectedModel || currentConfig?.default_model || 'auto'
 
   return (
     <div className={cn('flex flex-col bg-surface-900/80 backdrop-blur-xl rounded-2xl border border-surface-700/40 overflow-hidden shadow-2xl shadow-black/20', !fullHeight && 'max-h-[700px]')} style={{ height }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-surface-700/30 bg-surface-800/30">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
+      <div className="flex items-center justify-between px-4 sm:px-5 py-3 sm:py-3.5 border-b border-surface-700/30 bg-surface-800/30">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/20 flex-shrink-0">
             <BotIcon size={15} className="text-white" />
           </div>
-          <div>
+          <div className="min-w-0">
             <span className="text-sm font-semibold text-surface-100">{title}</span>
-            {hasProviders && currentConfig && (
+            {hasProviders && (
               <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-[10px] text-surface-500">{getProviderLabel(selectedProvider)}</span>
+                <span className="text-[10px] text-surface-500 truncate">{displayProvider}</span>
                 <span className="text-[10px] text-surface-600">/</span>
-                <span className="text-[10px] text-violet-400/80 font-mono">{displayModel}</span>
+                <span className="text-[10px] text-violet-400/80 font-mono truncate">{displayModel}</span>
               </div>
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           {!hasProviders && (
-            <span className="text-[10px] text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
+            <span className="text-[10px] text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20 hidden sm:inline">
               No providers
             </span>
           )}
@@ -359,18 +360,18 @@ export default function ChatInterface({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3 sm:space-y-4">
         {messages.map((msg) => (
           <div
             key={msg.id}
             className={cn(
-              'flex gap-3 animate-slide-in-right',
+              'flex gap-2.5 sm:gap-3 animate-slide-in-right',
               msg.role === 'user' ? 'justify-end' : 'justify-start'
             )}
           >
             {msg.role !== 'user' && (
               <div className={cn(
-                'w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5',
+                'w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5',
                 msg.is_error
                   ? 'bg-red-500/10 border border-red-500/20'
                   : 'bg-gradient-to-br from-violet-500/20 to-indigo-500/20 border border-violet-500/10'
@@ -384,7 +385,7 @@ export default function ChatInterface({
             )}
             <div
               className={cn(
-                'max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap',
+                'max-w-[85%] sm:max-w-[80%] px-3 sm:px-4 py-2.5 sm:py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap',
                 msg.role === 'user'
                   ? 'bg-gradient-to-br from-violet-600/20 to-indigo-600/20 border border-violet-500/20 text-surface-100 rounded-br-md'
                   : msg.is_error
@@ -395,15 +396,15 @@ export default function ChatInterface({
               {msg.content}
             </div>
             {msg.role === 'user' && (
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-surface-600 to-surface-700 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-br from-surface-600 to-surface-700 flex items-center justify-center flex-shrink-0 mt-0.5">
                 <UserIcon size={14} className="text-surface-300" />
               </div>
             )}
           </div>
         ))}
         {sendMutation.isPending && !streaming && (
-          <div className="flex gap-3 justify-start">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500/20 to-indigo-500/20 border border-violet-500/10 flex items-center justify-center">
+          <div className="flex gap-2.5 sm:gap-3 justify-start">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-br from-violet-500/20 to-indigo-500/20 border border-violet-500/10 flex items-center justify-center">
               <BotIcon size={14} className="text-violet-400" />
             </div>
             <div className="bg-surface-800/60 border border-surface-700/30 rounded-2xl rounded-bl-md px-4 py-3">
@@ -418,31 +419,47 @@ export default function ChatInterface({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Provider Selector + Input */}
-      <div className="border-t border-surface-700/30 p-4 bg-surface-800/20">
-        {/* Provider selector row */}
+      {/* Provider + Model Selectors + Input */}
+      <div className="border-t border-surface-700/30 p-3 sm:p-4 bg-surface-800/20">
+        {/* Provider and Model selector row */}
         {hasProviders && (
-          <div className="mb-3">
-            <div className="relative">
-              <select
-                value={selectedProvider}
-                onChange={(e) => handleProviderChange(e.target.value)}
-                className="w-full appearance-none bg-surface-800/60 border border-surface-700/40 rounded-xl text-xs py-2.5 pl-3 pr-9 text-surface-200 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all cursor-pointer"
-              >
-                {providerList.map((p) => (
-                  <option key={p.provider} value={p.provider}>
-                    {getProviderLabel(p.provider)} {p.default_model ? `- ${p.default_model}` : ''}
-                  </option>
-                ))}
-              </select>
-              <ChevronDownIcon size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-500 pointer-events-none" />
+          <div className="flex gap-2 mb-3">
+            {/* Provider selector */}
+            <div className="relative flex-1 min-w-0">
+              <label className="text-[10px] text-surface-500 mb-1 block">Provider</label>
+              <div className="relative">
+                <select
+                  value={selectedProvider}
+                  onChange={(e) => handleProviderChange(e.target.value)}
+                  className="w-full appearance-none bg-surface-800/60 border border-surface-700/40 rounded-xl text-xs py-2 pl-3 pr-8 text-surface-200 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all cursor-pointer truncate"
+                >
+                  {providerList.map((p) => (
+                    <option key={p.provider} value={p.provider}>
+                      {getProviderLabel(p.provider)}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDownIcon size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-surface-500 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Model selector */}
+            <div className="relative flex-1 min-w-0">
+              <label className="text-[10px] text-surface-500 mb-1 block">Model</label>
+              <input
+                type="text"
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                placeholder={currentConfig?.default_model || 'model name'}
+                className="w-full bg-surface-800/60 border border-surface-700/40 rounded-xl text-xs py-2 px-3 text-surface-200 font-mono placeholder:text-surface-600 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
+              />
             </div>
           </div>
         )}
 
         {/* Input row */}
-        <div className="flex gap-2.5 items-end">
-          <div className="relative flex-1">
+        <div className="flex gap-2 sm:gap-2.5 items-end">
+          <div className="relative flex-1 min-w-0">
             <textarea
               ref={inputRef}
               value={input}
