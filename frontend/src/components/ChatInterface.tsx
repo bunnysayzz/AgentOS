@@ -3,7 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/utils/cn'
-import { SendIcon, BotIcon, UserIcon, Trash2Icon, ChevronDownIcon } from '@/components/Icons'
+import { SendIcon, BotIcon, UserIcon, Trash2Icon, ChevronDownIcon, CopyIcon, CheckIcon } from '@/components/Icons'
 import { toast } from '@/components/Toast'
 import Markdown from 'react-markdown'
 
@@ -36,6 +36,35 @@ interface ChatInterfaceProps {
   fullHeight?: boolean
 }
 
+// Provider → available models mapping
+const PROVIDER_MODELS: Record<string, string[]> = {
+  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o1-preview', 'o1-mini', 'gpt-3.5-turbo'],
+  anthropic: ['claude-3-5-sonnet', 'claude-3-5-haiku-20241022', 'claude-3-opus', 'claude-3-haiku'],
+  google: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.5-pro-preview-05-06'],
+  groq: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
+  deepseek: ['deepseek-chat', 'deepseek-reasoner'],
+  agentrouter: ['deepseek/deepseek-v4-flash', 'deepseek/deepseek-v4-chat'],
+  mistral: ['open-mistral-nemo', 'mistral-large-latest', 'mistral-small-latest'],
+  openrouter: ['meta-llama/llama-3.3-70b-instruct:free', 'openai/gpt-4o-mini', 'anthropic/claude-3.5-sonnet'],
+  cerebras: ['llama-3.3-70b', 'llama-3.1-8b'],
+  huggingface: ['meta-llama/Llama-3.3-70B-Instruct', 'meta-llama/Llama-3.1-8B-Instruct'],
+  nvidia_nim: ['meta/llama-3.1-8b-instruct', 'meta/llama-3.3-70b-instruct'],
+  togetherai: ['meta-llama/Llama-3.3-70B-Instruct-Turbo', 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo'],
+  fireworks: ['accounts/fireworks/models/llama-v3p3-70b-instruct'],
+  deepinfra: ['meta-llama/Meta-Llama-3.1-70B-Instruct'],
+  ollama: ['llama3.2', 'llama3.1', 'mistral', 'codellama'],
+  xai: ['grok-2-1212', 'grok-2-mini'],
+  novita: ['meta-llama/llama-3.3-70b-instruct'],
+  perplexity: ['sonar-pro', 'sonar-small-online'],
+  sambanova: ['Meta-Llama-3.3-70B-Instruct'],
+  hyperbolic: ['meta-llama/Meta-Llama-3.1-70B-Instruct'],
+  github_models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo'],
+  moonshotai: ['moonshot-v1-128k'],
+  upstage: ['solar-pro-2-preview'],
+  nebius: ['meta-llama/Meta-Llama-3.1-70B-Instruct'],
+  llmapi: ['gpt-4o', 'gpt-4o-mini'],
+}
+
 const PROVIDER_LABELS: Record<string, string> = {
   openai: 'OpenAI', anthropic: 'Anthropic', google: 'Google Gemini',
   groq: 'Groq', mistral: 'Mistral', deepseek: 'DeepSeek',
@@ -45,34 +74,15 @@ const PROVIDER_LABELS: Record<string, string> = {
   deepinfra: 'DeepInfra', novita: 'Novita AI', perplexity: 'Perplexity',
   moonshotai: 'Moonshot AI', upstage: 'Upstage', nebius: 'Nebius',
   github_models: 'GitHub Models', llmapi: 'LLM API', hyperbolic: 'Hyperbolic',
-  sambanova: 'SambaNova', volcengine: 'Volcengine', zhipu: 'Zhipu AI',
-  minimax: 'MiniMax', bailian: 'Bailian',
-  cerebras_cloud: 'Cerebras Cloud', amazon_bedrock: 'Amazon Bedrock',
-  azure: 'Azure OpenAI', vercel_ai_gateway: 'Vercel AI Gateway',
-  kunlun: 'Kunlun', siliconflow: 'SiliconFlow', inflection: 'Inflection',
-  alibaba: 'Alibaba Cloud', tencent: 'Tencent Cloud', baidu: 'Baidu AI',
-  sensenova: 'SenseTime', iflytek: 'iFlyTek', taichu: 'Taichu',
-  skywork: 'Skywork', baichuan: 'Baichuan', yi: 'Yi AI',
-  united: 'United AI', stardust: 'Stardust', chutes: 'Chutes AI',
-  nsummit: 'NSummit', aihorde: 'AI Horde', blackbox: 'Blackbox AI',
-  apifreellm: 'API Free LLM', lepton: 'Lepton AI', cloudflare: 'Cloudflare',
-  dashscope: 'DashScope', volcark: 'Volcark', proxiflow: 'ProxiFlow',
-  astra: 'Astra', safedeploy: 'SafeDeploy', aiml: 'AIML',
-  askalta: 'AskAlta', lobehub: 'LobeHub', zentia: 'Zentia',
-  qwen: 'Qwen', chatglm: 'ChatGLM', codegeex: 'CodeGeeX',
-  wolfram: 'Wolfram Alpha', phospho: 'Phospho', portkey: 'Portkey',
-  unbound: 'Unbound', vero: 'Vero', vercel: 'Vercel',
-  vllm: 'vLLM', xinference: 'Xinference', skyrogue: 'SkyRogue',
-  skybridge: 'SkyBridge', kai: 'KAI', gitee: 'Gitee AI',
-  volcengine_maas: 'Volcengine MaaS', zeabur: 'Zeabur',
-  zai: 'Z.AI', aws_bedrock: 'AWS Bedrock', zhipuai: 'ZhipuAI',
-  baichuan2: 'Baichuan 2', xinghuo: 'Xinghuo', streamer: 'Streamer',
-  edge: 'Edge AI', openchat: 'OpenChat', anyscale: 'Anyscale',
-  crow: 'Crow AI', together: 'Together',
+  sambanova: 'SambaNova',
 }
 
 function getProviderLabel(provider: string): string {
   return PROVIDER_LABELS[provider] || provider.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
+}
+
+function getModelsForProvider(provider: string): string[] {
+  return PROVIDER_MODELS[provider] || []
 }
 
 export default function ChatInterface({
@@ -101,6 +111,7 @@ export default function ChatInterface({
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [streaming, setStreaming] = useState(false)
   const placeholderRef = useRef<string | null>(null)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
 
   const { data: providers } = useQuery({
     queryKey: ['provider-configs'],
@@ -115,13 +126,23 @@ export default function ChatInterface({
       const first = providerList[0]
       setSelectedProvider(first.provider)
       if (first.default_model) setSelectedModel(first.default_model)
+      else {
+        const models = getModelsForProvider(first.provider)
+        if (models.length > 0) setSelectedModel(models[0])
+      }
     }
   }, [providerList, selectedProvider])
 
   const handleProviderChange = (provider: string) => {
     setSelectedProvider(provider)
     const config = providerList.find((p) => p.provider === provider)
-    if (config?.default_model) setSelectedModel(config.default_model)
+    if (config?.default_model) {
+      setSelectedModel(config.default_model)
+    } else {
+      const models = getModelsForProvider(provider)
+      if (models.length > 0) setSelectedModel(models[0])
+      else setSelectedModel('')
+    }
   }
 
   useEffect(() => {
@@ -243,10 +264,21 @@ export default function ChatInterface({
     setMessages([{ id: 'welcome', role: 'assistant', content: systemPrompt ? `Chat cleared! I'll still use your system prompt.` : `Chat cleared! Send a new message to start.` }])
   }
 
+  const handleCopy = (msgId: string, content: string) => {
+    navigator.clipboard.writeText(content)
+    setCopiedId(msgId)
+    setTimeout(() => setCopiedId(null), 2000)
+  }
+
   const hasProviders = providerList.length > 0
   const currentConfig = providerList.find((p) => p.provider === selectedProvider)
   const displayProvider = currentConfig ? getProviderLabel(selectedProvider) : ''
   const displayModel = selectedModel || currentConfig?.default_model || 'auto'
+  const availableModels = getModelsForProvider(selectedProvider)
+
+  // Check if the last message is an empty assistant bubble (streaming started)
+  const lastMsg = messages[messages.length - 1]
+  const hasPendingBubble = lastMsg?.role === 'assistant' && lastMsg?.content === '' && lastMsg?.id.startsWith('resp-')
 
   return (
     <div className={cn(
@@ -291,7 +323,7 @@ export default function ChatInterface({
               </div>
             )}
             <div className={cn(
-              'max-w-[85%] sm:max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed',
+              'max-w-[85%] sm:max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed group/msg relative',
               msg.role === 'user'
                 ? 'bg-gradient-to-br from-violet-600/25 to-indigo-600/20 border border-violet-500/15 text-surface-100 rounded-br-md whitespace-pre-wrap'
                 : msg.is_error
@@ -303,6 +335,16 @@ export default function ChatInterface({
                   <Markdown>{msg.content}</Markdown>
                 </div>
               )}
+              {/* Copy button for bot messages with content */}
+              {msg.role === 'assistant' && !msg.is_error && msg.content && msg.id !== 'welcome' && (
+                <button
+                  onClick={() => handleCopy(msg.id, msg.content)}
+                  className="absolute top-2 right-2 opacity-0 group-hover/msg:opacity-100 p-1.5 rounded-lg text-surface-500 hover:text-surface-300 hover:bg-surface-700/50 transition-all"
+                  title="Copy message"
+                >
+                  {copiedId === msg.id ? <CheckIcon size={13} className="text-emerald-400" /> : <CopyIcon size={13} />}
+                </button>
+              )}
             </div>
             {msg.role === 'user' && (
               <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-surface-600 to-surface-700 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -311,7 +353,8 @@ export default function ChatInterface({
             )}
           </div>
         ))}
-        {sendMutation.isPending && !streaming && (
+        {/* Loading indicator - only show if NO pending bubble exists yet */}
+        {sendMutation.isPending && !streaming && !hasPendingBubble && (
           <div className="flex gap-3 justify-start">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500/15 to-indigo-500/15 border border-violet-500/10 flex items-center justify-center">
               <BotIcon size={14} className="text-violet-400" />
@@ -350,13 +393,28 @@ export default function ChatInterface({
             </div>
             <div className="flex-1 min-w-0">
               <label className="text-[10px] text-surface-500 mb-1 block font-medium uppercase tracking-wider">Model</label>
-              <input
-                type="text"
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                placeholder={currentConfig?.default_model || 'model name'}
-                className="w-full bg-surface-800/50 border border-surface-700/30 rounded-xl text-xs py-2.5 px-3 text-surface-200 font-mono placeholder:text-surface-600 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all hover:border-surface-600/50"
-              />
+              {availableModels.length > 0 ? (
+                <div className="relative">
+                  <select
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="w-full appearance-none bg-surface-800/50 border border-surface-700/30 rounded-xl text-xs py-2.5 pl-3 pr-8 text-surface-200 font-mono focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all cursor-pointer truncate hover:border-surface-600/50"
+                  >
+                    {availableModels.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <ChevronDownIcon size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-surface-500 pointer-events-none" />
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  placeholder={currentConfig?.default_model || 'model name'}
+                  className="w-full bg-surface-800/50 border border-surface-700/30 rounded-xl text-xs py-2.5 px-3 text-surface-200 font-mono placeholder:text-surface-600 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all hover:border-surface-600/50"
+                />
+              )}
             </div>
           </div>
         )}
