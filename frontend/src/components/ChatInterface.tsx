@@ -4,6 +4,7 @@ import api from '@/services/api'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/utils/cn'
 import { SendIcon, BotIcon, UserIcon, Trash2Icon, ChevronDownIcon } from '@/components/Icons'
+import Markdown from 'react-markdown'
 import { toast } from '@/components/Toast'
 
 const API_BASE = import.meta.env.VITE_API_URL
@@ -385,15 +386,21 @@ export default function ChatInterface({
             )}
             <div
               className={cn(
-                'max-w-[85%] sm:max-w-[80%] px-3 sm:px-4 py-2.5 sm:py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap',
+                'max-w-[85%] sm:max-w-[80%] px-3 sm:px-4 py-2.5 sm:py-3 rounded-2xl text-sm leading-relaxed',
                 msg.role === 'user'
-                  ? 'bg-gradient-to-br from-violet-600/20 to-indigo-600/20 border border-violet-500/20 text-surface-100 rounded-br-md'
+                  ? 'bg-gradient-to-br from-violet-600/20 to-indigo-600/20 border border-violet-500/20 text-surface-100 rounded-br-md whitespace-pre-wrap'
                   : msg.is_error
-                  ? 'bg-red-500/5 border border-red-500/10 text-red-300 rounded-bl-md'
+                  ? 'bg-red-500/5 border border-red-500/10 text-red-300 rounded-bl-md whitespace-pre-wrap'
                   : 'bg-surface-800/60 border border-surface-700/30 text-surface-200 rounded-bl-md'
               )}
             >
-              {msg.content}
+              {msg.role === 'user' || msg.is_error ? (
+                msg.content
+              ) : (
+                <div className="prose prose-invert prose-sm max-w-none prose-headings:text-surface-100 prose-p:text-surface-200 prose-li:text-surface-200 prose-strong:text-surface-100 prose-code:text-violet-300 prose-code:bg-surface-700/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-surface-950 prose-pre:border prose-pre:border-surface-700/50 prose-a:text-violet-400 prose-a:no-underline hover:prose-a:underline prose-li:marker:text-violet-400">
+                  <Markdown>{msg.content}</Markdown>
+                </div>
+              )}
             </div>
             {msg.role === 'user' && (
               <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-br from-surface-600 to-surface-700 flex items-center justify-center flex-shrink-0 mt-0.5">
