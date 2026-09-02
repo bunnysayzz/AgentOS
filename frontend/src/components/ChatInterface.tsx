@@ -3,7 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/utils/cn'
-import { SendIcon, BotIcon, UserIcon, Trash2Icon } from '@/components/Icons'
+import { SendIcon, BotIcon, UserIcon, Trash2Icon, ChevronDownIcon } from '@/components/Icons'
 import { toast } from '@/components/Toast'
 
 const API_BASE = import.meta.env.VITE_API_URL
@@ -16,30 +16,73 @@ interface Message {
   is_error?: boolean
 }
 
+interface ProviderConfig {
+  provider: string
+  default_model: string | null
+  is_configured: boolean
+  base_url: string | null
+  created_at: string
+}
+
 interface ChatInterfaceProps {
-  /** Agent system prompt (optional) */
   systemPrompt?: string
-  /** Default model to use */
   defaultModel?: string
-  /** Workspace ID for context */
   workspaceId?: string
-  /** Show provider selector */
   showProviderSelector?: boolean
-  /** Height constraint */
   height?: string
-  /** Title for the chat */
   title?: string
-  /** Placeholder text */
   placeholder?: string
-  /** If true, allow full height growth (no max-h) */
   fullHeight?: boolean
+}
+
+const PROVIDER_LABELS: Record<string, string> = {
+  openai: 'OpenAI', anthropic: 'Anthropic', google: 'Google Gemini',
+  groq: 'Groq', mistral: 'Mistral', deepseek: 'DeepSeek',
+  openrouter: 'OpenRouter', cerebras: 'Cerebras', huggingface: 'HuggingFace',
+  nvidia_nim: 'NVIDIA NIM', togetherai: 'Together AI', ollama: 'Ollama',
+  agentrouter: 'AgentRouter', xai: 'xAI', fireworks: 'Fireworks',
+  deepinfra: 'DeepInfra', novita: 'Novita AI', perplexity: 'Perplexity',
+  moonshotai: 'Moonshot AI', upstage: 'Upstage', nebius: 'Nebius',
+  github_models: 'GitHub Models', llmapi: 'LLM API', hyperbolic: 'Hyperbolic',
+  sambanova: 'SambaNova', volcengine: 'Volcengine', zhipu: 'Zhipu AI',
+  minimax: 'MiniMax', bailian: 'Bailian', deepseek_official: 'DeepSeek',
+  cerebras_cloud: 'Cerebras Cloud', amazon_bedrock: 'Amazon Bedrock',
+  azure: 'Azure OpenAI', vercel_ai_gateway: 'Vercel AI Gateway',
+  kunlun: 'Kunlun', siliconflow: 'SiliconFlow', inflection: 'Inflection',
+  alibaba: 'Alibaba Cloud', tencent: 'Tencent Cloud', baidu: 'Baidu AI',
+  sensenova: 'SenseTime', iflytek: 'iFlyTek', taichu: 'Taichu',
+  skywork: 'Skywork', baichuan: 'Baichuan', yi: 'Yi AI',
+  united: 'United AI', stardust: 'Stardust', chutes: 'Chutes AI',
+  nsummit: 'NSummit', aihorde: 'AI Horde', blackbox: 'Blackbox AI',
+  apifreellm: 'API Free LLM', lepton: 'Lepton AI', cloudflare: 'Cloudflare',
+  dashscope: 'DashScope', volcark: 'Volcark', proxiflow: 'ProxiFlow',
+  astra: 'Astra', safedeploy: 'SafeDeploy', aiml: 'AIML',
+  askalta: 'AskAlta', lobehub: 'LobeHub', zentia: 'Zentia',
+  calebf: 'CalebF', inflection_3: 'Inflection 3', minimax_pro: 'MiniMax Pro',
+  qwen: 'Qwen', chatglm: 'ChatGLM', codegeex: 'CodeGeeX',
+  wolfram: 'Wolfram Alpha', phospho: 'Phospho', portkey: 'Portkey',
+  unbound: 'Unbound', vero: 'Vero', vercel: 'Vercel',
+  vllm: 'vLLM', xinference: 'Xinference', skyrogue: 'SkyRogue',
+  skybridge: 'SkyBridge', kai: 'KAI', gitee: 'Gitee AI',
+ 万丁: '万丁', volcengine_maas: 'Volcengine MaaS', zeabur: 'Zeabur',
+  zai: 'Z.AI', aws_bedrock: 'AWS Bedrock', zhipuai: 'ZhipuAI',
+  baichuan2: 'Baichuan 2', xinghuo: 'Xinghuo', streamer: 'Streamer',
+  edge: 'Edge AI', openchat: 'OpenChat', anyscale: 'Anyscale',
+  deepinfra_v2: 'DeepInfra V2', zeta: 'Zeta', dynamo: 'Dynamo',
+  crow: 'Crow AI', openrouter_mini: 'OpenRouter Mini', vercel_ai: 'Vercel AI',
+  llama_cpp: 'llama.cpp', ollama2: 'Ollama 2', together: 'Together',
+  fireworks_v2: 'Fireworks V2', groq_v2: 'Groq V2', deepseek_v2: 'DeepSeek V2',
+  nvidia_nim_v2: 'NVIDIA NIM V2', mistral_v2: 'Mistral V2',
+}
+
+function getProviderLabel(provider: string): string {
+  return PROVIDER_LABELS[provider] || provider.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
 }
 
 export default function ChatInterface({
   systemPrompt,
   defaultModel = 'gpt-4o-mini',
   workspaceId,
-
   showProviderSelector = true,
   height = '500px',
   fullHeight = false,
@@ -51,57 +94,61 @@ export default function ChatInterface({
       id: 'welcome',
       role: 'assistant',
       content: systemPrompt
-        ? `👋 I'm ready! I'll use the system prompt you configured. Ask me anything.`
-        : `👋 Hello! I'm an AI assistant. Send me a message and I'll respond using the configured model.`,
+        ? `Ready! I'll use the system prompt you configured. Ask me anything.`
+        : `Hello! I'm an AI assistant. Send me a message and I'll respond using the configured model.`,
     },
   ])
   const [input, setInput] = useState('')
-  const [selectedModel, setSelectedModel] = useState(defaultModel)
   const [selectedProvider, setSelectedProvider] = useState<string>('')
+  const [selectedModel, setSelectedModel] = useState(defaultModel)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [streaming, setStreaming] = useState(false)
-  // Tracks the in-flight assistant bubble so mid-stream failures can mark it
-  // as an error instead of leaving it stuck (or double-appending error text).
   const placeholderRef = useRef<string | null>(null)
 
-  // Fetch available providers for the dropdown
   const { data: providers } = useQuery({
     queryKey: ['provider-configs'],
     queryFn: () => api.get('/mcp/providers').then((r) => r.data),
     enabled: showProviderSelector,
   })
 
-  const providerList: any[] = Array.isArray(providers) ? providers.filter((p: any) => p.is_configured) : []
+  const providerList: ProviderConfig[] = Array.isArray(providers) ? providers.filter((p) => p.is_configured) : []
 
-  // Set default provider if available
+  // Auto-select first provider and sync model when provider changes
   useEffect(() => {
     if (providerList.length > 0 && !selectedProvider) {
-      setSelectedProvider(providerList[0].provider)
+      const first = providerList[0]
+      setSelectedProvider(first.provider)
+      if (first.default_model) {
+        setSelectedModel(first.default_model)
+      }
     }
   }, [providerList, selectedProvider])
 
-  // Auto-scroll to bottom
+  // When provider dropdown changes, auto-fill model from provider's default
+  const handleProviderChange = (provider: string) => {
+    setSelectedProvider(provider)
+    const config = providerList.find((p) => p.provider === provider)
+    if (config?.default_model) {
+      setSelectedModel(config.default_model)
+    }
+  }
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Send message mutation — streams tokens via SSE when possible, with a
-  // non-streaming fallback (same shape) if the stream endpoint is unavailable.
   const sendMutation = useMutation({
     mutationFn: async (content: string) => {
-      // Build messages array
       const chatMessages: any[] = []
       if (systemPrompt) {
         chatMessages.push({ role: 'system', content: systemPrompt })
       }
-      // Add previous messages (excluding welcome)
       for (const msg of messages) {
         if (msg.id !== 'welcome' && !msg.is_error) {
           chatMessages.push({ role: msg.role, content: msg.content })
         }
       }
-      // Add the new user message
       chatMessages.push({ role: 'user', content })
 
       const body: any = {
@@ -113,7 +160,6 @@ export default function ChatInterface({
         ...(workspaceId ? { workspace_id: workspaceId } : {}),
       }
 
-      // Placeholder assistant bubble we stream tokens into
       const assistantId = `resp-${Date.now()}`
       placeholderRef.current = assistantId
       setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '' }])
@@ -134,7 +180,6 @@ export default function ChatInterface({
         response = null
       }
 
-      // Fallback: stream endpoint unreachable → non-streaming chat completion
       if (!response?.ok || !response.body) {
         setMessages((prev) => prev.filter((m) => m.id !== assistantId))
         placeholderRef.current = null
@@ -157,7 +202,6 @@ export default function ChatInterface({
         return null
       }
 
-      // Stream SSE frames
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
@@ -191,7 +235,7 @@ export default function ChatInterface({
               } else if (payload.type === 'done') {
                 const usage = payload.usage || {}
                 const total = usage.total_tokens ?? (usage.prompt_tokens || 0) + (usage.completion_tokens || 0)
-                console.log(`[${payload.provider}/${payload.model}] Tokens: ${total} (${usage.prompt_tokens ?? 0}in + ${usage.completion_tokens ?? 0}out) · $${payload.cost_usd ?? 0}`)
+                console.log(`[${payload.provider}/${payload.model}] Tokens: ${total} · $${payload.cost_usd ?? 0}`)
               } else if (payload.type === 'error') {
                 streamError = payload.message
               }
@@ -201,7 +245,6 @@ export default function ChatInterface({
           }
         }
       } catch (e: any) {
-        // Network dropped mid-stream — mark the partial bubble as an error.
         streamError = e?.message || 'Stream interrupted'
       }
 
@@ -210,7 +253,7 @@ export default function ChatInterface({
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
-              ? { ...m, content: m.content || `⚠️ Error: ${streamError}`, is_error: !m.content }
+              ? { ...m, content: m.content || `Error: ${streamError}`, is_error: !m.content }
               : m
           )
         )
@@ -224,15 +267,13 @@ export default function ChatInterface({
     onError: (err: any) => {
       setStreaming(false)
       const errorMsg = err.response?.data?.detail || err.message || 'Request failed'
-      // If the placeholder bubble is still in flight (e.g. the non-streaming
-      // fallback also failed), mark it as the error; otherwise append a new one.
       const pid = placeholderRef.current
       if (pid) {
         placeholderRef.current = null
         setMessages((prev) =>
           prev.map((m) =>
             m.id === pid
-              ? { ...m, content: m.content || `⚠️ Error: ${errorMsg}`, is_error: !m.content }
+              ? { ...m, content: m.content || `Error: ${errorMsg}`, is_error: !m.content }
               : m
           )
         )
@@ -242,7 +283,7 @@ export default function ChatInterface({
           {
             id: `err-${Date.now()}`,
             role: 'assistant',
-            content: `⚠️ Error: ${errorMsg}`,
+            content: `Error: ${errorMsg}`,
             is_error: true,
           },
         ])
@@ -276,38 +317,49 @@ export default function ChatInterface({
         id: 'welcome',
         role: 'assistant',
         content: systemPrompt
-          ? `👋 Chat cleared! I'll still use your system prompt.`
-          : `👋 Chat cleared! Send a new message to start.`,
+          ? `Chat cleared! I'll still use your system prompt.`
+          : `Chat cleared! Send a new message to start.`,
       },
     ])
   }
 
   const hasProviders = providerList.length > 0
+  const currentConfig = providerList.find((p) => p.provider === selectedProvider)
+  const displayModel = selectedModel || currentConfig?.default_model || 'auto'
 
   return (
-    <div className={cn('flex flex-col glass-panel overflow-hidden', !fullHeight && 'max-h-[700px]')} style={{ height }}>
+    <div className={cn('flex flex-col bg-surface-900/80 backdrop-blur-xl rounded-2xl border border-surface-700/40 overflow-hidden shadow-2xl shadow-black/20', !fullHeight && 'max-h-[700px]')} style={{ height }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-surface-700/30">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center">
-            <BotIcon size={14} className="text-white" />
+      <div className="flex items-center justify-between px-5 py-3.5 border-b border-surface-700/30 bg-surface-800/30">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
+            <BotIcon size={15} className="text-white" />
           </div>
-          <span className="text-sm font-medium">{title}</span>
+          <div>
+            <span className="text-sm font-semibold text-surface-100">{title}</span>
+            {hasProviders && currentConfig && (
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="text-[10px] text-surface-500">{getProviderLabel(selectedProvider)}</span>
+                <span className="text-[10px] text-surface-600">/</span>
+                <span className="text-[10px] text-violet-400/80 font-mono">{displayModel}</span>
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {!hasProviders && (
-            <span className="text-[10px] text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">
-              No providers configured
+            <span className="text-[10px] text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
+              No providers
             </span>
           )}
-          <button onClick={clearChat} className="p-1.5 rounded-lg text-surface-500 hover:text-surface-300 hover:bg-surface-800 transition-all" title="Clear chat">
+          <button onClick={clearChat} className="p-2 rounded-xl text-surface-500 hover:text-surface-300 hover:bg-surface-700/50 transition-all duration-200" title="Clear chat">
             <Trash2Icon size={14} />
           </button>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto p-5 space-y-4">
         {messages.map((msg) => (
           <div
             key={msg.id}
@@ -318,32 +370,32 @@ export default function ChatInterface({
           >
             {msg.role !== 'user' && (
               <div className={cn(
-                'w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-1',
+                'w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5',
                 msg.is_error
                   ? 'bg-red-500/10 border border-red-500/20'
-                  : 'bg-gradient-to-br from-primary-500/20 to-primary-600/20 border border-primary-500/10'
+                  : 'bg-gradient-to-br from-violet-500/20 to-indigo-500/20 border border-violet-500/10'
               )}>
                 {msg.is_error ? (
                   <span className="text-red-400 text-xs font-bold">!</span>
                 ) : (
-                  <BotIcon size={14} className="text-primary-400" />
+                  <BotIcon size={14} className="text-violet-400" />
                 )}
               </div>
             )}
             <div
               className={cn(
-                'max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap',
+                'max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap',
                 msg.role === 'user'
-                  ? 'bg-primary-500/10 border border-primary-500/20 text-surface-200 rounded-br-md'
+                  ? 'bg-gradient-to-br from-violet-600/20 to-indigo-600/20 border border-violet-500/20 text-surface-100 rounded-br-md'
                   : msg.is_error
                   ? 'bg-red-500/5 border border-red-500/10 text-red-300 rounded-bl-md'
-                  : 'bg-surface-800/50 border border-surface-700/30 text-surface-200 rounded-bl-md'
+                  : 'bg-surface-800/60 border border-surface-700/30 text-surface-200 rounded-bl-md'
               )}
             >
               {msg.content}
             </div>
             {msg.role === 'user' && (
-              <div className="w-8 h-8 rounded-xl bg-surface-700 flex items-center justify-center flex-shrink-0 mt-1">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-surface-600 to-surface-700 flex items-center justify-center flex-shrink-0 mt-0.5">
                 <UserIcon size={14} className="text-surface-300" />
               </div>
             )}
@@ -351,14 +403,14 @@ export default function ChatInterface({
         ))}
         {sendMutation.isPending && !streaming && (
           <div className="flex gap-3 justify-start">
-            <div className="w-8 h-8 rounded-xl bg-surface-800 border border-surface-700/30 flex items-center justify-center">
-              <BotIcon size={14} className="text-primary-400" />
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500/20 to-indigo-500/20 border border-violet-500/10 flex items-center justify-center">
+              <BotIcon size={14} className="text-violet-400" />
             </div>
-            <div className="bg-surface-800/50 border border-surface-700/30 rounded-2xl rounded-bl-md px-4 py-3">
-              <div className="flex gap-1">
-                <div className="w-2 h-2 bg-surface-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <div className="w-2 h-2 bg-surface-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <div className="w-2 h-2 bg-surface-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            <div className="bg-surface-800/60 border border-surface-700/30 rounded-2xl rounded-bl-md px-4 py-3">
+              <div className="flex gap-1.5">
+                <div className="w-1.5 h-1.5 bg-violet-400/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <div className="w-1.5 h-1.5 bg-violet-400/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <div className="w-1.5 h-1.5 bg-violet-400/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
             </div>
           </div>
@@ -366,42 +418,38 @@ export default function ChatInterface({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Model/Provider Selector + Input */}
-      <div className="border-t border-surface-700/30 p-3 space-y-2">
-        {/* Provider + Model selector row */}
+      {/* Provider Selector + Input */}
+      <div className="border-t border-surface-700/30 p-4 bg-surface-800/20">
+        {/* Provider selector row */}
         {hasProviders && (
-          <div className="flex gap-2">
-            <select
-              value={selectedProvider}
-              onChange={(e) => setSelectedProvider(e.target.value)}
-              className="input-field text-xs py-1.5 flex-1"
-            >
-              {providerList.map((p: any) => (
-                <option key={p.provider} value={p.provider}>
-                  {p.provider} {p.default_model ? `(${p.default_model})` : ''}
-                </option>
-              ))}
-            </select>
-            <input
-              type="text"
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              placeholder="model name"
-              className="input-field text-xs py-1.5 flex-1 font-mono"
-            />
+          <div className="mb-3">
+            <div className="relative">
+              <select
+                value={selectedProvider}
+                onChange={(e) => handleProviderChange(e.target.value)}
+                className="w-full appearance-none bg-surface-800/60 border border-surface-700/40 rounded-xl text-xs py-2.5 pl-3 pr-9 text-surface-200 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all cursor-pointer"
+              >
+                {providerList.map((p) => (
+                  <option key={p.provider} value={p.provider}>
+                    {getProviderLabel(p.provider)} {p.default_model ? `- ${p.default_model}` : ''}
+                  </option>
+                ))}
+              </select>
+              <ChevronDownIcon size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-500 pointer-events-none" />
+            </div>
           </div>
         )}
 
         {/* Input row */}
-        <div className="flex gap-2">
+        <div className="flex gap-2.5 items-end">
           <div className="relative flex-1">
             <textarea
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={hasProviders ? placeholder : 'Configure a provider first in the Providers page...'}
-              className="input-field w-full resize-none text-sm pr-10 py-2.5 min-h-[40px] max-h-[120px]"
+              placeholder={hasProviders ? placeholder : 'Configure a provider first...'}
+              className="w-full bg-surface-800/60 border border-surface-700/40 rounded-xl text-sm px-4 py-3 pr-12 resize-none min-h-[44px] max-h-[120px] text-surface-100 placeholder:text-surface-600 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
               rows={1}
               disabled={!hasProviders}
             />
@@ -410,8 +458,10 @@ export default function ChatInterface({
             onClick={handleSend}
             disabled={!input.trim() || sendMutation.isPending || !hasProviders}
             className={cn(
-              'btn-primary flex items-center justify-center w-10 h-10 p-0 rounded-xl',
-              'disabled:opacity-30 disabled:cursor-not-allowed'
+              'flex items-center justify-center w-11 h-11 rounded-xl transition-all duration-200 flex-shrink-0',
+              input.trim() && !sendMutation.isPending && hasProviders
+                ? 'bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:scale-105 active:scale-95'
+                : 'bg-surface-700/50 text-surface-500 cursor-not-allowed'
             )}
           >
             {sendMutation.isPending ? (

@@ -379,6 +379,13 @@ async def _call_anthropic(
         }
 
 
+def _mask_key(key: str) -> str:
+    """Mask an API key so only the first 6 and last 4 characters are visible."""
+    if not key or len(key) <= 12:
+        return "****"
+    return f"{key[:6]}{'*' * (len(key) - 10)}{key[-4:]}"
+
+
 async def _call_google(
     api_key: str, messages: list[dict], model: str, temperature: float, max_tokens: int | None
 ) -> dict:
@@ -392,10 +399,14 @@ async def _call_google(
     if max_tokens:
         body["generationConfig"]["maxOutputTokens"] = max_tokens
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={_mask_key(api_key)}"
     async with httpx.AsyncClient(timeout=60) as client:
-        r = await client.post(url, json=body)
-        r.raise_for_status()
+        try:
+            r = await client.post(url, json=body)
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            safe_url = e.request.url.copy_with_param("key", _mask_key(api_key)) if hasattr(e.request.url, 'copy_with_param') else str(e.request.url).replace(api_key, _mask_key(api_key))
+            raise type(e)(f"HTTP {e.response.status_code}: {safe_url}", request=e.request, response=e.response) from e
         data = r.json()
         candidate = data.get("candidates", [{}])[0]
         content = candidate.get("content", {})
@@ -701,6 +712,10 @@ async def route_chat_completion(
 
         except Exception as e:
             error_str = str(e)
+            # Mask any API keys that might appear in error messages
+            for sensitive in [api_key, api_key[:8] if api_key else ""]:
+                if sensitive and len(sensitive) > 4:
+                    error_str = error_str.replace(sensitive, _mask_key(sensitive))
             last_error = error_str
 
             duration_ms = int((time.monotonic() - start_time) * 1000)
@@ -1149,6 +1164,10 @@ async def stream_chat_completion(
 
         except Exception as e:
             error_str = str(e)
+            # Mask any API keys that might appear in error messages
+            for sensitive in [api_key, api_key[:8] if api_key else ""]:
+                if sensitive and len(sensitive) > 4:
+                    error_str = error_str.replace(sensitive, _mask_key(sensitive))
             last_error = error_str
             if is_fallback or (is_rate_limit_error(error_str) and len(providers_to_try) > 1):
                 continue
