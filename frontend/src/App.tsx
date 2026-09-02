@@ -1,4 +1,4 @@
-import { lazy } from 'react'
+import { lazy, useEffect } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import ProtectedRoute from '@/components/ProtectedRoute'
@@ -36,7 +36,41 @@ const Evaluations = lazy(() => import('@/pages/Evaluations'))
 const ABTesting = lazy(() => import('@/pages/ABTesting'))
 const IaC = lazy(() => import('@/pages/IaC'))
 
+// Preload all route chunks in the background after initial render
+// so navigation is instant (no skeleton flash)
+const ROUTES = [
+  () => import('@/pages/Dashboard'),
+  () => import('@/pages/Workspaces'),
+  () => import('@/pages/Agents'),
+  () => import('@/pages/Workflows'),
+  () => import('@/pages/Tools'),
+  () => import('@/pages/Prompts'),
+  () => import('@/pages/MCPGateway'),
+  () => import('@/pages/Providers'),
+  () => import('@/pages/ApiKeys'),
+  () => import('@/pages/Memory'),
+  () => import('@/pages/Secrets'),
+  () => import('@/pages/Artifacts'),
+  () => import('@/pages/Telemetry'),
+  () => import('@/pages/ExecutionGraphs'),
+  () => import('@/pages/Budget'),
+  () => import('@/pages/WebhookDebugger'),
+  () => import('@/pages/Evaluations'),
+  () => import('@/pages/ABTesting'),
+  () => import('@/pages/IaC'),
+  () => import('@/pages/Profile'),
+  () => import('@/pages/WorkspaceDetail'),
+]
+
 function App() {
+  // Kick off background preloading of all route chunks
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      ROUTES.forEach((load) => load())
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [])
+
   return (
       <Routes>
         {/* Public routes */}
