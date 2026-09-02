@@ -80,7 +80,6 @@ function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/terms" element={<Terms />} />
         <Route path="/privacy" element={<Privacy />} />
-        <Route path="/gallery" element={<Gallery />} />
 
         {/* Protected routes */}
         <Route element={<ProtectedRoute />}>
@@ -104,6 +103,7 @@ function App() {
             <Route path="/prompts" element={<Prompts />} />
             <Route path="/artifacts" element={<Artifacts />} />
             <Route path="/memory" element={<Memory />} />
+            <Route path="/gallery" element={<Gallery />} />
             <Route path="/mcp" element={<MCPGateway />} />
             <Route path="/telemetry" element={<Telemetry />} />
             <Route path="/graphs" element={<ExecutionGraphs />} />
