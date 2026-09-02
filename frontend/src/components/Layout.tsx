@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { Suspense, useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import Sidebar from './Sidebar'
@@ -9,6 +9,20 @@ import CommandPalette from './CommandPalette'
 import { useUIStore } from '@/stores/uiStore'
 import { cn } from '@/utils/cn'
 import { MenuIcon, SunIcon, MoonIcon } from '@/components/Icons'
+
+function PageSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      <div className="h-8 w-48 bg-surface-800/60 rounded-lg" />
+      <div className="h-4 w-72 bg-surface-800/40 rounded-md" />
+      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-32 bg-surface-800/40 rounded-xl border border-surface-700/20" />
+        ))}
+      </div>
+    </div>
+  )
+}
 
 export default function Layout() {
   const collapsed = useUIStore((s) => s.sidebarCollapsed)
@@ -56,15 +70,16 @@ export default function Layout() {
       )}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
           {/* Page transitions — fade + subtle rise on every route change */}
-          <AnimatePresence mode="wait" initial={false}>
+          <AnimatePresence initial={false}>
             <motion.div
               key={location.pathname}
-              initial={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
             >
-              <Outlet />
+              <Suspense fallback={<PageSkeleton />}>
+                <Outlet />
+              </Suspense>
             </motion.div>
           </AnimatePresence>
         </div>

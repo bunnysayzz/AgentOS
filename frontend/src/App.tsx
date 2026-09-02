@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import ProtectedRoute from '@/components/ProtectedRoute'
@@ -36,18 +36,8 @@ const Evaluations = lazy(() => import('@/pages/Evaluations'))
 const ABTesting = lazy(() => import('@/pages/ABTesting'))
 const IaC = lazy(() => import('@/pages/IaC'))
 
-function PageFallback() {
-  return (
-    <div className="min-h-[40vh] flex flex-col items-center justify-center gap-3">
-      <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
-      <p className="text-xs text-surface-500">Loading…</p>
-    </div>
-  )
-}
-
 function App() {
   return (
-    <Suspense fallback={<PageFallback />}>
       <Routes>
         {/* Public routes */}
         <Route path="/login" element={<Login />} />
@@ -116,7 +106,6 @@ function App() {
           }
         />
       </Routes>
-    </Suspense>
   )
 }
 
