@@ -68,7 +68,7 @@ export default function Layout() {
         collapsed && 'md:ml-16',
         'pt-14 md:pt-0',
       )}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
           {/* Page transitions — fade + subtle rise on every route change */}
           <AnimatePresence initial={false}>
             <motion.div

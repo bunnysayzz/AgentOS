@@ -161,7 +161,7 @@ export default function MCPGateway() {
       {tab === 'chat' && (
         <ChatInterface
           title="MCP Chat"
-          height="600px"
+          height="min(600px, 80vh)"
           showProviderSelector={true}
           placeholder="Ask the AI anything..."
         />
