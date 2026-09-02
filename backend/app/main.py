@@ -66,6 +66,7 @@ async def lifespan(app: FastAPI):
         _spawn_bounded_warmup("model registry seed", _seed_models_sync),
         _spawn_bounded_warmup("firebase cert warmup", _warm_certs_sync),
         _spawn_bounded_warmup("execution reaper", _reap_sync),
+        _spawn_bounded_warmup("agentrouter provider seed", _seed_agentrouter_sync),
     ]
 
     # Cron scheduler for schedule-triggered workflows (runs while the process
@@ -118,6 +119,110 @@ def _seed_models_sync() -> None:
     from app.services.mcp_service import seed_default_models
 
     _asyncio.run(seed_default_models(FirestoreDB()))
+
+
+def _seed_agentrouter_sync() -> None:
+    """Auto-seed providers from env vars (AGENTROUTER_API_KEY, etc.)."""
+    import asyncio as _asyncio
+
+    from app.core.config import settings
+    from app.services import provider_service
+    from app.services.provider_metadata import get_provider_metadata
+    from app.schemas.mcp import ProviderConfigCreate
+    from app.models.mcp import LLMProvider
+
+    db = FirestoreDB()
+    seeded = 0
+
+    # Map of env var -> (LLMProvider, base_url override, default_model override)
+    env_providers = [
+        (settings.AGENTROUTER_API_KEY, LLMProvider.AGENTROUTER,
+         settings.AGENTROUTER_BASE_URL or "https://deepseek-console-913582f071dc.herokuapp.com/v1",
+         "deepseek/deepseek-v4-flash"),
+        (settings.OPENAI_API_KEY, LLMProvider.OPENAI, None, None),
+        (settings.ANTHROPIC_API_KEY, LLMProvider.ANTHROPIC, None, None),
+        (settings.GOOGLE_API_KEY, LLMProvider.GOOGLE, None, None),
+        (settings.GROQ_API_KEY, LLMProvider.GROQ, None, None),
+        (settings.MISTRAL_API_KEY, LLMProvider.MISTRAL, None, None),
+        (settings.CEREBRAS_API_KEY, LLMProvider.CEREBRAS, None, None),
+        (settings.DEEPSEEK_API_KEY, LLMProvider.DEEPSEEK, None, None),
+        (settings.XAI_API_KEY, LLMProvider.XAI, None, None),
+        (settings.COHERE_API_KEY, LLMProvider.COHERE, None, None),
+        (settings.PERPLEXITY_API_KEY, LLMProvider.PERPLEXITY, None, None),
+        (settings.TOGETHER_API_KEY, LLMProvider.TOGETHERAI, None, None),
+        (settings.FIREWORKS_API_KEY, LLMProvider.FIREWORKS, None, None),
+        (settings.DEEPINFRA_API_KEY, LLMProvider.DEEPINFRA, None, None),
+        (settings.HUGGINGFACE_API_KEY, LLMProvider.HUGGINGFACE, None, None),
+        (settings.OPENROUTER_API_KEY, LLMProvider.OPENROUTER, None, None),
+        (settings.NVIDIA_API_KEY, LLMProvider.NVIDIA_NIM, None, None),
+        (settings.NOVITA_API_KEY, LLMProvider.NOVITA, None, None),
+        (settings.SAMBANOVA_API_KEY, LLMProvider.SAMBANOVA, None, None),
+        (settings.HYPERBOLIC_API_KEY, LLMProvider.HYPERBOLIC, None, None),
+        (settings.DATABRICKS_TOKEN, LLMProvider.DATABRICKS, None, None),
+        (settings.DIGITALOCEAN_ACCESS_TOKEN, LLMProvider.DIGITALOCEAN, None, None),
+        (settings.MOONSHOT_API_KEY, LLMProvider.MOONSHOTAI, None, None),
+        (settings.VENICE_API_KEY, LLMProvider.VENICE, None, None),
+        (settings.POOLSIDE_API_KEY, LLMProvider.POOLSIDE, None, None),
+        (settings.IOINTELLIGENCE_API_KEY, LLMProvider.IO_NET, None, None),
+        (settings.NEBIUS_API_KEY, LLMProvider.NEBIUS, None, None),
+        (settings.SCALEWAY_API_KEY, LLMProvider.SCALEWAY, None, None),
+        (settings.OVHCLOUD_API_KEY, LLMProvider.OVHCLOUD, None, None),
+        (settings.HELICONE_API_KEY, LLMProvider.HELICONE, None, None),
+        (settings.MODAL_PROXY_TOKEN, LLMProvider.MODAL, None, None),
+        (settings.BASETEN_API_KEY, LLMProvider.BASETEN, None, None),
+        (settings.CORTECS_API_KEY, LLMProvider.CORTECS, None, None),
+        (settings.LLAMA_API_KEY, LLMProvider.LLAMA, None, None),
+        (settings.OLLAMA_API_KEY, LLMProvider.OLLAMA_CLOUD, None, None),
+        (settings.OPENCODE_API_KEY, LLMProvider.OPENCODE, None, None),
+        (settings.UPSTAGE_API_KEY, LLMProvider.UPSTAGE, None, None),
+        (settings.SILICONFLOW_API_KEY, LLMProvider.SILICONFLOW, None, None),
+        (settings.DASHSCOPE_API_KEY, LLMProvider.ALIBABA, None, None),
+        (settings.ZHIPU_API_KEY, LLMProvider.Z_AI, None, None),
+        (settings.STEPFUN_API_KEY, LLMProvider.STEPFUN, None, None),
+        (settings.FRIENDLI_TOKEN, LLMProvider.FRIENDLI, None, None),
+        (settings.CRUSOE_API_KEY, LLMProvider.CRUSOE, None, None),
+        (settings.MEGANOVA_API_KEY, LLMProvider.MEGANOVA, None, None),
+        (settings.CHUTES_API_KEY, LLMProvider.CHUTES, None, None),
+        (settings.KILO_API_KEY, LLMProvider.KILO, None, None),
+        (settings.AI_302_API_KEY, LLMProvider.AI_302, None, None),
+        (settings.ABACUS_API_KEY, LLMProvider.ABACUS, None, None),
+        (settings.REGOLO_API_KEY, LLMProvider.REGOLO, None, None),
+        (settings.REQUESTY_API_KEY, LLMProvider.REQUESTY, None, None),
+        (settings.ZENMUX_API_KEY, LLMProvider.ZENMUX, None, None),
+        (settings.SARVAM_API_KEY, LLMProvider.SARVAM, None, None),
+        (settings.SCX_API_KEY, LLMProvider.SCX_AI, None, None),
+        (settings.INFERENCE_API_KEY, LLMProvider.INFERENCE, None, None),
+        (settings.GITHUB_TOKEN, LLMProvider.GITHUB_COPILOT, None, None),
+        (settings.GITLAB_TOKEN, LLMProvider.GITLAB, None, None),
+    ]
+
+    for api_key, provider_enum, base_url_override, default_model in env_providers:
+        api_key = (api_key or "").strip()
+        if not api_key:
+            continue
+
+        # Check if already configured (don't overwrite user changes)
+        existing = _asyncio.run(provider_service.get_provider_config(db, provider_enum))
+        if existing and existing.get("encrypted_api_key"):
+            continue  # Already seeded
+
+        meta = get_provider_metadata(provider_enum)
+        base_url = base_url_override or meta.get("base_url") or None
+        default_model = default_model or meta.get("default_model") or None
+
+        _asyncio.run(provider_service.upsert_provider_config(
+            db,
+            ProviderConfigCreate(
+                provider=provider_enum,
+                api_key=api_key,
+                base_url=base_url,
+                default_model=default_model,
+            ),
+        ))
+        seeded += 1
+
+    if seeded:
+        print(f"✅ Seeded {seeded} provider(s) from env vars")
 
 
 def _warm_certs_sync() -> None:

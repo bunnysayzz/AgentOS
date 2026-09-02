@@ -180,20 +180,7 @@ async def test_connection(db: FirestoreDB, provider) -> tuple[bool, str]:
         invalidate_provider_cache()
         return success, error or "Connection successful"
 
-    # ─── OpenAI-compatible providers (incl. Groq, Cerebras, LLM API, etc.) ──
-    openai_compatible = {
-        LLMProvider.OPENAI, LLMProvider.GROQ, LLMProvider.CEREBRAS,
-        LLMProvider.OPENROUTER, LLMProvider.MISTRAL, LLMProvider.HUGGINGFACE,
-        LLMProvider.NVIDIA_NIM, LLMProvider.GITHUB_MODELS, LLMProvider.CLOUDFLARE,
-        LLMProvider.SHUTTLEAI, LLMProvider.AIHUBMIX, LLMProvider.KLUSTER_AI,
-        LLMProvider.ZHIPU_ZAI, LLMProvider.TOGETHER_AI, LLMProvider.SAMBANOVA,
-        LLMProvider.HYPERBOLIC, LLMProvider.FIREWORKS, LLMProvider.DEEPINFRA,
-        LLMProvider.NOVITA, LLMProvider.AIML_API, LLMProvider.SWIFTROUTER,
-        LLMProvider.DEEPSEEK, LLMProvider.API_FREE_LLM, LLMProvider.LLMAPI,
-        LLMProvider.POLLINATIONS, LLMProvider.NAGA_AI, LLMProvider.BLUESMINDS,
-        LLMProvider.CUSTOM, LLMProvider.AZURE,
-    }
-
+    # Native providers have their own API formats
     try:
         if provider == LLMProvider.ANTHROPIC:
             headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
@@ -236,7 +223,8 @@ async def test_connection(db: FirestoreDB, provider) -> tuple[bool, str]:
                     return await _record(True)
                 return await _record(False, f"HTTP {r.status_code}")
 
-        elif provider in openai_compatible:
+        else:
+            # All other providers (172+ from models.dev) are OpenAI-compatible
             url = (base_url or "https://api.openai.com/v1").rstrip("/") + "/models"
             headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
             async with httpx.AsyncClient(timeout=10) as client:
@@ -248,9 +236,6 @@ async def test_connection(db: FirestoreDB, provider) -> tuple[bool, str]:
                 except Exception:
                     error = str(r.status_code)
                 return await _record(False, error)
-
-        else:
-            return False, f"Testing for {provider.value} is not yet supported"
 
     except Exception as e:
         return await _record(False, str(e))

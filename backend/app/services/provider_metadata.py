@@ -315,6 +315,16 @@ PROVIDER_METADATA: dict[str, dict] = {
         "free_tier": "100% free (local)",
         "fallback_priority": 99,
     },
+    "agentrouter": {
+        "label": "AgentRouter",
+        "color": "from-violet-600 to-indigo-600",
+        "icon": "agentrouter",
+        "tagline": "DeepSeek V4 Flash & Pro — fast reasoning via proxy",
+        "default_model": "deepseek/deepseek-v4-flash",
+        "base_url": "https://deepseek-console-913582f071dc.herokuapp.com/v1",
+        "free_tier": "Self-hosted proxy",
+        "fallback_priority": 4,
+    },
     "custom": {
         "label": "Custom Provider",
         "color": "from-surface-500 to-surface-600",
@@ -348,6 +358,7 @@ MODEL_PROVIDER_MAP: dict[str, str] = {
     "claude": "anthropic",
     "gemini": "google",
     "deepseek": "deepseek",
+    "agentrouter": "agentrouter",
     "llama": "groq",  # Can fallback to groq, cerebras, huggingface, etc.
     "mistral": "mistral",
     "codellama": "ollama",

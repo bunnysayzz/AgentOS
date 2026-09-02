@@ -90,3 +90,133 @@ services:
       # This email is promoted to superuser on first sign-in.
       - key: FIRST_SUPERUSER_EMAIL
         sync: false
+      # AgentRouter (DeepSeek V4 proxy)
+      - key: AGENTROUTER_API_KEY
+        sync: false
+      - key: AGENTROUTER_BASE_URL
+        value: https://deepseek-console-913582f071dc.herokuapp.com/v1
+      # LLM Provider API Keys (set any to auto-register the provider)
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: MISTRAL_API_KEY
+        sync: false
+      - key: CEREBRAS_API_KEY
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: XAI_API_KEY
+        sync: false
+      - key: COHERE_API_KEY
+        sync: false
+      - key: PERPLEXITY_API_KEY
+        sync: false
+      - key: TOGETHER_API_KEY
+        sync: false
+      - key: FIREWORKS_API_KEY
+        sync: false
+      - key: DEEPINFRA_API_KEY
+        sync: false
+      - key: HUGGINGFACE_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: NOVITA_API_KEY
+        sync: false
+      - key: SAMBANOVA_API_KEY
+        sync: false
+      - key: HYPERBOLIC_API_KEY
+        sync: false
+      - key: DATABRICKS_HOST
+        sync: false
+      - key: DATABRICKS_TOKEN
+        sync: false
+      - key: DIGITALOCEAN_ACCESS_TOKEN
+        sync: false
+      - key: MOONSHOT_API_KEY
+        sync: false
+      - key: VENICE_API_KEY
+        sync: false
+      - key: POOLSIDE_API_KEY
+        sync: false
+      - key: IOINTELLIGENCE_API_KEY
+        sync: false
+      - key: NEBIUS_API_KEY
+        sync: false
+      - key: SCALEWAY_API_KEY
+        sync: false
+      - key: OVHCLOUD_API_KEY
+        sync: false
+      - key: HELICONE_API_KEY
+        sync: false
+      - key: MODAL_PROXY_TOKEN
+        sync: false
+      - key: BASETEN_API_KEY
+        sync: false
+      - key: CORTECS_API_KEY
+        sync: false
+      - key: LLAMA_API_KEY
+        sync: false
+      - key: OLLAMA_API_KEY
+        sync: false
+      - key: OPENCODE_API_KEY
+        sync: false
+      - key: UPSTAGE_API_KEY
+        sync: false
+      - key: SILICONFLOW_API_KEY
+        sync: false
+      - key: DASHSCOPE_API_KEY
+        sync: false
+      - key: ZHIPU_API_KEY
+        sync: false
+      - key: STEPFUN_API_KEY
+        sync: false
+      - key: FRIENDLI_TOKEN
+        sync: false
+      - key: CRUSOE_API_KEY
+        sync: false
+      - key: MEGANOVA_API_KEY
+        sync: false
+      - key: CHUTES_API_KEY
+        sync: false
+      - key: KILO_API_KEY
+        sync: false
+      - key: AI_302_API_KEY
+        sync: false
+      - key: ABACUS_API_KEY
+        sync: false
+      - key: REGOLO_API_KEY
+        sync: false
+      - key: REQUESTY_API_KEY
+        sync: false
+      - key: ZENMUX_API_KEY
+        sync: false
+      - key: SARVAM_API_KEY
+        sync: false
+      - key: SCX_API_KEY
+        sync: false
+      - key: INFERENCE_API_KEY
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITLAB_TOKEN
+        sync: false
+      - key: WATSONX_AI_APIKEY
+        sync: false
+      - key: WATSONX_AI_PROJECT_ID
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_REGION
+        sync: false
+      - key: AWS_BEARER_TOKEN_BEDROCK
+        sync: false

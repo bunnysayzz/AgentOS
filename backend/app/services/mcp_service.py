@@ -260,6 +260,15 @@ def _record_call(
     return call
 
 
+# Providers that use native (non-OpenAI) API formats
+_NATIVE_PROVIDERS = {LLMProvider.ANTHROPIC, LLMProvider.GOOGLE}
+
+
+def _is_native_provider(provider: LLMProvider) -> bool:
+    """Check if a provider uses a native (non-OpenAI) API format."""
+    return provider in _NATIVE_PROVIDERS
+
+
 def _clean_messages(messages: list[dict]) -> list[dict]:
     """Strip null-only keys (name/tool_calls/tool_call_id) from message dicts.
 
@@ -425,13 +434,70 @@ def _get_model_for_provider(provider: LLMProvider) -> str | None:
         LLMProvider.OPENAI: "gpt-4o-mini",
         LLMProvider.ANTHROPIC: "claude-3-5-haiku-20241022",
         LLMProvider.GOOGLE: "gemini-2.0-flash",
+        LLMProvider.GOOGLE_VERTEX: "gemini-2.0-flash",
         LLMProvider.GROQ: "llama-3.3-70b-versatile",
         LLMProvider.CEREBRAS: "gpt-oss-120b",
         LLMProvider.OPENROUTER: "meta-llama/llama-3.3-70b-instruct:free",
         LLMProvider.MISTRAL: "open-mistral-nemo",
         LLMProvider.HUGGINGFACE: "meta-llama/Llama-3.3-70B-Instruct",
         LLMProvider.DEEPSEEK: "deepseek-chat",
+        LLMProvider.AGENTROUTER: "deepseek/deepseek-v4-flash",
         LLMProvider.OLLAMA: "llama3.2",
+        LLMProvider.XAI: "grok-2-1212",
+        LLMProvider.COHERE: "command-r-plus",
+        LLMProvider.PERPLEXITY: "sonar-pro",
+        LLMProvider.TOGETHERAI: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        LLMProvider.FIREWORKS: "accounts/fireworks/models/llama-v3p3-70b-instruct",
+        LLMProvider.DEEPINFRA: "meta-llama/Meta-Llama-3.1-70B-Instruct",
+        LLMProvider.NVIDIA_NIM: "meta/llama-3.1-8b-instruct",
+        LLMProvider.NOVITA: "meta-llama/llama-3.3-70b-instruct",
+        LLMProvider.SAMBANOVA: "Meta-Llama-3.3-70B-Instruct",
+        LLMProvider.HYPERBOLIC: "meta-llama/Meta-Llama-3.1-70B-Instruct",
+        LLMProvider.DATABRICKS: "databricks-meta-llama-3-1-70b-instruct",
+        LLMProvider.DIGITALOCEAN: "llama-3.3-70b",
+        LLMProvider.MOONSHOTAI: "moonshot-v1-128k",
+        LLMProvider.VENICE: "llama-3.3-70b",
+        LLMProvider.POOLSIDE: "poolside-1b",
+        LLMProvider.IO_NET: "meta-llama/Meta-Llama-3.1-70B-Instruct",
+        LLMProvider.NEBIUS: "meta-llama/Meta-Llama-3.1-70B-Instruct",
+        LLMProvider.SCALEWAY: "llama-3.3-70b-instruct",
+        LLMProvider.OVHCLOUD: "Meta-Llama-3.1-70B-Instruct",
+        LLMProvider.SNOWFLAKE: "claude-3-5-sonnet",
+        LLMProvider.HELICONE: "gpt-4o",
+        LLMProvider.MODAL: "meta-llama/Meta-Llama-3.1-70B-Instruct",
+        LLMProvider.BASETEN: "meta-llama/Meta-Llama-3.1-70B-Instruct",
+        LLMProvider.CORTECS: "kimi-k2-instruct",
+        LLMProvider.LLAMA: "llama-3.3-70b",
+        LLMProvider.UPSTAGE: "solar-pro-2-preview",
+        LLMProvider.SILICONFLOW: "meta-llama/Meta-Llama-3.1-70B-Instruct",
+        LLMProvider.ALIBABA: "qwen-max",
+        LLMProvider.TENCENT: "hunyuan-pro",
+        LLMProvider.Z_AI: "glm-4-plus",
+        LLMProvider.ZHIPU_ZAI: "glm-4-plus",
+        LLMProvider.STEPFUN: "step-2-16k",
+        LLMProvider.FRIENDLI: "meta-llama-3.3-70b-instruct",
+        LLMProvider.CRUSOE: "meta-llama/Meta-Llama-3.1-70B-Instruct",
+        LLMProvider.MEGANOVA: "llama-3.3-70b",
+        LLMProvider.CHUTES: "meta-llama/Meta-Llama-3.1-70B-Instruct",
+        LLMProvider.KILO: "gpt-4o",
+        LLMProvider.AI_302: "gpt-4o",
+        LLMProvider.ABACUS: "gpt-4o",
+        LLMProvider.ANYAPI: "gpt-4o",
+        LLMProvider.REGOLO: "gpt-4o",
+        LLMProvider.REQUESTY: "gpt-4o",
+        LLMProvider.ZENMUX: "gpt-4o",
+        LLMProvider.SARVAM: "sarvam-m",
+        LLMProvider.SCX_AI: "gpt-4o",
+        LLMProvider.INFERENCE: "meta-llama/Meta-Llama-3.1-70B-Instruct",
+        LLMProvider.GITHUB_COPILOT: "gpt-4o",
+        LLMProvider.CLOUDFLARE_AI_GATEWAY: "gpt-4o",
+        LLMProvider.GITLAB: "duo-chat-sonnet-4-5",
+        LLMProvider.WATSONX: "ibm-granite/granite-3-8b-instruct",
+        LLMProvider.AZURE: "gpt-4o",
+        LLMProvider.AZURE_COGNITIVE: "gpt-4o",
+        LLMProvider.OLLAMA_CLOUD: "llama3.3",
+        LLMProvider.OPENCODE: "gpt-4o",
+        LLMProvider.XIAOMI: "MiMo-7B-RL",
     }
     return model_map.get(provider)
 
@@ -539,17 +605,14 @@ async def route_chat_completion(
                 default_model = _get_model_for_provider(provider)
                 actual_model = default_model or model_name
 
-            if provider in (LLMProvider.OPENAI, LLMProvider.DEEPSEEK, LLMProvider.GROQ,
-                            LLMProvider.CEREBRAS, LLMProvider.OPENROUTER, LLMProvider.MISTRAL,
-                            LLMProvider.HUGGINGFACE, LLMProvider.OLLAMA):
-                base_url = provider_config.get("base_url") if provider_config else None
+            if not _is_native_provider(provider):
+                # All OpenAI-compatible providers (172+ from models.dev)
+                base_url = (provider_config.get("base_url") if provider_config else None) or ""
                 if not base_url:
-                    if provider == LLMProvider.DEEPSEEK:
-                        base_url = "https://api.deepseek.com"
-                    else:
-                        base_url = "https://api.openai.com/v1"
-                if provider == LLMProvider.OLLAMA:
-                    base_url = base_url or "http://localhost:11434/v1"
+                    meta = get_provider_metadata(provider)
+                    base_url = meta.get("base_url") or ""
+                if not base_url:
+                    base_url = "https://api.openai.com/v1"
 
                 result = await _call_openai_compatible(
                     api_key=api_key,
@@ -706,6 +769,28 @@ def _detect_primary_provider(model_name: str) -> LLMProvider:
         return LLMProvider.OLLAMA
     if model_name.startswith("deepseek"):
         return LLMProvider.DEEPSEEK
+    if model_name.startswith("grok"):
+        return LLMProvider.XAI
+    if model_name.startswith("gpt"):
+        return LLMProvider.OPENAI
+    if model_name.startswith("llama"):
+        return LLMProvider.GROQ
+    if model_name.startswith("mistral"):
+        return LLMProvider.MISTRAL
+    if model_name.startswith("command"):
+        return LLMProvider.COHERE
+    if model_name.startswith("sonar"):
+        return LLMProvider.PERPLEXITY
+    if model_name.startswith("qwen"):
+        return LLMProvider.ALIBABA
+    if model_name.startswith("glm"):
+        return LLMProvider.ZHIPU_ZAI
+    if model_name.startswith("solar"):
+        return LLMProvider.UPSTAGE
+    if model_name.startswith("step"):
+        return LLMProvider.STEPFUN
+    if model_name.startswith("hunyuan"):
+        return LLMProvider.TENCENT
     return LLMProvider.OPENAI
 
 
@@ -777,17 +862,14 @@ async def route_chat_completion_raw(
         try:
             messages_dict = _clean_messages([m.model_dump() for m in request.messages])
 
-            if provider in (LLMProvider.OPENAI, LLMProvider.DEEPSEEK, LLMProvider.GROQ,
-                            LLMProvider.CEREBRAS, LLMProvider.OPENROUTER, LLMProvider.MISTRAL,
-                            LLMProvider.HUGGINGFACE, LLMProvider.OLLAMA):
-                base_url = provider_config.get("base_url") if provider_config else None
+            if not _is_native_provider(provider):
+                # All OpenAI-compatible providers (172+ from models.dev)
+                base_url = (provider_config.get("base_url") if provider_config else None) or ""
                 if not base_url:
-                    if provider == LLMProvider.DEEPSEEK:
-                        base_url = "https://api.deepseek.com"
-                    else:
-                        base_url = "https://api.openai.com/v1"
-                if provider == LLMProvider.OLLAMA:
-                    base_url = base_url or "http://localhost:11434/v1"
+                    meta = get_provider_metadata(provider)
+                    base_url = meta.get("base_url") or ""
+                if not base_url:
+                    base_url = "https://api.openai.com/v1"
                 result = await _call_openai_compatible(
                     api_key=api_key, messages=messages_dict, model=actual_model,
                     temperature=temperature, max_tokens=request.max_tokens,
@@ -975,14 +1057,13 @@ async def stream_chat_completion(
         chunks: list[str] = []
 
         try:
-            if provider in (LLMProvider.OPENAI, LLMProvider.DEEPSEEK, LLMProvider.GROQ,
-                            LLMProvider.CEREBRAS, LLMProvider.OPENROUTER, LLMProvider.MISTRAL,
-                            LLMProvider.HUGGINGFACE, LLMProvider.OLLAMA):
+            if not _is_native_provider(provider):
+                # All OpenAI-compatible providers (172+ from models.dev)
                 base_url = (provider_config.get("base_url") if provider_config else None) or ""
                 if not base_url:
                     base_url = get_provider_metadata(provider).get("base_url") or ""
-                if provider == LLMProvider.OLLAMA and not base_url:
-                    base_url = "http://localhost:11434/v1"
+                if not base_url:
+                    base_url = "https://api.openai.com/v1"
 
                 async for evt in _stream_openai_compatible(
                     api_key=api_key, messages=messages_dict, model=actual_model,
