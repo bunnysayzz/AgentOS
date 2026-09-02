@@ -111,7 +111,7 @@ export default function Dashboard() {
   // Guests get the full "getting started" experience; authed users with
   // no workspace yet get the same checklist so the zero-state feels
   // intentional instead of broken.
-  const isNewUser = isAuthenticated && (stats?.workspaceCount ?? 0) === 0
+  const isNewUser = isAuthenticated && !isLoading && (stats?.workspaceCount ?? 0) === 0
   const showGettingStarted = !isAuthenticated || isNewUser
 
   const checklistSteps = [
