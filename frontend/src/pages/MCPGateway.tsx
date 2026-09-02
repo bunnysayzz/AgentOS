@@ -6,7 +6,7 @@ import ChatInterface from '@/components/ChatInterface'
 import { toast } from '@/components/Toast'
 import { cn } from '@/utils/cn'
 
-interface Model { id: string; model_name: string; provider: string; input_price: number; output_price: number; is_active: boolean }
+interface Model { id: string; model_name: string; provider: string; input_price_per_1k: number; output_price_per_1k: number; is_active: boolean }
 interface Call { id: string; model_name: string; provider: string; prompt_tokens: number; completion_tokens: number; cost_usd: number; created_at: string; status: string }
 interface MarketplaceServer {
   id: string; name: string; description: string; command: string;
@@ -54,7 +54,7 @@ export default function MCPGateway() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['mcp-models'] }); qc.invalidateQueries({ queryKey: ['mcp-costs'] }) },
   })
 
-  const modelList: Model[] = Array.isArray(models) ? models : []
+  const modelList: Model[] = models?.models || (Array.isArray(models) ? models : [])
   const callList: Call[] = Array.isArray(calls) ? calls : []
 
   // Stats
@@ -217,8 +217,8 @@ export default function MCPGateway() {
                     </div>
                   </div>
                   <div className="text-right text-xs text-surface-400 flex-shrink-0">
-                    <div>${m.input_price}/1K in</div>
-                    <div>${m.output_price}/1K out</div>
+                    <div>${m.input_price_per_1k}/1K in</div>
+                    <div>${m.output_price_per_1k}/1K out</div>
                   </div>
                 </div>
               ))}

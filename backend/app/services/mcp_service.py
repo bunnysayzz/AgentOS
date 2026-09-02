@@ -401,12 +401,8 @@ async def _call_google(
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={_mask_key(api_key)}"
     async with httpx.AsyncClient(timeout=60) as client:
-        try:
-            r = await client.post(url, json=body)
-            r.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            safe_url = e.request.url.copy_with_param("key", _mask_key(api_key)) if hasattr(e.request.url, 'copy_with_param') else str(e.request.url).replace(api_key, _mask_key(api_key))
-            raise type(e)(f"HTTP {e.response.status_code}: {safe_url}", request=e.request, response=e.response) from e
+        r = await client.post(url, json=body)
+        r.raise_for_status()
         data = r.json()
         candidate = data.get("candidates", [{}])[0]
         content = candidate.get("content", {})

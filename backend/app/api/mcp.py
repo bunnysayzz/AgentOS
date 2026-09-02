@@ -213,14 +213,17 @@ async def list_recent_calls(
     calls = await mcp_service.get_recent_calls(db, workspace_id=workspace_id, limit=limit)
     return [
         {
-            "id": str(c.id),
-            "provider": c.provider,
-            "model": c.model_name,
-            "tokens": c.total_tokens,
-            "cost_usd": c.cost_usd,
-            "duration_ms": c.duration_ms,
-            "is_error": c.is_error,
-            "created_at": c.created_at,
+            "id": str(c.get("id", "")),
+            "provider": c.get("provider", ""),
+            "model_name": c.get("model_name", ""),
+            "prompt_tokens": c.get("prompt_tokens", 0),
+            "completion_tokens": c.get("completion_tokens", 0),
+            "total_tokens": c.get("total_tokens", 0),
+            "cost_usd": c.get("cost_usd", 0),
+            "duration_ms": c.get("duration_ms", 0),
+            "is_error": c.get("is_error", False),
+            "status": "error" if c.get("is_error") else "success",
+            "created_at": c.get("created_at", ""),
         }
         for c in calls
     ]

@@ -238,7 +238,10 @@ async def test_connection(db: FirestoreDB, provider) -> tuple[bool, str]:
                 return await _record(False, error)
 
     except Exception as e:
-        return await _record(False, str(e))
+        error_msg = str(e)
+        if api_key and len(api_key) > 6:
+            error_msg = error_msg.replace(api_key, api_key[:4] + '****' + api_key[-4:])
+        return await _record(False, error_msg)
 
 
 def get_api_key_for_provider(provider_config: dict | None) -> str | None:
