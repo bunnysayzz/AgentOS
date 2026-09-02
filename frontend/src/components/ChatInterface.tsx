@@ -4,8 +4,8 @@ import api from '@/services/api'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/utils/cn'
 import { SendIcon, BotIcon, UserIcon, Trash2Icon, ChevronDownIcon } from '@/components/Icons'
-import Markdown from 'react-markdown'
 import { toast } from '@/components/Toast'
+import Markdown from 'react-markdown'
 
 const API_BASE = import.meta.env.VITE_API_URL
 
@@ -46,7 +46,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   moonshotai: 'Moonshot AI', upstage: 'Upstage', nebius: 'Nebius',
   github_models: 'GitHub Models', llmapi: 'LLM API', hyperbolic: 'Hyperbolic',
   sambanova: 'SambaNova', volcengine: 'Volcengine', zhipu: 'Zhipu AI',
-  minimax: 'MiniMax', bailian: 'Bailian', deepseek_official: 'DeepSeek',
+  minimax: 'MiniMax', bailian: 'Bailian',
   cerebras_cloud: 'Cerebras Cloud', amazon_bedrock: 'Amazon Bedrock',
   azure: 'Azure OpenAI', vercel_ai_gateway: 'Vercel AI Gateway',
   kunlun: 'Kunlun', siliconflow: 'SiliconFlow', inflection: 'Inflection',
@@ -59,7 +59,6 @@ const PROVIDER_LABELS: Record<string, string> = {
   dashscope: 'DashScope', volcark: 'Volcark', proxiflow: 'ProxiFlow',
   astra: 'Astra', safedeploy: 'SafeDeploy', aiml: 'AIML',
   askalta: 'AskAlta', lobehub: 'LobeHub', zentia: 'Zentia',
-  calebf: 'CalebF', inflection_3: 'Inflection 3', minimax_pro: 'MiniMax Pro',
   qwen: 'Qwen', chatglm: 'ChatGLM', codegeex: 'CodeGeeX',
   wolfram: 'Wolfram Alpha', phospho: 'Phospho', portkey: 'Portkey',
   unbound: 'Unbound', vero: 'Vero', vercel: 'Vercel',
@@ -69,11 +68,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   zai: 'Z.AI', aws_bedrock: 'AWS Bedrock', zhipuai: 'ZhipuAI',
   baichuan2: 'Baichuan 2', xinghuo: 'Xinghuo', streamer: 'Streamer',
   edge: 'Edge AI', openchat: 'OpenChat', anyscale: 'Anyscale',
-  deepinfra_v2: 'DeepInfra V2', zeta: 'Zeta', dynamo: 'Dynamo',
-  crow: 'Crow AI', openrouter_mini: 'OpenRouter Mini', vercel_ai: 'Vercel AI',
-  llama_cpp: 'llama.cpp', ollama2: 'Ollama 2', together: 'Together',
-  fireworks_v2: 'Fireworks V2', groq_v2: 'Groq V2', deepseek_v2: 'DeepSeek V2',
-  nvidia_nim_v2: 'NVIDIA NIM V2', mistral_v2: 'Mistral V2',
+  crow: 'Crow AI', together: 'Together',
 }
 
 function getProviderLabel(provider: string): string {
@@ -115,24 +110,18 @@ export default function ChatInterface({
 
   const providerList: ProviderConfig[] = Array.isArray(providers) ? providers.filter((p) => p.is_configured) : []
 
-  // Auto-select first provider and sync model
   useEffect(() => {
     if (providerList.length > 0 && !selectedProvider) {
       const first = providerList[0]
       setSelectedProvider(first.provider)
-      if (first.default_model) {
-        setSelectedModel(first.default_model)
-      }
+      if (first.default_model) setSelectedModel(first.default_model)
     }
   }, [providerList, selectedProvider])
 
-  // When provider changes, auto-fill model from provider's default
   const handleProviderChange = (provider: string) => {
     setSelectedProvider(provider)
     const config = providerList.find((p) => p.provider === provider)
-    if (config?.default_model) {
-      setSelectedModel(config.default_model)
-    }
+    if (config?.default_model) setSelectedModel(config.default_model)
   }
 
   useEffect(() => {
@@ -142,9 +131,7 @@ export default function ChatInterface({
   const sendMutation = useMutation({
     mutationFn: async (content: string) => {
       const chatMessages: any[] = []
-      if (systemPrompt) {
-        chatMessages.push({ role: 'system', content: systemPrompt })
-      }
+      if (systemPrompt) chatMessages.push({ role: 'system', content: systemPrompt })
       for (const msg of messages) {
         if (msg.id !== 'welcome' && !msg.is_error) {
           chatMessages.push({ role: msg.role, content: msg.content })
@@ -173,13 +160,9 @@ export default function ChatInterface({
       let response: Response | null = null
       try {
         response = await fetch(`${API_BASE}/mcp/chat/stream`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(body),
+          method: 'POST', headers, body: JSON.stringify(body),
         })
-      } catch {
-        response = null
-      }
+      } catch { response = null }
 
       if (!response?.ok || !response.body) {
         setMessages((prev) => prev.filter((m) => m.id !== assistantId))
@@ -187,19 +170,7 @@ export default function ChatInterface({
         const fallback = await api.post('/mcp/chat/completions', { ...body, stream: false })
         const data = fallback.data
         const responseContent = data.choices?.[0]?.message?.content || '(empty response)'
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `resp-${Date.now()}`,
-            role: 'assistant',
-            content: responseContent,
-            created_at: new Date().toISOString(),
-          },
-        ])
-        if (data.usage) {
-          const { prompt_tokens, completion_tokens, total_tokens } = data.usage
-          console.log(`[${data.provider}/${data.model}] Tokens: ${total_tokens} (${prompt_tokens}in + ${completion_tokens}out)`)
-        }
+        setMessages((prev) => [...prev, { id: `resp-${Date.now()}`, role: 'assistant', content: responseContent, created_at: new Date().toISOString() }])
         return null
       }
 
@@ -210,11 +181,7 @@ export default function ChatInterface({
 
       const appendToken = (tokenText: string) => {
         setStreaming(true)
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId ? { ...m, content: m.content + tokenText } : m
-          )
-        )
+        setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content: m.content + tokenText } : m))
       }
 
       try {
@@ -231,63 +198,30 @@ export default function ChatInterface({
             if (!payloadStr) continue
             try {
               const payload = JSON.parse(payloadStr)
-              if (payload.type === 'delta') {
-                appendToken(payload.content)
-              } else if (payload.type === 'done') {
-                const usage = payload.usage || {}
-                const total = usage.total_tokens ?? (usage.prompt_tokens || 0) + (usage.completion_tokens || 0)
-                console.log(`[${payload.provider}/${payload.model}] Tokens: ${total} · $${payload.cost_usd ?? 0}`)
-              } else if (payload.type === 'error') {
-                streamError = payload.message
-              }
-            } catch {
-              // malformed frame — ignore
-            }
+              if (payload.type === 'delta') appendToken(payload.content)
+              else if (payload.type === 'error') streamError = payload.message
+            } catch {}
           }
         }
-      } catch (e: any) {
-        streamError = e?.message || 'Stream interrupted'
-      }
+      } catch (e: any) { streamError = e?.message || 'Stream interrupted' }
 
       placeholderRef.current = null
       if (streamError) {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId
-              ? { ...m, content: m.content || `Error: ${streamError}`, is_error: !m.content }
-              : m
-          )
-        )
+        setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content: m.content || `Error: ${streamError}`, is_error: !m.content } : m))
         toast.error('Chat error', streamError)
       }
       return null
     },
-    onSuccess: () => {
-      setStreaming(false)
-    },
+    onSuccess: () => setStreaming(false),
     onError: (err: any) => {
       setStreaming(false)
       const errorMsg = err.response?.data?.detail || err.message || 'Request failed'
       const pid = placeholderRef.current
       if (pid) {
         placeholderRef.current = null
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === pid
-              ? { ...m, content: m.content || `Error: ${errorMsg}`, is_error: !m.content }
-              : m
-          )
-        )
+        setMessages((prev) => prev.map((m) => m.id === pid ? { ...m, content: m.content || `Error: ${errorMsg}`, is_error: !m.content } : m))
       } else {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `err-${Date.now()}`,
-            role: 'assistant',
-            content: `Error: ${errorMsg}`,
-            is_error: true,
-          },
-        ])
+        setMessages((prev) => [...prev, { id: `err-${Date.now()}`, role: 'assistant', content: `Error: ${errorMsg}`, is_error: true }])
       }
       toast.error('Chat error', errorMsg)
     },
@@ -296,32 +230,17 @@ export default function ChatInterface({
   const handleSend = () => {
     const content = input.trim()
     if (!content || sendMutation.isPending) return
-
-    setMessages((prev) => [
-      ...prev,
-      { id: `user-${Date.now()}`, role: 'user', content },
-    ])
+    setMessages((prev) => [...prev, { id: `user-${Date.now()}`, role: 'user', content }])
     setInput('')
     sendMutation.mutate(content)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
   }
 
   const clearChat = () => {
-    setMessages([
-      {
-        id: 'welcome',
-        role: 'assistant',
-        content: systemPrompt
-          ? `Chat cleared! I'll still use your system prompt.`
-          : `Chat cleared! Send a new message to start.`,
-      },
-    ])
+    setMessages([{ id: 'welcome', role: 'assistant', content: systemPrompt ? `Chat cleared! I'll still use your system prompt.` : `Chat cleared! Send a new message to start.` }])
   }
 
   const hasProviders = providerList.length > 0
@@ -330,95 +249,78 @@ export default function ChatInterface({
   const displayModel = selectedModel || currentConfig?.default_model || 'auto'
 
   return (
-    <div className={cn('flex flex-col bg-surface-900/80 backdrop-blur-xl rounded-2xl border border-surface-700/40 overflow-hidden shadow-2xl shadow-black/20', !fullHeight && 'max-h-[700px]')} style={{ height }}>
+    <div className={cn(
+      'flex flex-col rounded-2xl overflow-hidden',
+      'bg-gradient-to-b from-surface-900/90 to-surface-900/70',
+      'border border-surface-700/30',
+      'shadow-[0_8px_40px_-12px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.03)]',
+      !fullHeight && 'max-h-[700px]'
+    )} style={{ height }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 sm:px-5 py-3 sm:py-3.5 border-b border-surface-700/30 bg-surface-800/30">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/20 flex-shrink-0">
-            <BotIcon size={15} className="text-white" />
+      <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-surface-700/20 bg-surface-800/20">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/25 flex-shrink-0">
+            <BotIcon size={16} className="text-white" />
           </div>
           <div className="min-w-0">
             <span className="text-sm font-semibold text-surface-100">{title}</span>
             {hasProviders && (
               <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-[10px] text-surface-500 truncate">{displayProvider}</span>
-                <span className="text-[10px] text-surface-600">/</span>
-                <span className="text-[10px] text-violet-400/80 font-mono truncate">{displayModel}</span>
+                <span className="text-[11px] text-surface-400 truncate">{displayProvider}</span>
+                <span className="text-[11px] text-surface-600">/</span>
+                <span className="text-[11px] text-violet-400/80 font-mono truncate">{displayModel}</span>
               </div>
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {!hasProviders && (
-            <span className="text-[10px] text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20 hidden sm:inline">
-              No providers
-            </span>
-          )}
-          <button onClick={clearChat} className="p-2 rounded-xl text-surface-500 hover:text-surface-300 hover:bg-surface-700/50 transition-all duration-200" title="Clear chat">
-            <Trash2Icon size={14} />
-          </button>
-        </div>
+        <button onClick={clearChat} className="p-2 rounded-xl text-surface-500 hover:text-surface-300 hover:bg-surface-700/40 transition-all duration-150" title="Clear chat">
+          <Trash2Icon size={14} />
+        </button>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3 sm:space-y-4">
+      <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-4">
         {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={cn(
-              'flex gap-2.5 sm:gap-3 animate-slide-in-right',
-              msg.role === 'user' ? 'justify-end' : 'justify-start'
-            )}
-          >
+          <div key={msg.id} className={cn('flex gap-3', msg.role === 'user' ? 'justify-end' : 'justify-start')}>
             {msg.role !== 'user' && (
               <div className={cn(
-                'w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5',
-                msg.is_error
-                  ? 'bg-red-500/10 border border-red-500/20'
-                  : 'bg-gradient-to-br from-violet-500/20 to-indigo-500/20 border border-violet-500/10'
+                'w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5',
+                msg.is_error ? 'bg-red-500/10 border border-red-500/20' : 'bg-gradient-to-br from-violet-500/15 to-indigo-500/15 border border-violet-500/10'
               )}>
-                {msg.is_error ? (
-                  <span className="text-red-400 text-xs font-bold">!</span>
-                ) : (
-                  <BotIcon size={14} className="text-violet-400" />
-                )}
+                {msg.is_error ? <span className="text-red-400 text-xs font-bold">!</span> : <BotIcon size={14} className="text-violet-400" />}
               </div>
             )}
-            <div
-              className={cn(
-                'max-w-[85%] sm:max-w-[80%] px-3 sm:px-4 py-2.5 sm:py-3 rounded-2xl text-sm leading-relaxed',
-                msg.role === 'user'
-                  ? 'bg-gradient-to-br from-violet-600/20 to-indigo-600/20 border border-violet-500/20 text-surface-100 rounded-br-md whitespace-pre-wrap'
-                  : msg.is_error
-                  ? 'bg-red-500/5 border border-red-500/10 text-red-300 rounded-bl-md whitespace-pre-wrap'
-                  : 'bg-surface-800/60 border border-surface-700/30 text-surface-200 rounded-bl-md'
-              )}
-            >
-              {msg.role === 'user' || msg.is_error ? (
-                msg.content
-              ) : (
+            <div className={cn(
+              'max-w-[85%] sm:max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed',
+              msg.role === 'user'
+                ? 'bg-gradient-to-br from-violet-600/25 to-indigo-600/20 border border-violet-500/15 text-surface-100 rounded-br-md whitespace-pre-wrap'
+                : msg.is_error
+                ? 'bg-red-500/5 border border-red-500/10 text-red-300 rounded-bl-md whitespace-pre-wrap'
+                : 'bg-surface-800/50 border border-surface-700/20 text-surface-200 rounded-bl-md'
+            )}>
+              {msg.role === 'user' || msg.is_error ? msg.content : (
                 <div className="prose prose-invert prose-sm max-w-none prose-headings:text-surface-100 prose-p:text-surface-200 prose-li:text-surface-200 prose-strong:text-surface-100 prose-code:text-violet-300 prose-code:bg-surface-700/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-surface-950 prose-pre:border prose-pre:border-surface-700/50 prose-a:text-violet-400 prose-a:no-underline hover:prose-a:underline prose-li:marker:text-violet-400">
                   <Markdown>{msg.content}</Markdown>
                 </div>
               )}
             </div>
             {msg.role === 'user' && (
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-br from-surface-600 to-surface-700 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-surface-600 to-surface-700 flex items-center justify-center flex-shrink-0 mt-0.5">
                 <UserIcon size={14} className="text-surface-300" />
               </div>
             )}
           </div>
         ))}
         {sendMutation.isPending && !streaming && (
-          <div className="flex gap-2.5 sm:gap-3 justify-start">
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-br from-violet-500/20 to-indigo-500/20 border border-violet-500/10 flex items-center justify-center">
+          <div className="flex gap-3 justify-start">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500/15 to-indigo-500/15 border border-violet-500/10 flex items-center justify-center">
               <BotIcon size={14} className="text-violet-400" />
             </div>
-            <div className="bg-surface-800/60 border border-surface-700/30 rounded-2xl rounded-bl-md px-4 py-3">
+            <div className="bg-surface-800/50 border border-surface-700/20 rounded-2xl rounded-bl-md px-4 py-3">
               <div className="flex gap-1.5">
-                <div className="w-1.5 h-1.5 bg-violet-400/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <div className="w-1.5 h-1.5 bg-violet-400/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <div className="w-1.5 h-1.5 bg-violet-400/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                <div className="w-1.5 h-1.5 bg-violet-400/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <div className="w-1.5 h-1.5 bg-violet-400/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <div className="w-1.5 h-1.5 bg-violet-400/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
             </div>
           </div>
@@ -426,73 +328,62 @@ export default function ChatInterface({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Provider + Model Selectors + Input */}
-      <div className="border-t border-surface-700/30 p-3 sm:p-4 bg-surface-800/20">
-        {/* Provider and Model selector row */}
+      {/* Input Area */}
+      <div className="border-t border-surface-700/20 bg-surface-800/15 p-3 sm:p-4">
+        {/* Provider + Model row */}
         {hasProviders && (
           <div className="flex gap-2 mb-3">
-            {/* Provider selector */}
-            <div className="relative flex-1 min-w-0">
-              <label className="text-[10px] text-surface-500 mb-1 block">Provider</label>
+            <div className="flex-1 min-w-0">
+              <label className="text-[10px] text-surface-500 mb-1 block font-medium uppercase tracking-wider">Provider</label>
               <div className="relative">
                 <select
                   value={selectedProvider}
                   onChange={(e) => handleProviderChange(e.target.value)}
-                  className="w-full appearance-none bg-surface-800/60 border border-surface-700/40 rounded-xl text-xs py-2 pl-3 pr-8 text-surface-200 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all cursor-pointer truncate"
+                  className="w-full appearance-none bg-surface-800/50 border border-surface-700/30 rounded-xl text-xs py-2.5 pl-3 pr-8 text-surface-200 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all cursor-pointer truncate hover:border-surface-600/50"
                 >
                   {providerList.map((p) => (
-                    <option key={p.provider} value={p.provider}>
-                      {getProviderLabel(p.provider)}
-                    </option>
+                    <option key={p.provider} value={p.provider}>{getProviderLabel(p.provider)}</option>
                   ))}
                 </select>
                 <ChevronDownIcon size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-surface-500 pointer-events-none" />
               </div>
             </div>
-
-            {/* Model selector */}
-            <div className="relative flex-1 min-w-0">
-              <label className="text-[10px] text-surface-500 mb-1 block">Model</label>
+            <div className="flex-1 min-w-0">
+              <label className="text-[10px] text-surface-500 mb-1 block font-medium uppercase tracking-wider">Model</label>
               <input
                 type="text"
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
                 placeholder={currentConfig?.default_model || 'model name'}
-                className="w-full bg-surface-800/60 border border-surface-700/40 rounded-xl text-xs py-2 px-3 text-surface-200 font-mono placeholder:text-surface-600 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
+                className="w-full bg-surface-800/50 border border-surface-700/30 rounded-xl text-xs py-2.5 px-3 text-surface-200 font-mono placeholder:text-surface-600 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all hover:border-surface-600/50"
               />
             </div>
           </div>
         )}
 
-        {/* Input row */}
-        <div className="flex gap-2 sm:gap-2.5 items-end">
-          <div className="relative flex-1 min-w-0">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={hasProviders ? placeholder : 'Configure a provider first...'}
-              className="w-full bg-surface-800/60 border border-surface-700/40 rounded-xl text-sm px-4 py-3 pr-12 resize-none min-h-[44px] max-h-[120px] text-surface-100 placeholder:text-surface-600 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
-              rows={1}
-              disabled={!hasProviders}
-            />
-          </div>
+        {/* Message input */}
+        <div className="flex gap-2.5 items-end">
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={hasProviders ? placeholder : 'Configure a provider first...'}
+            className="flex-1 bg-surface-800/50 border border-surface-700/30 rounded-xl text-sm px-4 py-3 pr-12 resize-none min-h-[44px] max-h-[120px] text-surface-100 placeholder:text-surface-600 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all hover:border-surface-600/50"
+            rows={1}
+            disabled={!hasProviders}
+          />
           <button
             onClick={handleSend}
             disabled={!input.trim() || sendMutation.isPending || !hasProviders}
             className={cn(
-              'flex items-center justify-center w-11 h-11 rounded-xl transition-all duration-200 flex-shrink-0',
+              'flex items-center justify-center w-11 h-11 rounded-xl transition-all duration-150 flex-shrink-0',
               input.trim() && !sendMutation.isPending && hasProviders
-                ? 'bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:scale-105 active:scale-95'
-                : 'bg-surface-700/50 text-surface-500 cursor-not-allowed'
+                ? 'bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-lg shadow-violet-500/20 hover:shadow-violet-500/35 hover:scale-105 active:scale-95'
+                : 'bg-surface-700/40 text-surface-500 cursor-not-allowed'
             )}
           >
-            {sendMutation.isPending ? (
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            ) : (
-              <SendIcon size={16} />
-            )}
+            {sendMutation.isPending ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <SendIcon size={16} />}
           </button>
         </div>
       </div>

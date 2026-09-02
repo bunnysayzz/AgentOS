@@ -73,14 +73,14 @@ export default function MCPGateway() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-xl bg-surface-800/50 w-fit flex-wrap">
+      <div className="flex gap-1 p-1 rounded-2xl bg-surface-800/40 border border-surface-700/20 w-fit flex-wrap">
         {(['chat', 'models', 'calls', 'costs', 'servers'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={cn(
-              'px-4 py-2 rounded-lg text-sm font-medium capitalize transition-all',
-              tab === t ? 'bg-surface-700 text-white' : 'text-surface-400 hover:text-surface-200',
+              'px-4 py-2 rounded-xl text-sm font-medium capitalize transition-all duration-150',
+              tab === t ? 'bg-gradient-to-b from-surface-700/80 to-surface-700/60 text-white shadow-sm border border-surface-600/30' : 'text-surface-400 hover:text-surface-200 hover:bg-surface-700/30',
             )}
           >
             {t === 'chat' && <MessageSquareIcon size={14} className="inline mr-1.5" />}
@@ -107,37 +107,37 @@ export default function MCPGateway() {
               <p className="text-sm text-surface-500 mt-1">The marketplace catalog is empty.</p>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2">
               {serverList.map((server) => (
-                <div key={server.id} className="card flex flex-col">
+                <div key={server.id} className="group rounded-2xl bg-gradient-to-b from-surface-800/60 to-surface-800/30 border border-surface-700/25 hover:border-surface-600/40 transition-all duration-200 p-4 flex flex-col">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500/25 to-primary-700/25 border border-primary-500/15 flex items-center justify-center flex-shrink-0">
-                        <DatabaseIcon size={18} className="text-primary-400" />
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/15 to-indigo-500/15 border border-violet-500/10 flex items-center justify-center flex-shrink-0 group-hover:shadow-lg group-hover:shadow-violet-500/10 transition-shadow">
+                        <DatabaseIcon size={18} className="text-violet-400" />
                       </div>
                       <div className="min-w-0">
-                        <p className="font-medium text-sm truncate">{server.name}</p>
-                        <span className="chip text-[10px]">{server.category}</span>
+                        <p className="font-medium text-sm text-surface-100 truncate">{server.name}</p>
+                        <span className="text-[10px] text-violet-400/70 bg-violet-500/10 px-2 py-0.5 rounded-full border border-violet-500/15">{server.category}</span>
                       </div>
                     </div>
                     <a
                       href={server.homepage}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-surface-500 hover:text-primary-400 transition-colors p-1"
+                      className="text-surface-500 hover:text-violet-400 transition-colors p-1.5 rounded-lg hover:bg-surface-700/30"
                       title="Open docs"
                     >
                       <GlobeIcon size={15} />
                     </a>
                   </div>
-                  <p className="text-xs text-surface-500 leading-snug mb-3 flex-1">{server.description}</p>
-                  <div className="rounded-xl bg-surface-900/70 border border-surface-700/30 px-3 py-2 font-mono text-[11px] text-surface-300 break-all">
+                  <p className="text-xs text-surface-400 leading-relaxed mb-3 flex-1">{server.description}</p>
+                  <div className="rounded-xl bg-surface-900/60 border border-surface-700/25 px-3 py-2.5 font-mono text-[11px] text-surface-300 break-all">
                     {server.command} {server.args.join(' ')}
                   </div>
                   {server.env_vars.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {server.env_vars.map((env) => (
-                        <span key={env} className="px-2 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono">
+                        <span key={env} className="px-2 py-0.5 rounded-lg text-[10px] bg-amber-500/8 text-amber-400/80 border border-amber-500/15 font-mono">
                           {env}
                         </span>
                       ))}
@@ -145,7 +145,7 @@ export default function MCPGateway() {
                   )}
                   <button
                     onClick={() => copyServerConfig(server)}
-                    className="btn-secondary mt-3 flex items-center justify-center gap-2 text-xs py-1.5"
+                    className="mt-3 flex items-center justify-center gap-2 text-xs py-2 rounded-xl bg-surface-700/30 border border-surface-600/20 text-surface-300 hover:bg-surface-700/50 hover:text-surface-100 transition-all"
                   >
                     <CopyIcon size={13} />
                     Copy config
