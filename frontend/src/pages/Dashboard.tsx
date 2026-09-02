@@ -398,15 +398,10 @@ export default function Dashboard() {
               )}
             </div>
           </div>
-          <motion.div
-            className="grid grid-cols-1 md:grid-cols-2 gap-3"
-            variants={staggerContainer}
-            initial="hidden"
-            animate="show"
-          >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {checklistSteps.map((step) => (
-              <motion.div key={step.key} variants={staggerItem}>
               <Link
+                key={step.key}
                 to={step.path}
                 className="group flex items-start gap-3 p-4 rounded-xl bg-surface-800/50 border border-surface-700/30 hover:border-primary-500/30 hover:bg-surface-800 transition-all duration-200"
               >
@@ -433,9 +428,8 @@ export default function Dashboard() {
                   className="text-surface-600 group-hover:text-primary-400 group-hover:translate-x-0.5 transition-all duration-200 mt-1"
                 />
               </Link>
-              </motion.div>
             ))}
-          </motion.div>
+          </div>
         </div>
       )}
 
@@ -469,49 +463,30 @@ export default function Dashboard() {
               <h2 className="microlabel">Resources</h2>
               <span className="h-px flex-1 mx-4 bg-white/[0.06]" />
             </div>
-            <motion.div
-              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
-              variants={staggerContainer}
-              initial="hidden"
-              animate="show"
-            >
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {mainStatCards.filter((c) => c.show).map((card) => (
-                <motion.div 
-                  key={card.label} 
-                  variants={staggerItem}
-                  whileHover={{ y: -4, scale: 1.02 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                >
                 <Link
+                  key={card.label}
                   to={card.path}
-                  className="card group relative overflow-hidden hover-glow"
+                  className="group relative rounded-2xl bg-gradient-to-b from-surface-800/60 to-surface-800/30 border border-surface-700/25 p-5 transition-all duration-200 hover:border-surface-600/40 hover:-translate-y-0.5"
                 >
-                  {/* Animated gradient background on hover */}
-                  <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                  <div className="relative">
-                    <div className="flex items-center justify-between mb-4">
-                      <motion.div 
-                        className={`w-10 h-10 rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center shadow-lg shadow-black/20`}
-                        whileHover={{ scale: 1.15, rotate: 5 }}
-                        transition={{ type: "spring", stiffness: 400, damping: 15 }}
-                      >
-                        <card.icon className="w-5 h-5 text-white" />
-                      </motion.div>
-                      <ArrowRightIcon className="w-4 h-4 text-surface-500 group-hover:text-primary-400 group-hover:translate-x-1 transition-all duration-200" />
+                  <div className="flex items-center justify-between mb-4">
+                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center shadow-lg shadow-black/20`}> 
+                      <card.icon className="w-5 h-5 text-white" />
                     </div>
-                    <p className="text-2xl font-semibold tracking-tight">
-                      {isLoading ? (
-                        <span className="inline-block w-10 h-7 bg-surface-800 rounded animate-pulse" />
-                      ) : (
-                        <span>{typeof card.value === 'number' ? card.value.toLocaleString() : card.value}</span>
-                      )}
-                    </p>
-                    <p className="text-sm text-surface-400 mt-0.5">{card.label}</p>
+                    <ArrowRightIcon className="w-4 h-4 text-surface-500 group-hover:text-primary-400 group-hover:translate-x-1 transition-all duration-200" />
                   </div>
+                  <p className="text-2xl font-semibold tracking-tight">
+                    {isLoading ? (
+                      <span className="inline-block w-10 h-7 bg-surface-800 rounded animate-pulse" />
+                    ) : (
+                      <span>{typeof card.value === 'number' ? card.value.toLocaleString() : card.value}</span>
+                    )}
+                  </p>
+                  <p className="text-sm text-surface-400 mt-0.5">{card.label}</p>
                 </Link>
-                </motion.div>
               ))}
-            </motion.div>
+            </div>
           </div>
 
           {/* Secondary Stats */}
@@ -520,20 +495,15 @@ export default function Dashboard() {
               <h2 className="microlabel">Platform Metrics</h2>
               <span className="h-px flex-1 mx-4 bg-white/[0.06]" />
             </div>
-            <motion.div
-              className="grid grid-cols-2 lg:grid-cols-4 gap-4"
-              variants={staggerContainer}
-              initial="hidden"
-              animate="show"
-            >
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {secondaryStatCards.map((card) => (
-                <motion.div key={card.label} variants={staggerItem} className="card hover:border-primary-500/25 hover:-translate-y-0.5 transition-all duration-200">
+                <div key={card.label} className="rounded-2xl bg-gradient-to-b from-surface-800/60 to-surface-800/30 border border-surface-700/25 p-5 hover:border-surface-600/40 hover:-translate-y-0.5 transition-all duration-200">
                   <card.icon size={18} className={`${card.color} mb-2`} />
                   <p className="text-2xl font-semibold tracking-tight">{isLoading ? <span className="inline-block w-10 h-7 bg-surface-800 rounded animate-pulse" /> : card.value}</p>
                   <p className="text-xs text-surface-500 mt-0.5">{card.sub}</p>
-                </motion.div>
+                </div>
               ))}
-            </motion.div>
+            </div>
           </div>
 
           {/* Telemetry Quick Summary (if available) */}
