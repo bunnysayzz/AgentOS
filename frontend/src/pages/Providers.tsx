@@ -3,10 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/services/api'
 import { cn } from '@/utils/cn'
 import {
-  CheckIcon, CpuIcon, XIcon, KeyIcon, EyeIcon, EyeOffIcon,
-  Trash2Icon, RefreshCwIcon, GlobeIcon, BrainIcon,
-  ServerIcon, DatabaseIcon, AlertTriangleIcon, PlusIcon,
+  CheckIcon, XIcon, KeyIcon, EyeIcon, EyeOffIcon,
+  Trash2Icon, RefreshCwIcon, AlertTriangleIcon, PlusIcon,
 } from '@/components/Icons'
+import { ProviderIcon } from '@/components/ProviderIcon'
 import { toast } from '@/components/Toast'
 
 const PROVIDER_COLORS: Record<string, string> = {
@@ -35,24 +35,6 @@ const PROVIDER_LABELS: Record<string, string> = {
   ollama: 'Ollama', azure: 'Azure OpenAI',
   agentrouter: 'AgentRouter (DeepSeek V4)',
   custom: 'Custom',
-}
-
-function ProviderIcon({ icon, size = 18 }: { icon: string; size?: number }) {
-  const iconMap: Record<string, React.ReactNode> = {
-    openai: <CpuIcon size={size} className="text-white" />,
-    anthropic: <BrainIcon size={size} className="text-white" />,
-    google: <GlobeIcon size={size} className="text-white" />,
-    groq: <ZapIcon size={size} className="text-white" />,
-    mistral: <BrainIcon size={size} className="text-white" />,
-    deepseek: <BrainIcon size={size} className="text-white" />,
-    nvidia: <CpuIcon size={size} className="text-white" />,
-    github: <ServerIcon size={size} className="text-white" />,
-    sambanova: <CpuIcon size={size} className="text-white" />,
-    azure: <DatabaseIcon size={size} className="text-white" />,
-    ollama: <CpuIcon size={size} className="text-white" />,
-    custom: <KeyIcon size={size} className="text-white" />,
-  }
-  return <>{iconMap[icon] || <CpuIcon size={size} className="text-white" />}</>
 }
 
 function getLabel(provider: string): string {
@@ -484,10 +466,3 @@ function UpdateKeyForm({ showPassword, onTogglePassword, onSave, isPending }: {
   )
 }
 
-function ZapIcon({ className, size = 18 }: { className?: string; size?: number }) {
-  return (
-    <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-    </svg>
-  )
-}

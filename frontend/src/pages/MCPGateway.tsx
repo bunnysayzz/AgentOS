@@ -11,6 +11,7 @@ import ChatInterface from '@/components/ChatInterface'
 import PageHeader from '@/components/PageHeader'
 import EmptyState from '@/components/EmptyState'
 import TabBar, { type TabItem } from '@/components/TabBar'
+import { ProviderAvatar } from '@/components/ProviderIcon'
 import { toast } from '@/components/Toast'
 import { cn } from '@/utils/cn'
 
@@ -250,9 +251,7 @@ export default function MCPGateway() {
                 {modelList.map((m) => (
                   <div key={m.id} className="group rounded-2xl bg-gradient-to-b from-surface-800/50 to-surface-800/25 border border-surface-700/25 hover:border-surface-600/40 transition-all duration-200 p-4 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-4 min-w-0">
-                      <div className={cn('w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center flex-shrink-0', providerColor(m.provider))}>
-                        <CpuIcon size={16} className="text-white" />
-                      </div>
+                      <ProviderAvatar provider={m.provider} color={providerColor(m.provider)} />
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <p className="font-medium text-sm text-surface-100 truncate">{m.model_name}</p>
@@ -306,9 +305,7 @@ export default function MCPGateway() {
               {callList.map((c) => (
                 <div key={c.id} className="rounded-2xl bg-gradient-to-b from-surface-800/50 to-surface-800/25 border border-surface-700/25 hover:border-surface-600/40 transition-all duration-200 p-4 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-4 min-w-0">
-                    <div className={cn('w-9 h-9 rounded-xl bg-gradient-to-br flex items-center justify-center flex-shrink-0', providerColor(c.provider))}>
-                      <CpuIcon size={14} className="text-white" />
-                    </div>
+                    <ProviderAvatar provider={c.provider} color={providerColor(c.provider)} size="sm" />
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-medium text-sm text-surface-100 truncate">{c.model_name}</p>

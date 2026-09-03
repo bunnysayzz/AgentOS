@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   BotIcon, GlobeIcon, LogInIcon,
-  RocketIcon, XIcon,
+  RocketIcon, SearchIcon, XIcon,
 } from '@/components/Icons'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/authStore'
@@ -101,10 +101,7 @@ export default function Gallery() {
             onChange={(e) => setSearch(e.target.value)}
             className="input-field pl-10"
           />
-          <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.35-4.35" />
-          </svg>
+          <SearchIcon size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-surface-500" />
         </div>
         {allTags.length > 0 && (
           <div className="flex flex-wrap gap-2">
