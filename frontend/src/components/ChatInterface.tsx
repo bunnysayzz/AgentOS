@@ -107,8 +107,11 @@ export default function ChatInterface({
   const [selectedModel, setSelectedModel] = useState(defaultModel)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const [streaming, setStreaming] = useState(false)
-  const placeholderRef = useRef<string | null>(null)
+  // assistant bubble currently being generated: pendingId drives the typing
+  // dots (no tokens yet) and then the live caret-while-streaming render. A ref
+  // mirrors it so async stream handlers never read a stale closure.
+  const [pendingId, setPendingId] = useState<string | null>(null)
+  const pendingRef = useRef<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
   const { data: providers } = useQuery({
@@ -144,8 +147,10 @@ export default function ChatInterface({
   }
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    // During a stream, scroll instantly so the caret never lags behind;
+    // use the smooth glide only when a new message lands.
+    messagesEndRef.current?.scrollIntoView({ behavior: pendingId ? 'auto' : 'smooth', block: 'end' })
+  }, [messages, pendingId])
 
   const sendMutation = useMutation({
     mutationFn: async (content: string) => {
@@ -168,9 +173,9 @@ export default function ChatInterface({
       }
 
       const assistantId = `resp-${Date.now()}`
-      placeholderRef.current = assistantId
+      pendingRef.current = assistantId
+      setPendingId(assistantId)
       setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '' }])
-      setStreaming(false)
 
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
       const token = useAuthStore.getState().accessToken
@@ -185,7 +190,8 @@ export default function ChatInterface({
 
       if (!response?.ok || !response.body) {
         setMessages((prev) => prev.filter((m) => m.id !== assistantId))
-        placeholderRef.current = null
+        pendingRef.current = null
+        setPendingId(null)
         const fallback = await api.post('/mcp/chat/completions', { ...body, stream: false })
         const data = fallback.data
         const responseContent = data.choices?.[0]?.message?.content || '(empty response)'
@@ -199,7 +205,6 @@ export default function ChatInterface({
       let streamError: string | null = null
 
       const appendToken = (tokenText: string) => {
-        setStreaming(true)
         setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content: m.content + tokenText } : m))
       }
 
@@ -224,20 +229,24 @@ export default function ChatInterface({
         }
       } catch (e: any) { streamError = e?.message || 'Stream interrupted' }
 
-      placeholderRef.current = null
       if (streamError) {
         setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content: m.content || `Error: ${streamError}`, is_error: !m.content } : m))
         toast.error('Chat error', streamError)
       }
+      pendingRef.current = null
+      setPendingId(null)
       return null
     },
-    onSuccess: () => setStreaming(false),
+    onSuccess: () => {
+      pendingRef.current = null
+      setPendingId(null)
+    },
     onError: (err: any) => {
-      setStreaming(false)
+      const pid = pendingRef.current
+      pendingRef.current = null
+      setPendingId(null)
       const errorMsg = err.response?.data?.detail || err.message || 'Request failed'
-      const pid = placeholderRef.current
       if (pid) {
-        placeholderRef.current = null
         setMessages((prev) => prev.map((m) => m.id === pid ? { ...m, content: m.content || `Error: ${errorMsg}`, is_error: !m.content } : m))
       } else {
         setMessages((prev) => [...prev, { id: `err-${Date.now()}`, role: 'assistant', content: `Error: ${errorMsg}`, is_error: true }])
@@ -271,10 +280,7 @@ export default function ChatInterface({
   const hasProviders = providerList.length > 0
   const currentConfig = providerList.find((p) => p.provider === selectedProvider)
   const availableModels = getModelsForProvider(selectedProvider)
-
-  // Check if the last message is an empty assistant bubble (streaming started)
-  const lastMsg = messages[messages.length - 1]
-  const hasPendingBubble = lastMsg?.role === 'assistant' && lastMsg?.content === '' && lastMsg?.id.startsWith('resp-')
+  const isResponding = pendingId !== null
 
   return (
     <div className={cn(
@@ -292,8 +298,8 @@ export default function ChatInterface({
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-sm font-semibold text-surface-100 truncate">{title}</span>
             <span className="hidden md:flex items-center gap-1.5 text-[10px] font-medium text-surface-500">
-              <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', sendMutation.isPending ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400')} />
-              {sendMutation.isPending ? 'Responding…' : 'Ready'}
+              <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', isResponding ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400')} />
+              {isResponding ? 'Responding…' : 'Ready'}
             </span>
           </div>
         </div>
@@ -367,13 +373,33 @@ export default function ChatInterface({
                 ? 'bg-red-500/5 border border-red-500/10 text-red-300 rounded-bl-md whitespace-pre-wrap'
                 : 'bg-surface-800/50 border border-surface-700/20 text-surface-200 rounded-bl-md'
             )}>
-              {msg.role === 'user' || msg.is_error ? msg.content : (
+              {msg.role === 'user' || msg.is_error ? msg.content : msg.id === pendingId ? (
+                // Pending bubble: typing dots until the first token, then the
+                // raw text streams in with a caret. Markdown waits until the
+                // stream finishes so every token renders instantly (GPT-style).
+                msg.content === '' ? (
+                  <div className="flex items-center gap-1.5 py-1" aria-label="Assistant is typing">
+                    {[0, 1, 2].map((i) => (
+                      <span
+                        key={i}
+                        className="w-1.5 h-1.5 rounded-full bg-violet-400/70 animate-bounce"
+                        style={{ animationDelay: `${i * 150}ms` }}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="whitespace-pre-wrap break-words">
+                    {msg.content}
+                    <span className="inline-block w-[2px] h-[1em] ml-0.5 align-[-0.15em] bg-violet-400/80 animate-pulse" />
+                  </div>
+                )
+              ) : (
                 <div className="prose prose-invert prose-sm max-w-none prose-headings:text-surface-100 prose-p:text-surface-200 prose-li:text-surface-200 prose-strong:text-surface-100 prose-code:text-violet-300 prose-code:bg-surface-700/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-surface-950 prose-pre:border prose-pre:border-surface-700/50 prose-a:text-violet-400 prose-a:no-underline hover:prose-a:underline prose-li:marker:text-violet-400">
                   <Markdown>{msg.content}</Markdown>
                 </div>
               )}
-              {/* Copy button for bot messages with content */}
-              {msg.role === 'assistant' && !msg.is_error && msg.content && msg.id !== 'welcome' && (
+              {/* Copy button for finished bot messages */}
+              {msg.role === 'assistant' && !msg.is_error && msg.content && msg.id !== 'welcome' && pendingId !== msg.id && (
                 <button
                   onClick={() => handleCopy(msg.id, msg.content)}
                   className="absolute top-2 right-2 opacity-0 group-hover/msg:opacity-100 icon-btn !w-7 !h-7"
@@ -390,21 +416,6 @@ export default function ChatInterface({
             )}
           </div>
         ))}
-        {/* Loading indicator - only show if NO pending bubble exists yet */}
-        {sendMutation.isPending && !streaming && !hasPendingBubble && (
-          <div className="flex gap-3 justify-start">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500/15 to-indigo-500/15 border border-violet-500/10 flex items-center justify-center">
-              <BotIcon size={14} className="text-violet-400" />
-            </div>
-            <div className="bg-surface-800/50 border border-surface-700/20 rounded-2xl rounded-bl-md px-4 py-3">
-              <div className="flex gap-1.5">
-                <div className="w-1.5 h-1.5 bg-violet-400/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <div className="w-1.5 h-1.5 bg-violet-400/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <div className="w-1.5 h-1.5 bg-violet-400/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-              </div>
-            </div>
-          </div>
-        )}
         <div ref={messagesEndRef} />
       </div>
 
