@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ActivityIcon, ArrowLeftIcon, BotIcon, GlobeIcon, MessageSquareIcon,
@@ -298,6 +298,13 @@ export default function Agents() {
                     </div>
                     {(ex.status === 'completed' || ex.status === 'failed') && (
                       <div className="mt-2 pl-7">
+                        <Link
+                          to={`/workspaces/${wsId}/graphs?execution=${encodeURIComponent(ex.id)}`}
+                          className="inline-flex items-center gap-1 text-xs text-primary-400 hover:text-primary-300 mb-1.5 transition-colors"
+                        >
+                          View node-level graph &rarr;
+                        </Link>
+
                         {ex.error_message ? (
                           <p className="text-xs text-red-300/90 bg-red-500/5 border border-red-500/10 rounded-lg p-2 break-words">{ex.error_message}</p>
                         ) : ex.output_data?.response ? (

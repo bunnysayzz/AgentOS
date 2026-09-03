@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeftIcon, CheckIcon, ChevronRightIcon, PauseIcon, PlayIcon, PlusIcon, StopIcon, WorkflowIcon,
@@ -159,7 +159,15 @@ export default function Workflows() {
             <h1 className="text-xl font-bold">Execution Detail</h1>
             <p className="text-xs text-surface-500 font-mono mt-1">{selectedExecId}</p>
           </div>
-          <span className={cn('chip', statusColors[ex.status] || 'text-surface-400')}>{ex.status}</span>
+          <div className="flex items-center gap-2">
+            <Link
+              to={`/workspaces/${wsId}/graphs?execution=${encodeURIComponent(selectedExecId)}`}
+              className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-surface-700/50 text-surface-300 hover:text-white hover:border-surface-600 transition-colors"
+            >
+              Open full graph
+            </Link>
+            <span className={cn('chip', statusColors[ex.status] || 'text-surface-400')}>{ex.status}</span>
+          </div>
         </div>
 
         {/* Stats grid */}

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { ActivityIcon, ClockIcon, DollarSignIcon, GitBranchIcon } from '@/components/Icons'
@@ -24,8 +24,25 @@ export default function ExecutionGraphs() {
   const { workspaceId: paramWsId } = useParams<{ workspaceId?: string }>()
   const storeWsId = useWorkspaceStore((s) => s.selectedWorkspaceId)
   const wsId = paramWsId || storeWsId
+  const [searchParams, setSearchParams] = useSearchParams()
   const [executionId, setExecutionId] = useState('')
-  const [loadedExec, setLoadedExec] = useState('')
+  const [loadedExec, setLoadedExec] = useState(() => searchParams.get('execution') || '')
+
+  // Deep links: /graphs?execution=<id> auto-loads that run and keeps the URL shareable.
+  useEffect(() => {
+    const fromUrl = searchParams.get('execution')
+    if (fromUrl && fromUrl !== loadedExec) {
+      setLoadedExec(fromUrl)
+      setExecutionId(fromUrl)
+    }
+  }, [searchParams])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadExec = (id: string) => {
+    if (!id.trim()) return
+    setLoadedExec(id.trim())
+    setExecutionId(id.trim())
+    setSearchParams({ execution: id.trim() }, { replace: true })
+  }
 
   const { data: graph, isLoading } = useQuery({
     queryKey: ['execution-graph', wsId, loadedExec],
@@ -66,8 +83,8 @@ export default function ExecutionGraphs() {
       </div>
 
       <div className="flex gap-2">
-        <input type="text" placeholder="Enter execution ID..." value={executionId} onChange={(e) => setExecutionId(e.target.value)} className="input-field flex-1" />
-        <button onClick={() => { if (executionId.trim()) setLoadedExec(executionId.trim()) }} disabled={!executionId.trim()} className="btn-primary">Load Graph</button>
+        <input type="text" placeholder="Paste an execution ID or open one from Workflows..." value={executionId} onChange={(e) => setExecutionId(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') loadExec(executionId) }} className="input-field flex-1" />
+        <button onClick={() => loadExec(executionId)} disabled={!executionId.trim()} className="btn-primary">Load Graph</button>
       </div>
 
       {isLoading && <div className="glass-panel p-12 text-center"><div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin mx-auto" /></div>}
