@@ -9,7 +9,7 @@ pydantic>=2.0.0
 pydantic-settings>=2.0.0
 python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
-bcrypt==4.0.1  # pinned: passlib 1.7.4 breaks with bcrypt>=4.1 (removed __about__)
+bcrypt==5.0.0  # pinned: passlib 1.7.4 breaks with bcrypt>=4.1 (removed __about__)
 email-validator>=2.0.0
 python-multipart>=0.0.12
 httpx>=0.27.0
