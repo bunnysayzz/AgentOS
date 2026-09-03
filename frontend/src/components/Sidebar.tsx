@@ -136,6 +136,20 @@ export default function Sidebar() {
   const location = useLocation()
   const navigate = useNavigate()
 
+  // Active-state matching that understands both URL forms of a page:
+  // the global route (/agents) and the workspace-scoped twin
+  // (/workspaces/:id/agents) that Workspace detail cards link to.
+  const isNavItemActive = (itemPath: string, pathname: string) => {
+    if (itemPath === '/workspaces') {
+      // Detail page (no trailing resource segment) counts as Workspaces;
+      // scoped resource pages below it belong to their own nav item instead.
+      return pathname === '/workspaces' || /^\/workspaces\/[^/]+$/.test(pathname)
+    }
+    if (pathname === itemPath) return true
+    const scoped = pathname.match(/^\/workspaces\/[^/]+(?:\/(.+))?$/)
+    return scoped ? itemPath === `/${scoped[1] || ''}` : false
+  }
+
   const handleSignOut = async () => {
     try { await firebaseSignOut(firebaseAuth) } catch { /* ignore */ }
     clearAuth()
@@ -220,38 +234,38 @@ export default function Sidebar() {
                 </p>
               )}
               <div className="space-y-0.5">
-                {section.items.map((item) => (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    className={({ isActive }) =>
-                      cn(
+                {section.items.map((item) => {
+                  const active = isNavItemActive(item.path, location.pathname)
+                  return (
+                    <NavLink
+                      key={item.path}
+                      to={item.path}
+                      aria-current={active ? 'page' : undefined}
+                      className={cn(
                         'group relative flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium transition-all duration-200',
-                        isActive
+                        active
                           ? 'bg-gradient-to-r from-primary-500/15 to-primary-500/[0.03] text-primary-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]'
                           : 'text-surface-400 hover:text-surface-100 hover:bg-surface-800/60 active:scale-[0.98]',
                         collapsed && 'justify-center px-2',
-                      )
-                    }
-                  >
-                    {({ isActive }) => (
+                      )}
+                    >
                       <>
                         {/* Active accent bar */}
-                        {isActive && !collapsed && (
+                        {active && !collapsed && (
                           <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-gradient-to-b from-primary-400 to-primary-600 shadow-[0_0_8px_rgba(139,92,246,0.6)]" />
                         )}
                         <item.icon
                           className={cn(
                             'w-[18px] h-[18px] flex-shrink-0 transition-colors',
-                            isActive && 'text-primary-400',
+                            active && 'text-primary-400',
                           )}
                           size={18}
                         />
                         {!collapsed && <span className="truncate">{item.label}</span>}
                       </>
-                    )}
-                  </NavLink>
-                ))}
+                    </NavLink>
+                  )
+                })}
               </div>
             </div>
           ))}
