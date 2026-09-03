@@ -136,4 +136,4 @@ class TestCostTracking:
         assert calls.status_code == 200
         call_list = calls.json()
         assert len(call_list) == 1
-        assert call_list[0]["model"] == "gpt-4o-mini"
+        assert call_list[0]["model_name"] == "gpt-4o-mini"

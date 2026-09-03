@@ -157,6 +157,130 @@ class ModelNotFoundError(MCPError):
         super().__init__(f"Model '{model}' not found or not available", status_code=404)
 
 
+# ─── Friendly error translation ───────────────────────
+# Provider errors are translated to plain-language messages for the user.
+# Raw bodies, URLs and API keys NEVER reach the chat UI.
+
+
+def _provider_label(provider) -> str:
+    """Human-readable label for an LLMProvider value."""
+    value = provider.value if hasattr(provider, "value") else str(provider)
+    names = {
+        "openai": "OpenAI",
+        "anthropic": "Anthropic",
+        "google": "Google Gemini",
+        "groq": "Groq",
+        "mistral": "Mistral",
+        "deepseek": "DeepSeek",
+        "openrouter": "OpenRouter",
+        "cerebras": "Cerebras",
+        "agentrouter": "AgentRouter",
+        "ollama": "Ollama",
+    }
+    if value in names:
+        return names[value]
+    return value.replace("_", " ").title()
+
+
+def _friendly_http_error(
+    status_code: int,
+    provider: str,
+    model: str = "",
+    body_text: str = "",
+) -> str:
+    """Map a provider HTTP error to a clear, user-safe message.
+
+    Never includes the raw body, the request URL, or the API key — only the
+    provider name, the status code, and (for model problems) the model.
+    """
+    low = (body_text or "").lower()
+    model_problem = "model" in low and any(
+        token in low for token in ("not exist", "not found", "not available", "unknown", "access")
+    )
+
+    if model_problem and status_code in (400, 403, 404):
+        name = model or "selected"
+        return (
+            f"{_provider_label(provider)} doesn't have the model '{name}' "
+            f"(HTTP {status_code}). Pick another model from the list."
+        )
+    if status_code in (401, 403):
+        return (
+            f"{_provider_label(provider)} rejected the API key (HTTP {status_code}). "
+            "Update the key on the Providers page and try again."
+        )
+    if status_code == 402:
+        return (
+            f"{_provider_label(provider)} needs billing or credits (HTTP 402). "
+            "Top up your account on the provider's site."
+        )
+    if status_code == 404:
+        return (
+            f"{_provider_label(provider)} endpoint not found (HTTP 404). "
+            "Check the base URL on the Providers page."
+        )
+    if status_code == 429 or "rate limit" in low or "quota" in low or "resource_exhausted" in low:
+        return (
+            f"{_provider_label(provider)} hit a rate or quota limit (HTTP {status_code}). "
+            "Wait a moment and try again."
+        )
+    if status_code == 400:
+        return f"{_provider_label(provider)} rejected the request (HTTP 400). Try a different prompt."
+    if status_code >= 500:
+        return f"{_provider_label(provider)} is having server issues (HTTP {status_code}). Try again shortly."
+    return f"{_provider_label(provider)} request failed (HTTP {status_code})."
+
+
+def _check_provider_response(
+    resp: httpx.Response,
+    provider: str,
+    model: str = "",
+) -> None:
+    """Raise a friendly MCPError for non-2xx provider responses."""
+    if resp.status_code < 400:
+        return
+    try:
+        body = resp.text[:500]
+    except Exception:
+        body = ""
+    raise MCPError(
+        _friendly_http_error(resp.status_code, provider, model, body),
+        status_code=resp.status_code,
+    )
+
+
+def _connect_error_message(provider: str, exc: Exception) -> str:
+    """Plain-language transport failure (no URLs, no raw bodies, no keys)."""
+    name = _provider_label(provider)
+    low = str(exc).lower()
+    if "timeout" in low or "timed out" in low:
+        return f"{name} timed out. Try again in a moment."
+    if "resolve" in low or "dns" in low or "connection" in low:
+        return (
+            f"Couldn't reach {name}. Check the base URL on the Providers page, "
+            "or try again later."
+        )
+    return f"Couldn't reach {name}. Try again in a moment."
+
+
+def _raise_connect_error(provider: str, exc: Exception) -> None:
+    """Raise a friendly MCPError for transport/connection failures."""
+    message = _connect_error_message(provider, exc)
+    raise MCPError(message, 504 if "timed out" in message.lower() else 502)
+
+
+def _provider_from_url(base_url: str) -> str:
+    """Best-effort provider id from an OpenAI-compatible base URL."""
+    host = (base_url or "").lower()
+    for name in (
+        "openai", "anthropic", "google", "groq", "mistral", "deepseek",
+        "openrouter", "cerebras", "ollama", "agentrouter",
+    ):
+        if name in host:
+            return name
+    return "this provider"
+
+
 # ─── Model Registry ────────────────────────────────
 
 
@@ -301,6 +425,7 @@ async def _call_openai_compatible(
     base_url: str = "https://api.openai.com/v1",
     tools: list[dict] | None = None,
     tool_choice: str | dict | None = None,
+    provider: str = "",
 ) -> dict:
     """Call an OpenAI-compatible chat completions API."""
     body = {"model": model, "messages": messages, "temperature": temperature}
@@ -312,23 +437,19 @@ async def _call_openai_compatible(
         body["tool_choice"] = tool_choice
 
     url = _pick_stream_url(base_url)
+    provider = provider or _provider_from_url(base_url)
 
-    async with httpx.AsyncClient(timeout=60) as client:
-        r = await client.post(
-            url,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json=body,
-        )
-        if r.status_code == 401:
-            error_data = r.json().get("error", {})
-            raise MCPError(f"Authentication failed: {error_data.get('message', 'Invalid API key')}", 401)
-        if r.status_code == 429:
-            error_data = r.json().get("error", {})
-            raise MCPError(f"Rate limit exceeded: {error_data.get('message', 'Too many requests')}", 429)
-        if r.status_code == 402:
-            raise MCPError("Insufficient balance/credits: Payment required", 402)
-        r.raise_for_status()
-        return r.json()
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.post(
+                url,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json=body,
+            )
+    except httpx.HTTPError as exc:
+        _raise_connect_error(provider, exc)
+    _check_provider_response(r, provider, model)
+    return r.json()
 
 
 async def _call_anthropic(
@@ -352,31 +473,34 @@ async def _call_anthropic(
     if system:
         body["system"] = system
 
-    async with httpx.AsyncClient(timeout=60) as client:
-        r = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "Content-Type": "application/json",
-            },
-            json=body,
-        )
-        r.raise_for_status()
-        data = r.json()
-        return {
-            "id": data["id"],
-            "choices": [{
-                "index": 0,
-                "message": {"role": "assistant", "content": data["content"][0]["text"]},
-                "finish_reason": data["stop_reason"],
-            }],
-            "usage": {
-                "prompt_tokens": data["usage"]["input_tokens"],
-                "completion_tokens": data["usage"]["output_tokens"],
-                "total_tokens": data["usage"]["input_tokens"] + data["usage"]["output_tokens"],
-            },
-        }
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+    except httpx.HTTPError as exc:
+        _raise_connect_error("anthropic", exc)
+    _check_provider_response(r, "anthropic", model)
+    data = r.json()
+    return {
+        "id": data["id"],
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": data["content"][0]["text"]},
+            "finish_reason": data["stop_reason"],
+        }],
+        "usage": {
+            "prompt_tokens": data["usage"]["input_tokens"],
+            "completion_tokens": data["usage"]["output_tokens"],
+            "total_tokens": data["usage"]["input_tokens"] + data["usage"]["output_tokens"],
+        },
+    }
 
 
 def _mask_key(key: str) -> str:
@@ -399,29 +523,34 @@ async def _call_google(
     if max_tokens:
         body["generationConfig"]["maxOutputTokens"] = max_tokens
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={_mask_key(api_key)}"
-    async with httpx.AsyncClient(timeout=60) as client:
-        r = await client.post(url, json=body)
-        r.raise_for_status()
-        data = r.json()
-        candidate = data.get("candidates", [{}])[0]
-        content = candidate.get("content", {})
-        parts = content.get("parts", [{}])
-        text = parts[0].get("text", "") if parts else ""
-        usage = data.get("usageMetadata", {})
-        return {
-            "id": f"gemini-{datetime.now(timezone.utc).timestamp()}",
-            "choices": [{
-                "index": 0,
-                "message": {"role": "assistant", "content": text},
-                "finish_reason": candidate.get("finishReason", "stop"),
-            }],
-            "usage": {
-                "prompt_tokens": usage.get("promptTokenCount", 0),
-                "completion_tokens": usage.get("candidatesTokenCount", 0),
-                "total_tokens": usage.get("totalTokenCount", 0),
-            },
-        }
+    # The key travels in the ``x-goog-api-key`` header, never in the URL, so
+    # transport errors and logs can't leak it.
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.post(url, json=body, headers={"x-goog-api-key": api_key})
+    except httpx.HTTPError as exc:
+        _raise_connect_error("google", exc)
+    _check_provider_response(r, "google", model)
+    data = r.json()
+    candidate = data.get("candidates", [{}])[0]
+    content = candidate.get("content", {})
+    parts = content.get("parts", [{}])
+    text = parts[0].get("text", "") if parts else ""
+    usage = data.get("usageMetadata", {})
+    return {
+        "id": f"gemini-{datetime.now(timezone.utc).timestamp()}",
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": text},
+            "finish_reason": candidate.get("finishReason", "stop"),
+        }],
+        "usage": {
+            "prompt_tokens": usage.get("promptTokenCount", 0),
+            "completion_tokens": usage.get("candidatesTokenCount", 0),
+            "total_tokens": usage.get("totalTokenCount", 0),
+        },
+    }
 
 
 # ─── Chat/Completion ───────────────────────────────
@@ -707,11 +836,14 @@ async def route_chat_completion(
             )
 
         except Exception as e:
-            error_str = str(e)
-            # Mask any API keys that might appear in error messages
-            for sensitive in [api_key, api_key[:8] if api_key else ""]:
-                if sensitive and len(sensitive) > 4:
-                    error_str = error_str.replace(sensitive, _mask_key(sensitive))
+            if isinstance(e, httpx.HTTPError):
+                error_str = _connect_error_message(provider, e)
+            else:
+                error_str = str(e)
+                # Mask any API keys that might appear in error messages
+                for sensitive in [api_key, api_key[:8] if api_key else ""]:
+                    if sensitive and len(sensitive) > 4:
+                        error_str = error_str.replace(sensitive, _mask_key(sensitive))
             last_error = error_str
 
             duration_ms = int((time.monotonic() - start_time) * 1000)
@@ -960,6 +1092,7 @@ async def _stream_openai_compatible(
     temperature: float,
     max_tokens: int | None,
     base_url: str,
+    provider: str = "",
 ):
     """Stream an OpenAI-compatible chat completion.
 
@@ -987,7 +1120,12 @@ async def _stream_openai_compatible(
         ) as resp:
             if resp.status_code != 200:
                 raw = (await resp.aread()).decode(errors="replace")
-                raise MCPError(f"HTTP {resp.status_code}: {raw[:300]}", resp.status_code)
+                raise MCPError(
+                    _friendly_http_error(
+                        resp.status_code, provider or _provider_from_url(base_url), model, raw
+                    ),
+                    resp.status_code,
+                )
 
             async for line in resp.aiter_lines():
                 if not line.startswith("data:"):
@@ -1159,11 +1297,14 @@ async def stream_chat_completion(
             return
 
         except Exception as e:
-            error_str = str(e)
-            # Mask any API keys that might appear in error messages
-            for sensitive in [api_key, api_key[:8] if api_key else ""]:
-                if sensitive and len(sensitive) > 4:
-                    error_str = error_str.replace(sensitive, _mask_key(sensitive))
+            if isinstance(e, httpx.HTTPError):
+                error_str = _connect_error_message(provider, e)
+            else:
+                error_str = str(e)
+                # Mask any API keys that might appear in error messages
+                for sensitive in [api_key, api_key[:8] if api_key else ""]:
+                    if sensitive and len(sensitive) > 4:
+                        error_str = error_str.replace(sensitive, _mask_key(sensitive))
             last_error = error_str
             if is_fallback or (is_rate_limit_error(error_str) and len(providers_to_try) > 1):
                 continue

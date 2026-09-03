@@ -42,7 +42,7 @@ async def detect_provider(
         ("nvapi-", {"provider": "nvidia_nim", "label": "NVIDIA NIM", "base_url": "https://integrate.api.nvidia.com/v1", "default_model": "meta/llama-3.1-8b-instruct"}),
         ("nvita-", {"provider": "novita", "label": "Novita AI", "base_url": "https://api.novita.ai/v3/openai", "default_model": "meta-llama/llama-3.3-70b-instruct"}),
         ("pplx-", {"provider": "perplexity", "label": "Perplexity", "base_url": "https://api.perplexity.ai", "default_model": "sonar-pro"}),
-        ("tgp_v1", {"provider": "togetherai", "label": "Together AI", "base_url": "https://api.together.xyz/v1", "default_model": "meta-llama/Llama-3.3-70B-Instruct-Turbo"}),
+        ("tgp_v1", {"provider": "together_ai", "label": "Together AI", "base_url": "https://api.together.xyz/v1", "default_model": "meta-llama/Llama-3.3-70B-Instruct-Turbo"}),
         ("up_", {"provider": "upstage", "label": "Upstage", "base_url": "https://api.upstage.ai/v1/solar", "default_model": "solar-pro-2-preview"}),
         ("v2Sq", {"provider": "mistral", "label": "Mistral AI", "base_url": "https://api.mistral.ai/v1", "default_model": "open-mistral-nemo"}),
         ("xai-", {"provider": "xai", "label": "xAI (Grok)", "base_url": "https://api.x.ai/v1", "default_model": "grok-2-1212"}),
