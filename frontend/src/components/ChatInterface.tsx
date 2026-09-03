@@ -33,7 +33,6 @@ interface ChatInterfaceProps {
   height?: string
   title?: string
   placeholder?: string
-  fullHeight?: boolean
 }
 
 // Provider → available models mapping
@@ -91,7 +90,6 @@ export default function ChatInterface({
   workspaceId,
   showProviderSelector = true,
   height = '500px',
-  fullHeight = false,
   title = 'Chat',
   placeholder = 'Type a message...',
 }: ChatInterfaceProps) {
@@ -221,7 +219,7 @@ export default function ChatInterface({
               const payload = JSON.parse(payloadStr)
               if (payload.type === 'delta') appendToken(payload.content)
               else if (payload.type === 'error') streamError = payload.message
-            } catch {}
+            } catch { /* ignore malformed SSE lines */ }
           }
         }
       } catch (e: any) { streamError = e?.message || 'Stream interrupted' }
@@ -272,8 +270,6 @@ export default function ChatInterface({
 
   const hasProviders = providerList.length > 0
   const currentConfig = providerList.find((p) => p.provider === selectedProvider)
-  const displayProvider = currentConfig ? getProviderLabel(selectedProvider) : ''
-  const displayModel = selectedModel || currentConfig?.default_model || 'auto'
   const availableModels = getModelsForProvider(selectedProvider)
 
   // Check if the last message is an empty assistant bubble (streaming started)
@@ -285,26 +281,67 @@ export default function ChatInterface({
       'flex flex-col rounded-2xl overflow-hidden',
       'bg-gradient-to-b from-surface-900/90 to-surface-900/70',
       'border border-surface-700/30',
-      'shadow-[0_8px_40px_-12px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.03)]',
-      !fullHeight && 'max-h-[700px]'
+      'shadow-[0_8px_40px_-12px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.03)]'
     )} style={{ height }}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-surface-700/20 bg-surface-800/20">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/25 flex-shrink-0">
-            <BotIcon size={16} className="text-white" />
+      {/* Header — compact: identity left, routing controls + clear right */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 sm:px-5 py-2.5 border-b border-surface-700/20 bg-surface-800/20">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/25 flex-shrink-0">
+            <BotIcon size={15} className="text-white" />
           </div>
-          <div className="min-w-0">
-            <span className="text-sm font-semibold text-surface-100">{title}</span>
-            {hasProviders && (
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-[11px] text-surface-400 truncate">{displayProvider}</span>
-                <span className="text-[11px] text-surface-600">/</span>
-                <span className="text-[11px] text-violet-400/80 font-mono truncate">{displayModel}</span>
-              </div>
-            )}
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-sm font-semibold text-surface-100 truncate">{title}</span>
+            <span className="hidden md:flex items-center gap-1.5 text-[10px] font-medium text-surface-500">
+              <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', sendMutation.isPending ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400')} />
+              {sendMutation.isPending ? 'Responding…' : 'Ready'}
+            </span>
           </div>
         </div>
+
+        {hasProviders && (
+          <div className="flex items-center gap-1.5">
+            {/* Provider */}
+            <div className="relative">
+              <select
+                value={selectedProvider}
+                onChange={(e) => handleProviderChange(e.target.value)}
+                aria-label="Provider"
+                className="appearance-none h-7 max-w-[130px] bg-surface-900/70 border border-surface-700/30 hover:border-surface-600/50 rounded-lg pl-2.5 pr-6 text-xs font-medium text-surface-200 cursor-pointer transition-all focus:outline-none focus:border-violet-500/50 truncate"
+              >
+                {providerList.map((p) => (
+                  <option key={p.provider} value={p.provider}>{getProviderLabel(p.provider)}</option>
+                ))}
+              </select>
+              <ChevronDownIcon size={11} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-surface-500 pointer-events-none" />
+            </div>
+            <span className="text-surface-700 text-xs select-none">/</span>
+            {/* Model */}
+            {availableModels.length > 0 ? (
+              <div className="relative max-w-[210px]">
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  aria-label="Model"
+                  className="appearance-none h-7 w-full bg-surface-900/70 border border-surface-700/30 hover:border-surface-600/50 rounded-lg pl-2.5 pr-6 text-xs font-mono text-violet-300/90 cursor-pointer transition-all focus:outline-none focus:border-violet-500/50 truncate"
+                >
+                  {availableModels.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+                <ChevronDownIcon size={11} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-surface-500 pointer-events-none" />
+              </div>
+            ) : (
+              <input
+                type="text"
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                placeholder={currentConfig?.default_model || 'model name'}
+                aria-label="Model"
+                className="w-[140px] h-7 bg-surface-900/70 border border-surface-700/30 hover:border-surface-600/50 rounded-lg px-2.5 text-xs font-mono text-violet-300/90 placeholder:text-surface-600 focus:outline-none focus:border-violet-500/50 transition-all truncate"
+              />
+            )}
+          </div>
+        )}
         <button onClick={clearChat} className="icon-btn" title="Clear chat">
           <Trash2Icon size={14} />
         </button>
@@ -373,54 +410,6 @@ export default function ChatInterface({
 
       {/* Input Area */}
       <div className="border-t border-surface-700/20 bg-surface-800/15 p-3 sm:p-4">
-        {/* Provider + Model row */}
-        {hasProviders && (
-          <div className="flex gap-2 mb-3">
-            <div className="flex-1 min-w-0">
-              <label className="text-[10px] text-surface-500 mb-1 block font-medium uppercase tracking-wider">Provider</label>
-              <div className="relative">
-                <select
-                  value={selectedProvider}
-                  onChange={(e) => handleProviderChange(e.target.value)}
-                  className="w-full appearance-none bg-surface-800/50 border border-surface-700/30 rounded-xl text-xs py-2.5 pl-3 pr-8 text-surface-200 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all cursor-pointer truncate hover:border-surface-600/50"
-                  aria-label="Provider"
-                >
-                  {providerList.map((p) => (
-                    <option key={p.provider} value={p.provider}>{getProviderLabel(p.provider)}</option>
-                  ))}
-                </select>
-                <ChevronDownIcon size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-surface-500 pointer-events-none" />
-              </div>
-            </div>
-            <div className="flex-1 min-w-0">
-              <label className="text-[10px] text-surface-500 mb-1 block font-medium uppercase tracking-wider">Model</label>
-              {availableModels.length > 0 ? (
-                <div className="relative">
-                  <select
-                    value={selectedModel}
-                    onChange={(e) => setSelectedModel(e.target.value)}
-                    className="w-full appearance-none bg-surface-800/50 border border-surface-700/30 rounded-xl text-xs py-2.5 pl-3 pr-8 text-surface-200 font-mono focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all cursor-pointer truncate hover:border-surface-600/50"
-                    aria-label="Model"
-                  >
-                    {availableModels.map((m) => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
-                  <ChevronDownIcon size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-surface-500 pointer-events-none" />
-                </div>
-              ) : (
-                <input
-                  type="text"
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  placeholder={currentConfig?.default_model || 'model name'}
-                  className="w-full bg-surface-800/50 border border-surface-700/30 rounded-xl text-xs py-2.5 px-3 text-surface-200 font-mono placeholder:text-surface-600 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all hover:border-surface-600/50"
-                />
-              )}
-            </div>
-          </div>
-        )}
-
         {/* Message input */}
         <div className="flex gap-2.5 items-end">
           <textarea
