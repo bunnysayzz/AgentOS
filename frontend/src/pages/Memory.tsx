@@ -69,6 +69,16 @@ export default function Memory() {
     onError: (err: any) => { const msg = err.response?.data?.detail || 'Failed to save entry'; console.error(msg); },
   })
 
+  const { mutate: deleteEntry } = useMutation({
+    mutationFn: (entryId: string) => api.delete(`/memory/${entryId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['session-memory', wsId, sessionId] })
+      qc.invalidateQueries({ queryKey: ['memory-recent', wsId] })
+      toast.success('Entry deleted', 'Memory entry removed.')
+    },
+    onError: (err: any) => toast.error('Delete failed', err?.response?.data?.detail),
+  })
+
   const { mutate: consolidate, isPending: consolidating } = useMutation({
     mutationFn: () => api.post(`/workspaces/${wsId}/memory/consolidate`, { session_id: sessionId, max_entries: 50 }).then((r) => r.data),
     onSuccess: (_data: any) => { qc.invalidateQueries({ queryKey: ['session-memory', wsId, sessionId] }); toast.success('Memory consolidated', 'Old entries have been compressed.') },
@@ -159,13 +169,21 @@ export default function Memory() {
         ) : (
           <div className="space-y-2 max-h-[500px] overflow-y-auto">
             {entryList.map((e) => (
-              <div key={e.id} className={cn('py-3 px-4 rounded-xl', e.role === 'assistant' ? 'bg-primary-500/5 border border-primary-500/10' : 'bg-surface-800/50')}>
-                <div className="flex items-center gap-2 mb-1">
+              <div key={e.id} className={cn('group relative py-3 px-4 pr-9 rounded-xl', e.role === 'assistant' ? 'bg-primary-500/5 border border-primary-500/10' : 'bg-surface-800/50')}>
+                <div className="flex items-center gap-2 mb-1 pr-4">
                   <span className={cn('chip text-[10px]', e.role === 'assistant' ? 'text-emerald-400 bg-emerald-500/10' : 'text-primary-400 bg-primary-500/10')}>{e.role}</span>
                   <span className="text-[10px] text-surface-500">{e.memory_type}</span>
                   {importanceOf(e) > 0 && <span className="text-[10px] text-amber-400">★ {importanceOf(e).toFixed(1)}</span>}
                 </div>
                 <p className="text-sm text-surface-300 whitespace-pre-wrap">{e.content}</p>
+                <button
+                  onClick={() => confirm.danger('Delete Entry?', 'This memory entry will be permanently removed.', async () => deleteEntry(e.id))}
+                  className="absolute top-2.5 right-2 p-1.5 rounded-lg text-surface-600 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                  title="Delete entry"
+                  aria-label={`Delete entry from ${e.role}`}
+                >
+                  <Trash2Icon size={13} />
+                </button>
               </div>
             ))}
           </div>
