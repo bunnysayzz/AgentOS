@@ -3,7 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/utils/cn'
-import { SendIcon, BotIcon, UserIcon, Trash2Icon, ChevronDownIcon, CopyIcon, CheckIcon } from '@/components/Icons'
+import { SendIcon, StopIcon, BotIcon, UserIcon, Trash2Icon, ChevronDownIcon, CopyIcon, CheckIcon } from '@/components/Icons'
 import { toast } from '@/components/Toast'
 import Markdown from 'react-markdown'
 
@@ -84,6 +84,63 @@ function getModelsForProvider(provider: string): string[] {
   return PROVIDER_MODELS[provider] || []
 }
 
+// ─── Finished-markdown renderer ──────────────────────────────────────
+// Tokens stream in as plain text for speed; once the stream ends, the full
+// reply is formatted here with styled code blocks (copy button) and
+// horizontally-scrollable tables.
+
+function CodeBlock({ children }: { children?: React.ReactNode }) {
+  const ref = useRef<HTMLPreElement>(null)
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    const text = ref.current?.innerText ?? ''
+    try { await navigator.clipboard.writeText(text) } catch { return }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+  return (
+    <div className="group/code relative my-3 rounded-xl overflow-hidden border border-surface-700/40 bg-surface-950">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-surface-900/80 border-b border-surface-700/30">
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-red-500/60" />
+          <span className="w-2 h-2 rounded-full bg-amber-500/60" />
+          <span className="w-2 h-2 rounded-full bg-emerald-500/60" />
+        </span>
+        <button
+          onClick={copy}
+          title="Copy code"
+          className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-surface-500 hover:text-surface-200 transition-colors"
+        >
+          {copied ? <CheckIcon size={11} className="text-emerald-400" /> : <CopyIcon size={11} />}
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <pre ref={ref} className="overflow-x-auto p-3.5 text-[12.5px] leading-relaxed font-mono text-surface-100">
+        {children}
+      </pre>
+    </div>
+  )
+}
+
+function MarkdownView({ content }: { content: string }) {
+  return (
+    <div className="chat-md prose prose-invert prose-sm max-w-none prose-headings:text-surface-100 prose-p:text-surface-200 prose-li:text-surface-200 prose-strong:text-surface-100 prose-em:text-surface-200 prose-code:text-violet-300 prose-code:bg-surface-700/50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-[0.85em] prose-a:text-violet-400 prose-a:no-underline hover:prose-a:underline prose-li:marker:text-violet-400 prose-th:border-surface-700/60 prose-td:border-surface-700/40 prose-th:text-surface-200 prose-th:bg-surface-800/60 prose-td:text-surface-300 prose-table:text-sm prose-hr:border-surface-700/50 prose-blockquote:border-violet-500/40 prose-blockquote:text-surface-400">
+      <Markdown
+        components={{
+          pre: ({ children }: { children?: React.ReactNode }) => <CodeBlock>{children}</CodeBlock>,
+          table: (props: React.ComponentPropsWithoutRef<'table'>) => (
+            <div className="overflow-x-auto my-2 rounded-lg border border-surface-700/30">
+              <table {...props} className="w-full" />
+            </div>
+          ),
+        }}
+      >
+        {content}
+      </Markdown>
+    </div>
+  )
+}
+
 export default function ChatInterface({
   systemPrompt,
   defaultModel = 'gpt-4o-mini',
@@ -112,7 +169,12 @@ export default function ChatInterface({
   // mirrors it so async stream handlers never read a stale closure.
   const [pendingId, setPendingId] = useState<string | null>(null)
   const pendingRef = useRef<string | null>(null)
+  const controllerRef = useRef<AbortController | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+
+  // If the chat unmounts mid-stream (tab switch), stop the request instead of
+  // letting it mutate state that is no longer on screen.
+  useEffect(() => () => controllerRef.current?.abort(), [])
 
   const { data: providers } = useQuery({
     queryKey: ['provider-configs'],
@@ -181,21 +243,31 @@ export default function ChatInterface({
       const token = useAuthStore.getState().accessToken
       if (token) headers.Authorization = `Bearer ${token}`
 
+      // Stop-generation support: aborting this controller cancels the fetch
+      // (the reader throws) and we finalize with whatever streamed so far.
+      const controller = new AbortController()
+      controllerRef.current = controller
+
       let response: Response | null = null
       try {
         response = await fetch(`${API_BASE}/mcp/chat/stream`, {
-          method: 'POST', headers, body: JSON.stringify(body),
+          method: 'POST', headers, body: JSON.stringify(body), signal: controller.signal,
         })
       } catch { response = null }
 
       if (!response?.ok || !response.body) {
+        if (!controller.signal.aborted) {
+          // Non-stream fallback only when the server path failed for real —
+          // never when the user pressed Stop while connecting.
+          const fallback = await api.post('/mcp/chat/completions', { ...body, stream: false })
+          const data = fallback.data
+          const responseContent = data.choices?.[0]?.message?.content || '(empty response)'
+          setMessages((prev) => [...prev, { id: `resp-${Date.now()}`, role: 'assistant', content: responseContent, created_at: new Date().toISOString() }])
+        }
         setMessages((prev) => prev.filter((m) => m.id !== assistantId))
         pendingRef.current = null
         setPendingId(null)
-        const fallback = await api.post('/mcp/chat/completions', { ...body, stream: false })
-        const data = fallback.data
-        const responseContent = data.choices?.[0]?.message?.content || '(empty response)'
-        setMessages((prev) => [...prev, { id: `resp-${Date.now()}`, role: 'assistant', content: responseContent, created_at: new Date().toISOString() }])
+        controllerRef.current = null
         return null
       }
 
@@ -203,9 +275,34 @@ export default function ChatInterface({
       const decoder = new TextDecoder()
       let buffer = ''
       let streamError: string | null = null
+      let emitted = false
 
-      const appendToken = (tokenText: string) => {
-        setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content: m.content + tokenText } : m))
+      const appendNow = (text: string) => {
+        if (!text) return
+        emitted = true
+        setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content: m.content + text } : m))
+      }
+
+      // Paint at most once per animation frame: incoming tokens accumulate in
+      // a queue and flush together on the next rAF, so even very fast
+      // providers render smoothly at 60fps instead of one React render per
+      // token.
+      let rafId: number | null = null
+      let tokenQueue = ''
+      const scheduleFlush = () => {
+        if (rafId != null) return
+        rafId = requestAnimationFrame(() => {
+          rafId = null
+          const chunk = tokenQueue
+          tokenQueue = ''
+          appendNow(chunk)
+        })
+      }
+      const flushNow = () => {
+        if (rafId != null) { cancelAnimationFrame(rafId); rafId = null }
+        const chunk = tokenQueue
+        tokenQueue = ''
+        appendNow(chunk)
       }
 
       try {
@@ -222,12 +319,28 @@ export default function ChatInterface({
             if (!payloadStr) continue
             try {
               const payload = JSON.parse(payloadStr)
-              if (payload.type === 'delta') appendToken(payload.content)
-              else if (payload.type === 'error') streamError = payload.message
+              if (payload.type === 'delta') {
+                tokenQueue += payload.content
+                scheduleFlush()
+              } else if (payload.type === 'error') {
+                streamError = payload.message
+              }
             } catch { /* ignore malformed SSE lines */ }
           }
         }
-      } catch (e: any) { streamError = e?.message || 'Stream interrupted' }
+      } catch (e: any) {
+        if (controller.signal.aborted) {
+          // User pressed Stop: keep whatever already streamed, no error.
+        } else {
+          streamError = e?.message || 'Stream interrupted'
+        }
+      }
+      flushNow()
+
+      if (controller.signal.aborted && !emitted) {
+        // Stopped before the first token: drop the empty bubble entirely.
+        setMessages((prev) => prev.filter((m) => m.id !== assistantId))
+      }
 
       if (streamError) {
         setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content: m.content || `Error: ${streamError}`, is_error: !m.content } : m))
@@ -235,6 +348,7 @@ export default function ChatInterface({
       }
       pendingRef.current = null
       setPendingId(null)
+      controllerRef.current = null
       return null
     },
     onSuccess: () => {
@@ -265,6 +379,10 @@ export default function ChatInterface({
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
+  }
+
+  const stopGenerating = () => {
+    controllerRef.current?.abort()
   }
 
   const clearChat = () => {
@@ -394,9 +512,7 @@ export default function ChatInterface({
                   </div>
                 )
               ) : (
-                <div className="prose prose-invert prose-sm max-w-none prose-headings:text-surface-100 prose-p:text-surface-200 prose-li:text-surface-200 prose-strong:text-surface-100 prose-code:text-violet-300 prose-code:bg-surface-700/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-surface-950 prose-pre:border prose-pre:border-surface-700/50 prose-a:text-violet-400 prose-a:no-underline hover:prose-a:underline prose-li:marker:text-violet-400">
-                  <Markdown>{msg.content}</Markdown>
-                </div>
+                <MarkdownView content={msg.content} />
               )}
               {/* Copy button for finished bot messages */}
               {msg.role === 'assistant' && !msg.is_error && msg.content && msg.id !== 'welcome' && pendingId !== msg.id && (
@@ -434,16 +550,20 @@ export default function ChatInterface({
             disabled={!hasProviders}
           />
           <button
-            onClick={handleSend}
-            disabled={!input.trim() || sendMutation.isPending || !hasProviders}
+            onClick={isResponding ? stopGenerating : handleSend}
+            disabled={!isResponding && (!input.trim() || sendMutation.isPending || !hasProviders)}
+            title={isResponding ? 'Stop generating' : 'Send message'}
+            aria-label={isResponding ? 'Stop generating' : 'Send message'}
             className={cn(
               'flex items-center justify-center w-11 h-11 rounded-xl transition-all duration-150 flex-shrink-0',
-              input.trim() && !sendMutation.isPending && hasProviders
-                ? 'bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-lg shadow-violet-500/20 hover:shadow-violet-500/35 hover:scale-105 active:scale-95'
-                : 'bg-surface-700/40 text-surface-500 cursor-not-allowed'
+              isResponding
+                ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-lg shadow-red-500/25 hover:shadow-red-500/40 hover:scale-105 active:scale-95'
+                : input.trim() && !sendMutation.isPending && hasProviders
+                  ? 'bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-lg shadow-violet-500/20 hover:shadow-violet-500/35 hover:scale-105 active:scale-95'
+                  : 'bg-surface-700/40 text-surface-500 cursor-not-allowed'
             )}
           >
-            {sendMutation.isPending ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <SendIcon size={16} />}
+            {isResponding ? <StopIcon size={15} /> : <SendIcon size={16} />}
           </button>
         </div>
       </div>

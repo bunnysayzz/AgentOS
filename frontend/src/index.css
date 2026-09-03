@@ -543,3 +543,11 @@ body,
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Finished chat replies: code blocks keep a readable light-on-dark tone even
+   though inline ``code`` uses the violet accent. */
+.chat-md pre code {
+  color: rgb(226 232 240 / 0.92);
+  background: transparent !important;
+  font-weight: 400;
+}
