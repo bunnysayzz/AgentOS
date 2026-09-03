@@ -1,12 +1,15 @@
 import { Suspense, useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
+import { useQuery } from '@tanstack/react-query'
 import Sidebar from './Sidebar'
 import ToastContainer from './Toast'
 import ConfirmDialog from './ConfirmDialog'
 import ErrorBoundary from './ErrorBoundary'
 import CommandPalette from './CommandPalette'
 import { useUIStore } from '@/stores/uiStore'
+import { useWorkspaceStore } from '@/stores/workspaceStore'
+import api from '@/services/api'
 import { cn } from '@/utils/cn'
 import { MenuIcon, SunIcon, MoonIcon } from '@/components/Icons'
 
@@ -30,6 +33,25 @@ export default function Layout() {
   const theme = useUIStore((s) => s.theme)
   const toggleTheme = useUIStore((s) => s.toggleTheme)
   const location = useLocation()
+  const { selectedWorkspaceId, setSelectedWorkspace } = useWorkspaceStore()
+
+  // Auto-select a workspace as soon as the list is known: the first one if
+  // nothing is chosen yet, or the persisted one if it still exists (a stale
+  // id from another user or a deleted workspace falls back to the first).
+  const { data: workspaces } = useQuery({
+    queryKey: ['workspaces'],
+    queryFn: () => api.get('/workspaces/').then((r) => r.data),
+    retry: 1,
+  })
+
+  useEffect(() => {
+    const list: { id: string; name: string }[] = Array.isArray(workspaces) ? workspaces : []
+    if (list.length === 0) return
+    const stillExists = list.some((ws) => ws.id === selectedWorkspaceId)
+    if (!selectedWorkspaceId || !stillExists) {
+      setSelectedWorkspace(list[0].id, list[0].name)
+    }
+  }, [workspaces, selectedWorkspaceId, setSelectedWorkspace])
 
   // Initialize theme class on mount
   useEffect(() => {

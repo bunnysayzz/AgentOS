@@ -131,13 +131,16 @@ export default function Sidebar() {
   const { sidebarCollapsed: collapsed, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen } = useUIStore()
   const clearAuth = useAuthStore((s) => s.clearAuth)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const clearSelectedWorkspace = useWorkspaceStore((s) => s.clearSelectedWorkspace)
   const location = useLocation()
   const navigate = useNavigate()
 
   const handleSignOut = async () => {
     try { await firebaseSignOut(firebaseAuth) } catch { /* ignore */ }
     clearAuth()
+    clearSelectedWorkspace()
     localStorage.removeItem('agentos-auth')
+    localStorage.removeItem('agentos-workspace')
     navigate('/')
   }
 
