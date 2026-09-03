@@ -140,8 +140,8 @@ make test   # backend + frontend + E2E
 
 | Suite | Command | Count |
 |---|---|---|
-| Backend (pytest) | `cd backend && pytest -q` | 354 tests |
-| Frontend unit (Vitest) | `cd frontend && npm test` | 113 tests |
+| Backend (pytest) | `cd backend && pytest -q` | 359 tests |
+| Frontend unit (Vitest) | `cd frontend && npm test` | 119 tests |
 | Frontend typecheck | `cd frontend && npm run typecheck` | — |
 | Frontend lint | `cd frontend && npm run lint` | — |
 | E2E (Playwright) | `cd frontend && npm run test:e2e` | 9 pass / 1 skip |
@@ -182,6 +182,22 @@ AgentOS/
 - [x] Shared agent templates (one-click creation) & provider presets
 - [x] MCP server marketplace (curated catalog + copy-paste configs)
 
+## Contributing
+
+AgentOS Studio is open source under the MIT license and welcomes contributors.
+
+- **[Contributing guide](CONTRIBUTING.md)** — setup, checks, and how to open a PR
+- **[Code of conduct](CODE_OF_CONDUCT.md)** — how we treat each other
+- **[Security policy](SECURITY.md)** — how to report vulnerabilities privately
+- **[Architecture](ARCHITECTURE.md)** — how the pieces fit together
+
+Found a bug or have an idea? Open an [issue](https://github.com/bunnysayzz/AgentOS/issues) —
+bug reports and feature requests have templates. PRs should pass the checks listed
+in the [Testing](#testing) section and the [PR template](.github/PULL_REQUEST_TEMPLATE.md).
+
 ## License
 
 [MIT](LICENSE) © bunnysayzz
+
+Questions about licensing or using this project commercially? Open an issue and the
+maintainers will help.
