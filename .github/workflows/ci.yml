@@ -53,6 +53,33 @@ jobs:
       - name: Unit tests
         run: npm test
 
+  secret-scan:
+    name: Secret & env hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if any .env-style file is tracked
+        run: |
+          if git ls-files | grep -qE '(^|/)\.env$|\.env$'; then
+            echo "::error::A real .env file is tracked by git. Only .env.example"
+            echo "::error::files may be committed. Remove it from the index:"
+            echo "::error::  git rm --cached <file> && echo '<file>' >> .gitignore"
+            git ls-files | grep -E '(^|/)\.env$|\.env$'
+            exit 1
+          fi
+          echo 'OK: no .env files tracked.'
+      - name: Scan tracked files for obvious key material
+        run: |
+          # Test fixtures legitimately embed fake key-shaped strings to verify
+          # redaction, so the scan covers production code only.
+          HITS=$(git grep -nIE '(sk-[A-Za-z0-9]{16,}|AIza[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|xox[baprs]-[A-Za-z0-9-]{10,})' -- . ':!*.md' ':!backend/tests/**' || true)
+          if [ -n "$HITS" ]; then
+            echo "::error::Possible secret material found in tracked files:"
+            echo "$HITS"
+            exit 1
+          fi
+          echo 'OK: no obvious key material in tracked files.'
+
   e2e:
     name: End-to-end tests
     runs-on: ubuntu-latest

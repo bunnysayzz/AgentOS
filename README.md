@@ -189,11 +189,22 @@ AgentOS Studio is open source under the MIT license and welcomes contributors.
 - **[Contributing guide](CONTRIBUTING.md)** — setup, checks, and how to open a PR
 - **[Code of conduct](CODE_OF_CONDUCT.md)** — how we treat each other
 - **[Security policy](SECURITY.md)** — how to report vulnerabilities privately
+- **[Governance](GOVERNANCE.md)** — how decisions and releases work
 - **[Architecture](ARCHITECTURE.md)** — how the pieces fit together
 
 Found a bug or have an idea? Open an [issue](https://github.com/bunnysayzz/AgentOS/issues) —
 bug reports and feature requests have templates. PRs should pass the checks listed
 in the [Testing](#testing) section and the [PR template](.github/PULL_REQUEST_TEMPLATE.md).
+
+## Credits & thanks
+
+- **Design & product vision** — [bunnysayzz](https://github.com/bunnysayzz)
+- **Code** — every contributor on the [GitHub contributors graph](https://github.com/bunnysayzz/AgentOS/graphs/contributors)
+- **Stack** — React, FastAPI, Firebase Auth, Cloud Firestore, Vite, Tailwind CSS, Zustand, TanStack Query
+
+This project would not exist without the open source software it builds on, and
+it stays open because people like you take the time to report bugs and send
+pull requests.
 
 ## License
 
