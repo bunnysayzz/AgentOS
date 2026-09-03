@@ -1,12 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   ActivityIcon, ArchiveIcon, ArrowRightIcon, BotIcon, BrainIcon, CheckCircleIcon,
-  CheckIcon, CpuIcon, FileTextIcon, KeyIcon, LogInIcon, LogoIcon, PlusIcon,
-  RocketIcon, ServerIcon, SparklesIcon, UsersIcon, WorkflowIcon,
-  GlobeIcon, WrenchIcon, DollarSignIcon,
+  CheckIcon, CpuIcon, FileTextIcon, GlobeIcon, KeyIcon, LogInIcon, LogoIcon,
+  RocketIcon, SparklesIcon, UsersIcon, WorkflowIcon, WrenchIcon, DollarSignIcon,
 } from '@/components/Icons'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/authStore'
@@ -14,7 +13,7 @@ import { useWorkspaceStore } from '@/stores/workspaceStore'
 import { cn } from '@/utils/cn'
 
 const QUICK_ACTIONS = [
-  { label: 'New Workspace', icon: PlusIcon, color: 'text-primary-400', path: '/workspaces' },
+  { label: 'New Workspace', icon: UsersIcon, color: 'text-primary-400', path: '/workspaces' },
   { label: 'New Agent', icon: BotIcon, color: 'text-emerald-400', path: '/agents' },
   { label: 'New Workflow', icon: WorkflowIcon, color: 'text-violet-400', path: '/workflows' },
   { label: 'New Prompt', icon: FileTextIcon, color: 'text-amber-400', path: '/prompts' },
@@ -28,25 +27,23 @@ const DOMAIN_LINKS = [
   { label: 'Secrets Manager', icon: KeyIcon, path: '/secrets', desc: 'Encrypted credential storage', color: 'text-rose-400' },
   { label: 'Artifact Store', icon: ArchiveIcon, path: '/artifacts', desc: 'Versioned asset tracking', color: 'text-indigo-400' },
   { label: 'Telemetry', icon: ActivityIcon, path: '/telemetry', desc: 'Events, audit logs & stats', color: 'text-emerald-400' },
-  { label: 'Execution Graphs', icon: ServerIcon, path: '/graphs', desc: 'Node-level execution tracing', color: 'text-violet-400' },
   { label: 'API Keys', icon: KeyIcon, path: '/api-keys', desc: 'Programmatic access management', color: 'text-amber-400' },
   { label: 'Providers', icon: GlobeIcon, path: '/providers', desc: 'AI provider configuration', color: 'text-sky-400' },
   { label: 'Memory', icon: BrainIcon, path: '/memory', desc: 'Conversation & session memory', color: 'text-pink-400' },
 ]
 
-// Neutral loading skeleton — one stable layout while stats load, so the
-// dashboard never flashes a half-built stats grid that then swaps to the
-// getting-started checklist.
+// One stable skeleton while stats load — the dashboard never flashes a
+// half-built grid that later swaps to a different layout.
 function DashboardSkeleton() {
   return (
     <div className="space-y-8" aria-busy="true">
-      <div className="h-32 sm:h-40 rounded-3xl bg-surface-800/40 border border-surface-700/20 animate-pulse" />
+      <div className="h-24 sm:h-28 rounded-3xl bg-surface-800/40 border border-surface-700/20 animate-pulse" />
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-28 rounded-2xl bg-surface-800/40 border border-surface-700/20 animate-pulse" />
+          <div key={i} className="h-32 rounded-2xl bg-surface-800/40 border border-surface-700/20 animate-pulse" />
         ))}
       </div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[1, 2, 3, 4].map((i) => (
           <div key={i} className="h-24 rounded-2xl bg-surface-800/40 border border-surface-700/20 animate-pulse" />
         ))}
@@ -64,6 +61,8 @@ const PIPELINE = [
   { label: 'Output', icon: CheckCircleIcon, color: 'text-emerald-400' },
 ]
 
+const todayLong = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+
 export default function Dashboard() {
   const user = useAuthStore((s) => s.user)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -72,13 +71,19 @@ export default function Dashboard() {
   const setSelectedWorkspace = useWorkspaceStore((s) => s.setSelectedWorkspace)
   const [selectedWsId, setSelectedWsId] = useState<string | null>(null)
 
+  // One-time welcome: snapshot the flag at mount (fresh login), then clear it
+  // so navigating away and back — or a refresh — shows the data-first view.
+  const [showWelcome] = useState(
+    () => useAuthStore.getState().justSignedIn && useAuthStore.getState().isAuthenticated,
+  )
+  useEffect(() => {
+    if (showWelcome) useAuthStore.getState().acknowledgeWelcome()
+  }, [showWelcome])
+
   // One-click demo workspace for first-run users.
   const { mutate: seedDemo, isPending: seeding } = useMutation({
     mutationFn: () => api.post('/demo/seed').then((r) => r.data),
     onSuccess: (data: { id: string; name: string }) => {
-      // Invalidate the workspace + stats queries AND the per-domain list
-      // caches so the freshly seeded agents/workflows/prompts/tools appear
-      // immediately instead of stale empty lists.
       queryClient.invalidateQueries({ queryKey: ['workspaces'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
       for (const key of ['agents', 'workflows', 'prompts', 'tools', 'memory', 'secrets', 'artifacts']) {
@@ -91,10 +96,6 @@ export default function Dashboard() {
   })
 
   // ─── Dashboard stats — ONE aggregate endpoint ─────────────────────
-  // The server computes every count (workspaces, models, calls, keys,
-  // providers + per-workspace tallies) with aggregate Firestore queries,
-  // replacing the old ~12 parallel list fetches that downloaded entire
-  // collections just to display numbers.
   const globalStatsQuery = useQuery({
     queryKey: ['dashboard-stats', selectedWsId],
     queryFn: async () => {
@@ -103,6 +104,21 @@ export default function Dashboard() {
       })
       const d = data || {}
       const workspaces: { id: string; name: string }[] = Array.isArray(d.workspaces) ? d.workspaces : []
+      // The server returns snake_case keys; normalize the workspace tallies
+      // to camelCase so the cards below can read them directly.
+      const rawWs = d.workspace || null
+      const ws = rawWs
+        ? {
+            agentCount: rawWs.agent_count ?? 0,
+            workflowCount: rawWs.workflow_count ?? 0,
+            promptCount: rawWs.prompt_count ?? 0,
+            toolCount: rawWs.tool_count ?? 0,
+            secretCount: rawWs.secret_count ?? 0,
+            artifactCount: rawWs.artifact_count ?? 0,
+            telemetryEvents: rawWs.telemetry_events ?? 0,
+            telemetryErrors: rawWs.telemetry_errors ?? 0,
+          }
+        : null
       return {
         workspaces,
         workspaceCount: d.workspace_count ?? 0,
@@ -113,8 +129,7 @@ export default function Dashboard() {
         keyCount: d.key_count ?? 0,
         configuredProviders: d.configured_providers ?? 0,
         firstWs: d.first_ws ?? (workspaces.length > 0 ? workspaces[0].id : null),
-        // Per-workspace tallies (server-aggregated)
-        ws: d.workspace || null,
+        ws,
       }
     },
     retry: 1,
@@ -123,40 +138,32 @@ export default function Dashboard() {
 
   const stats = globalStatsQuery.data
 
-  // While the first stats load is in flight, show ONE stable skeleton. The
-  // new-user decision (checklist vs stats) can only be made once data
-  // arrives — rendering the stats grid here and swapping to the checklist
-  // later is exactly the "two dashboards" flash. Return early so exactly
-  // one layout ever mounts.
+  // One layout while loading — no swap, no flash.
   if (!stats) {
     return <DashboardSkeleton />
   }
 
-  // Workspace-specific stats ride along in the same aggregate response — no
-  // second round of fetches when the user switches workspaces.
-  const wsStats = stats?.ws
-  const wsId = selectedWsId || stats?.firstWs || ''
+  const wsStats = stats.ws
+  const wsId = selectedWsId || stats.firstWs || ''
   const isLoading = globalStatsQuery.isLoading
 
   // ─── Onboarding state ─────────────────────────────────────────────
-  // Guests get the full "getting started" experience; authed users with
-  // no workspace yet get the same checklist so the zero-state feels
-  // intentional instead of broken.
-  const isNewUser = isAuthenticated && !isLoading && (stats?.workspaceCount ?? 0) === 0
+  const isNewUser = isAuthenticated && !isLoading && stats.workspaceCount === 0
   const showGettingStarted = !isAuthenticated || isNewUser
+  const established = isAuthenticated && !isNewUser
 
   const checklistSteps = [
     {
       key: 'workspace', label: 'Create a workspace',
       desc: 'Your isolated home for agents, workflows & data',
       icon: UsersIcon, color: 'text-primary-400', path: '/workspaces',
-      done: (stats?.workspaceCount ?? 0) > 0,
+      done: stats.workspaceCount > 0,
     },
     {
       key: 'provider', label: 'Connect an AI provider',
       desc: 'Add OpenAI, Anthropic or Gemini keys',
       icon: GlobeIcon, color: 'text-sky-400', path: '/providers',
-      done: (stats?.configuredProviders ?? 0) > 0,
+      done: stats.configuredProviders > 0,
     },
     {
       key: 'agent', label: 'Build your first agent',
@@ -173,228 +180,230 @@ export default function Dashboard() {
   ]
   const stepsDone = checklistSteps.filter((s) => s.done).length
 
-  // ─── Stat cards (authed users with data) ──────────────────────────
-  const mainStatCards = [
+  // ─── Stat cards (established users with data) ─────────────────────
+  const resourceCards = [
     {
-      label: 'Workspaces', icon: UsersIcon, color: 'from-primary-500 to-primary-600',
-      value: stats?.workspaceCount ?? '—', path: '/workspaces', show: true,
+      label: 'Workspaces', desc: 'Where your work lives', icon: UsersIcon,
+      color: 'from-primary-500 to-primary-600', value: stats.workspaceCount,
+      path: '/workspaces', show: true,
     },
     {
-      label: 'Agents', icon: BotIcon, color: 'from-emerald-500 to-emerald-600',
-      value: wsStats?.agentCount ?? '—', path: '/agents', show: !!wsId,
+      label: 'Agents', desc: 'AI agents in this workspace', icon: BotIcon,
+      color: 'from-emerald-500 to-emerald-600', value: wsStats?.agentCount ?? 0,
+      path: '/agents', show: !!wsId,
     },
     {
-      label: 'Workflows', icon: WorkflowIcon, color: 'from-violet-500 to-violet-600',
-      value: wsStats?.workflowCount ?? '—', path: '/workflows', show: !!wsId,
+      label: 'Workflows', desc: 'Automations & approvals', icon: WorkflowIcon,
+      color: 'from-violet-500 to-violet-600', value: wsStats?.workflowCount ?? 0,
+      path: '/workflows', show: !!wsId,
     },
     {
-      label: 'Prompts', icon: FileTextIcon, color: 'from-amber-500 to-amber-600',
-      value: wsStats?.promptCount ?? '—', path: '/prompts', show: !!wsId,
+      label: 'Prompts', desc: 'Versioned prompt registry', icon: FileTextIcon,
+      color: 'from-amber-500 to-amber-600', value: wsStats?.promptCount ?? 0,
+      path: '/prompts', show: !!wsId,
     },
     {
-      label: 'Tools', icon: WrenchIcon, color: 'from-rose-500 to-rose-600',
-      value: wsStats?.toolCount ?? '—', path: '/tools', show: !!wsId,
+      label: 'Tools', desc: 'Functions, MCP & webhooks', icon: WrenchIcon,
+      color: 'from-rose-500 to-rose-600', value: wsStats?.toolCount ?? 0,
+      path: '/tools', show: !!wsId,
     },
     {
-      label: 'Secrets', icon: KeyIcon, color: 'from-cyan-500 to-cyan-600',
-      value: wsStats?.secretCount ?? '—', path: '/secrets', show: !!wsId,
+      label: 'Secrets', desc: 'Encrypted credentials', icon: KeyIcon,
+      color: 'from-cyan-500 to-cyan-600', value: wsStats?.secretCount ?? 0,
+      path: '/secrets', show: !!wsId,
     },
     {
-      label: 'Artifacts', icon: ArchiveIcon, color: 'from-indigo-500 to-indigo-600',
-      value: wsStats?.artifactCount ?? '—', path: '/artifacts', show: !!wsId,
+      label: 'Artifacts', desc: 'Versioned files & assets', icon: ArchiveIcon,
+      color: 'from-indigo-500 to-indigo-600', value: wsStats?.artifactCount ?? 0,
+      path: '/artifacts', show: !!wsId,
+    },
+  ].filter((c) => c.show)
+
+  const platformCards = [
+    {
+      label: 'LLM Calls', icon: ActivityIcon, color: 'text-sky-400',
+      value: stats.callCount, sub: 'in the last 7 days',
+    },
+    {
+      label: 'Tokens Processed', icon: CpuIcon, color: 'text-amber-400',
+      value: stats.totalTokens, sub: '7-day total',
+    },
+    {
+      label: 'Configured Providers', icon: GlobeIcon, color: 'text-emerald-400',
+      value: stats.configuredProviders, sub: `${stats.modelCount} models available`,
+    },
+    {
+      label: 'Total Spend', icon: DollarSignIcon, color: 'text-rose-400',
+      value: stats.totalCost > 0 ? `$${stats.totalCost.toFixed(6)}` : '$0', sub: '7-day total',
     },
   ]
 
-  const secondaryStatCards = [
-    {
-      label: 'LLM Models', icon: CpuIcon, color: 'text-sky-400',
-      value: stats?.modelCount ?? '—', sub: `${stats?.callCount || 0} calls made`,
-    },
-    {
-      label: 'API Keys', icon: KeyIcon, color: 'text-amber-400',
-      value: stats?.keyCount ?? '—', sub: 'For programmatic access',
-    },
-    {
-      label: 'Providers', icon: GlobeIcon, color: 'text-emerald-400',
-      value: stats?.configuredProviders ?? '—', sub: 'Configured & active',
-    },
-    {
-      label: 'Total Cost', icon: DollarSignIcon, color: 'text-rose-400',
-      value: stats?.totalCost ? `$${stats.totalCost.toFixed(6)}` : '$0', sub: `${stats?.totalTokens?.toLocaleString() || 0} tokens`,
-    },
-  ]
-
-  // ─── Stagger presets for card grids (industry-level entrance) ────
-  const staggerContainer = {
-    hidden: {},
-    show: { transition: { staggerChildren: 0.05, delayChildren: 0.04 } },
-  }
-  const staggerItem = {
-    hidden: { opacity: 0, y: 12 },
-    show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] as const } },
-  }
+  const firstName = user?.fullName ? user.fullName.split(' ')[0] : ''
 
   return (
     <div className="space-y-8">
-      {/* ── Welcome Header — guest-aware, single CTA ─────────────── */}
-      <motion.div 
-        className="relative overflow-hidden rounded-3xl border border-white/[0.06] bg-gradient-to-br from-white/[0.04] to-transparent p-6 sm:p-10"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      >
-        {/* Animated background orbs */}
-        <motion.div 
-          className="absolute -top-24 -right-16 w-72 h-72 rounded-full bg-primary-500/10 blur-3xl pointer-events-none" 
-          animate={{ scale: [1, 1.1, 1], opacity: [0.5, 0.8, 0.5] }}
-          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-          aria-hidden 
-        />
-        <motion.div 
-          className="absolute -bottom-32 -left-20 w-96 h-96 rounded-full bg-info/10 blur-3xl pointer-events-none" 
-          animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0.7, 0.4] }}
-          transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-          aria-hidden 
-        />
-        <motion.div 
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 rounded-full bg-emerald-500/5 blur-3xl pointer-events-none" 
-          animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
-          transition={{ duration: 6, repeat: Infinity, ease: "easeInOut", delay: 2 }}
-          aria-hidden 
-        />
-        <div className="relative flex flex-col lg:flex-row lg:items-center gap-8">
-          <div className="flex-1 min-w-0">
-            <motion.div 
-              className="flex items-center gap-3 mb-4"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.2, duration: 0.4 }}
-            >
-              <motion.div 
-                className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#16151a] to-[#08080b] border border-primary-600/40 flex items-center justify-center shadow-lg shadow-primary-500/25 flex-shrink-0"
-                whileHover={{ scale: 1.05, rotate: 5 }}
-                transition={{ type: "spring", stiffness: 300, damping: 20 }}
+      {/* ── One-time welcome — only right after a fresh login ─────── */}
+      {isAuthenticated && showWelcome && (
+        <motion.div
+          className="relative overflow-hidden rounded-3xl border border-primary-500/20 bg-gradient-to-br from-primary-500/[0.12] via-surface-900/60 to-transparent p-6 sm:p-8"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <motion.div
+            className="absolute -top-24 -right-16 w-72 h-72 rounded-full bg-primary-500/15 blur-3xl pointer-events-none"
+            animate={{ scale: [1, 1.1, 1], opacity: [0.5, 0.8, 0.5] }}
+            transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
+            aria-hidden
+          />
+          <div className="relative flex flex-col sm:flex-row sm:items-center gap-6">
+            <div className="flex items-center gap-4 min-w-0 flex-1">
+              <motion.div
+                className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center shadow-lg shadow-primary-500/30 flex-shrink-0"
+                initial={{ scale: 0.8, rotate: -6 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ delay: 0.1, type: 'spring', stiffness: 260, damping: 18 }}
               >
-                <LogoIcon size={22} />
+                <LogoIcon size={24} className="text-white" />
               </motion.div>
-              <p className="microlabel">agent orchestration studio</p>
-            </motion.div>
-            {isAuthenticated ? (
-              <>
-                <motion.h1 
-                  className="text-2xl sm:text-3xl font-semibold tracking-tight"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3, duration: 0.4 }}
+              <div className="min-w-0">
+                <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-surface-100">
+                  Welcome back{firstName ? `, ${firstName}` : ''}
+                </h1>
+                <p className="text-surface-400 mt-1 text-sm">
+                  {stats.workspaceCount > 0
+                    ? `You have ${stats.workspaceCount} workspace${stats.workspaceCount !== 1 ? 's' : ''} and ${stats.configuredProviders} provider${stats.configuredProviders !== 1 ? 's' : ''} ready. Pick up where you left off.`
+                    : 'Let\'s set up your studio — it takes about a minute.'}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+              {stats.workspaceCount > 0 ? (
+                <Link
+                  to={`/workspaces/${stats.firstWs}`}
+                  className="btn-primary inline-flex items-center gap-2"
                 >
-                  Welcome back{user?.fullName ? `, ${user.fullName.split(' ')[0]}` : ''}
-                </motion.h1>
-                <motion.p 
-                  className="text-surface-400 mt-2 text-sm"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.4 }}
-                >
-                  Here's everything happening in your AgentOS Studio
-                </motion.p>
-              </>
-            ) : (
-              <>
-                <motion.h1 
-                  className="text-3xl sm:text-5xl font-semibold tracking-tight leading-[1.05]"
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3, duration: 0.5 }}
-                >
-                  Build agents that <span className="text-gradient-animated">work while you sleep</span>.
-                </motion.h1>
-                <motion.p 
-                  className="text-surface-400 mt-3 text-sm sm:text-base max-w-xl"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.5 }}
-                >
-                  Orchestrate AI agents, workflows, tools & memory in isolated workspaces.
-                  Explore everything. Nothing is hidden; your data waits for you.
-                </motion.p>
-                <motion.div 
-                  className="flex flex-wrap items-center gap-3 mt-6"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.6 }}
-                >
-                  <Link
-                    to="/login"
-                    className="btn-primary inline-flex items-center gap-2 px-5 py-2.5"
-                  >
-                    <LogInIcon size={16} />
-                    Sign in to save your work
-                  </Link>
-                  <Link
-                    to="/register"
-                    className="btn-secondary inline-flex items-center gap-2"
-                  >
-                    <RocketIcon size={16} />
-                    Create an account
-                  </Link>
-                </motion.div>
-              </>
-            )}
+                  Open workspace
+                  <ArrowRightIcon size={15} />
+                </Link>
+              ) : (
+                <button onClick={() => seedDemo()} disabled={seeding} className="btn-primary inline-flex items-center gap-2">
+                  {seeding ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <RocketIcon size={15} />
+                  )}
+                  {seeding ? 'Loading…' : 'Load demo workspace'}
+                </button>
+              )}
+            </div>
           </div>
+        </motion.div>
+      )}
 
-          {/* How-it-works pipeline — guest only */}
-          {!isAuthenticated && (
-            <motion.div 
-              className="hidden lg:block glass-panel p-5 w-72 flex-shrink-0"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.4, duration: 0.5 }}
-            >
+      {/* ── Guest hero — marketing surface, shown to visitors ─────── */}
+      {!isAuthenticated && (
+        <motion.div
+          className="relative overflow-hidden rounded-3xl border border-white/[0.06] bg-gradient-to-br from-white/[0.04] to-transparent p-6 sm:p-10"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <motion.div
+            className="absolute -top-24 -right-16 w-72 h-72 rounded-full bg-primary-500/10 blur-3xl pointer-events-none"
+            animate={{ scale: [1, 1.1, 1], opacity: [0.5, 0.8, 0.5] }}
+            transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+            aria-hidden
+          />
+          <motion.div
+            className="absolute -bottom-32 -left-20 w-96 h-96 rounded-full bg-info/10 blur-3xl pointer-events-none"
+            animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0.7, 0.4] }}
+            transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
+            aria-hidden
+          />
+          <div className="relative flex flex-col lg:flex-row lg:items-center gap-8">
+            <div className="flex-1 min-w-0">
+              <motion.div className="flex items-center gap-3 mb-4" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2, duration: 0.4 }}>
+                <motion.div
+                  className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#16151a] to-[#08080b] border border-primary-600/40 flex items-center justify-center shadow-lg shadow-primary-500/25 flex-shrink-0"
+                  whileHover={{ scale: 1.05, rotate: 5 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                >
+                  <LogoIcon size={22} />
+                </motion.div>
+                <p className="microlabel">agent orchestration studio</p>
+              </motion.div>
+              <motion.h1 className="text-3xl sm:text-5xl font-semibold tracking-tight leading-[1.05]" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.5 }}>
+                Build agents that <span className="text-gradient-animated">work while you sleep</span>.
+              </motion.h1>
+              <motion.p className="text-surface-400 mt-3 text-sm sm:text-base max-w-xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}>
+                Orchestrate AI agents, workflows, tools & memory in isolated workspaces.
+                Explore everything. Nothing is hidden; your data waits for you.
+              </motion.p>
+              <motion.div className="flex flex-wrap items-center gap-3 mt-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}>
+                <Link to="/login" className="btn-primary inline-flex items-center gap-2 px-5 py-2.5">
+                  <LogInIcon size={16} />
+                  Sign in to save your work
+                </Link>
+                <Link to="/register" className="btn-secondary inline-flex items-center gap-2">
+                  <RocketIcon size={16} />
+                  Create an account
+                </Link>
+              </motion.div>
+            </div>
+            <motion.div className="hidden lg:block glass-panel p-5 w-72 flex-shrink-0" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4, duration: 0.5 }}>
               <p className="microlabel mb-4">how it works</p>
               <div className="space-y-0">
                 {PIPELINE.map((step, i) => (
-                  <motion.div 
-                    key={step.label}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.5 + i * 0.1 }}
-                  >
+                  <motion.div key={step.label} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 + i * 0.1 }}>
                     <div className="flex items-center gap-3 py-1.5">
-                      <motion.div 
-                        className="w-9 h-9 rounded-xl bg-surface-800/80 border border-surface-700/40 flex items-center justify-center flex-shrink-0"
-                        whileHover={{ scale: 1.1, borderColor: "rgba(139, 92, 246, 0.35)" }}
-                      >
+                      <div className="w-9 h-9 rounded-xl bg-surface-800/80 border border-surface-700/40 flex items-center justify-center flex-shrink-0">
                         <step.icon size={16} className={step.color} />
-                      </motion.div>
-                      <span className="text-sm text-surface-300">{step.label}</span>
-                      {i === PIPELINE.length - 1 && (
-                        <motion.div
-                          initial={{ scale: 0 }}
-                          animate={{ scale: 1 }}
-                          transition={{ delay: 0.9, type: "spring", stiffness: 300 }}
-                        >
-                          <CheckIcon size={14} className="text-emerald-400 ml-auto" />
-                        </motion.div>
-                      )}
-                    </div>
-                    {i < PIPELINE.length - 1 && (
-                      <div className="flex justify-center">
-                        <motion.div 
-                          className="w-px h-3.5 bg-gradient-to-b from-primary-500/50 to-transparent"
-                          initial={{ scaleY: 0 }}
-                          animate={{ scaleY: 1 }}
-                          transition={{ delay: 0.6 + i * 0.1, duration: 0.3 }}
-                          style={{ transformOrigin: 'top' }}
-                        />
                       </div>
-                    )}
+                      <span className="text-sm text-surface-300">{step.label}</span>
+                      {i === PIPELINE.length - 1 && <CheckIcon size={14} className="text-emerald-400 ml-auto" />}
+                    </div>
+                    {i < PIPELINE.length - 1 && <div className="flex justify-center"><div className="w-px h-3.5 bg-gradient-to-b from-primary-500/50 to-transparent" /></div>}
                   </motion.div>
                 ))}
               </div>
             </motion.div>
-          )}
+          </div>
+        </motion.div>
+      )}
+
+      {/* ── Returning users — compact header, straight to data ────── */}
+      {isAuthenticated && !showWelcome && (
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="microlabel mb-1.5">dashboard · {todayLong}</p>
+            <h1 className="text-2xl font-bold tracking-tight text-surface-100">Overview</h1>
+            <p className="text-surface-400 text-sm mt-0.5">
+              {established ? 'Here\'s what\'s happening across your studio.' : 'Finish setting up your studio.'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {stats.workspaceCount > 1 && (
+              <>
+                {stats.workspaces.map((ws: { id: string; name: string }) => (
+                  <button
+                    key={ws.id}
+                    onClick={() => setSelectedWsId(ws.id)}
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-sm transition-all',
+                      (selectedWsId || stats.firstWs) === ws.id
+                        ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30'
+                        : 'bg-surface-800/50 text-surface-400 hover:text-surface-200 border border-surface-700/30',
+                    )}
+                  >
+                    {ws.name}
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
         </div>
-      </motion.div>
+      )}
 
       {/* ── Getting Started checklist — guests & new users ───────── */}
       {showGettingStarted && (
@@ -404,13 +413,9 @@ export default function Dashboard() {
             <h2 className="microlabel">Getting Started</h2>
             <div className="ml-auto flex items-center gap-2">
               {isAuthenticated ? (
-                <span className="chip">
-                  {stepsDone}/{checklistSteps.length} complete
-                </span>
+                <span className="chip">{stepsDone}/{checklistSteps.length} complete</span>
               ) : (
-                <span className="text-[11px] text-surface-500">
-                  Sign in to unlock creation
-                </span>
+                <span className="text-[11px] text-surface-500">Sign in to unlock creation</span>
               )}
               {isAuthenticated && (
                 <button
@@ -439,186 +444,160 @@ export default function Dashboard() {
                 <div
                   className={cn(
                     'w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border transition-colors duration-200',
-                    step.done
-                      ? 'bg-emerald-500/10 border-emerald-500/30'
-                      : 'bg-surface-800/80 border-surface-700/40',
+                    step.done ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-surface-800/80 border-surface-700/40',
                   )}
                 >
-                  {step.done
-                    ? <CheckIcon size={18} className="text-emerald-400" />
-                    : <step.icon size={18} className={step.color} />}
+                  {step.done ? <CheckIcon size={18} className="text-emerald-400" /> : <step.icon size={18} className={step.color} />}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-surface-100 group-hover:text-primary-300 transition-colors duration-200">
-                    {step.label}
-                  </p>
+                  <p className="text-sm font-medium text-surface-100 group-hover:text-primary-300 transition-colors duration-200">{step.label}</p>
                   <p className="text-xs text-surface-500 mt-0.5">{step.desc}</p>
                 </div>
-                <ArrowRightIcon
-                  size={15}
-                  className="text-surface-600 group-hover:text-primary-400 group-hover:translate-x-0.5 transition-all duration-200 mt-1"
-                />
+                <ArrowRightIcon size={15} className="text-surface-600 group-hover:text-primary-400 group-hover:translate-x-0.5 transition-all duration-200 mt-1" />
               </Link>
             ))}
           </div>
         </div>
       )}
 
-      {/* ── Stats — only for authenticated users with a workspace ── */}
-      {isAuthenticated && !isNewUser && (
+      {/* ── Established users — premium data dashboard ────────────── */}
+      {established && (
         <>
-          {/* Workspace selector if multiple */}
-          {stats && stats.workspaces.length > 1 && (
-            <div className="flex flex-wrap gap-2 items-center">
-              <span className="text-sm text-surface-400">Workspace:</span>
-              {stats.workspaces.map((ws: { id: string; name: string }) => (
-                <button
-                  key={ws.id}
-                  onClick={() => setSelectedWsId(ws.id)}
-                  className={cn(
-                    'px-3 py-1.5 rounded-lg text-sm transition-all',
-                    (selectedWsId || stats.firstWs) === ws.id
-                      ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30'
-                      : 'bg-surface-800/50 text-surface-400 hover:text-surface-200 border border-surface-700/30',
-                  )}
-                >
-                  {ws.name}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Main Stats Grid */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
+          {/* Resources */}
+          <section>
+            <div className="flex items-center gap-2 mb-3">
               <h2 className="microlabel">Resources</h2>
-              <span className="h-px flex-1 mx-4 bg-white/[0.06]" />
+              <span className="h-px flex-1 bg-white/[0.06]" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {mainStatCards.filter((c) => c.show).map((card) => (
+              {resourceCards.map((card) => (
                 <Link
                   key={card.label}
                   to={card.path}
-                  className="group relative rounded-2xl bg-gradient-to-b from-surface-800/60 to-surface-800/30 border border-surface-700/25 p-5 transition-all duration-200 hover:border-surface-600/40 hover:-translate-y-0.5"
+                  className="group relative rounded-2xl bg-gradient-to-b from-surface-800/60 to-surface-800/30 border border-surface-700/25 p-5 overflow-hidden transition-all duration-200 hover:border-surface-600/40 hover:-translate-y-0.5"
                 >
+                  <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                   <div className="flex items-center justify-between mb-4">
-                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center shadow-lg shadow-black/20`}> 
-                      <card.icon className="w-5 h-5 text-white" />
+                    <div className={cn('w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center shadow-lg shadow-black/20', card.color)}>
+                      <card.icon size={18} className="text-white" />
                     </div>
-                    <ArrowRightIcon className="w-4 h-4 text-surface-500 group-hover:text-primary-400 group-hover:translate-x-1 transition-all duration-200" />
+                    <ArrowRightIcon size={15} className="text-surface-600 group-hover:text-primary-400 group-hover:translate-x-1 transition-all duration-200" />
                   </div>
-                  <p className="text-2xl font-semibold tracking-tight">
-                    <span>{typeof card.value === 'number' ? card.value.toLocaleString() : card.value}</span>
+                  <p className="text-3xl font-semibold tracking-tight text-surface-100 tabular-nums">
+                    {typeof card.value === 'number' ? card.value.toLocaleString() : card.value}
                   </p>
-                  <p className="text-sm text-surface-400 mt-0.5">{card.label}</p>
+                  <p className="text-sm font-medium text-surface-200 mt-1.5">{card.label}</p>
+                  <p className="text-xs text-surface-500 mt-0.5">{card.desc}</p>
                 </Link>
               ))}
             </div>
-          </div>
+          </section>
 
-          {/* Secondary Stats */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
+          {/* Platform metrics — 7-day usage */}
+          <section>
+            <div className="flex items-center gap-2 mb-3">
               <h2 className="microlabel">Platform Metrics</h2>
-              <span className="h-px flex-1 mx-4 bg-white/[0.06]" />
+              <span className="h-px flex-1 bg-white/[0.06]" />
+              <span className="chip">last 7 days</span>
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {secondaryStatCards.map((card) => (
-                <div key={card.label} className="rounded-2xl bg-gradient-to-b from-surface-800/60 to-surface-800/30 border border-surface-700/25 p-5 hover:border-surface-600/40 hover:-translate-y-0.5 transition-all duration-200">
-                  <card.icon size={18} className={`${card.color} mb-2`} />
-                  <p className="text-2xl font-semibold tracking-tight">{card.value}</p>
-                  <p className="text-xs text-surface-500 mt-0.5">{card.sub}</p>
+              {platformCards.map((card) => (
+                <div
+                  key={card.label}
+                  className="group relative rounded-2xl bg-gradient-to-b from-surface-800/60 to-surface-800/30 border border-surface-700/25 p-5 transition-all duration-200 hover:border-surface-600/40 hover:-translate-y-0.5"
+                >
+                  <card.icon size={18} className={cn(card.color, 'mb-3')} />
+                  <p className="text-2xl font-semibold tracking-tight text-surface-100 tabular-nums">
+                    {typeof card.value === 'number' ? card.value.toLocaleString() : card.value}
+                  </p>
+                  <p className="text-xs text-surface-400 mt-1">{card.label}</p>
+                  <p className="text-[11px] text-surface-500 mt-0.5">{card.sub}</p>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
 
-          {/* Telemetry Quick Summary (if available) */}
+          {/* 7-day activity pulse */}
           {wsStats && (wsStats.telemetryEvents > 0 || wsStats.telemetryErrors > 0) && (
-            <div className="glass-panel p-5">
-              <h3 className="font-medium mb-3 flex items-center gap-2">
-                <ActivityIcon size={16} className="text-emerald-400" />
-                Recent Activity (7 days)
-              </h3>
+            <section className="glass-panel p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-medium text-sm flex items-center gap-2">
+                  <span className="relative flex w-2 h-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-40" />
+                    <span className="relative inline-flex rounded-full w-2 h-2 bg-emerald-400" />
+                  </span>
+                  Activity pulse
+                </h3>
+                <Link to="/telemetry" className="text-xs text-primary-400 hover:text-primary-300 transition-colors flex items-center gap-1">
+                  View telemetry <ArrowRightIcon size={11} />
+                </Link>
+              </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div>
-                  <p className="text-2xl font-bold text-surface-100">{wsStats.telemetryEvents}</p>
-                  <p className="text-xs text-surface-500">Total Events</p>
+                <div className="rounded-xl bg-surface-800/40 border border-surface-700/25 p-4">
+                  <p className="text-2xl font-bold text-surface-100 tabular-nums">{wsStats.telemetryEvents}</p>
+                  <p className="text-xs text-surface-500 mt-1">Events (7d)</p>
                 </div>
-                <div>
-                  <p className="text-2xl font-bold text-red-400">{wsStats.telemetryErrors}</p>
-                  <p className="text-xs text-surface-500">Errors</p>
+                <div className="rounded-xl bg-surface-800/40 border border-surface-700/25 p-4">
+                  <p className="text-2xl font-bold text-red-400 tabular-nums">{wsStats.telemetryErrors}</p>
+                  <p className="text-xs text-surface-500 mt-1">Errors (7d)</p>
                 </div>
-                <div className="md:col-span-2 flex items-end justify-end">
-                  <Link to="/telemetry" className="text-sm text-primary-400 hover:text-primary-300 transition-colors flex items-center gap-1">
-                    View details <ArrowRightIcon size={12} />
-                  </Link>
+                <div className="rounded-xl bg-surface-800/40 border border-surface-700/25 p-4">
+                  <p className="text-2xl font-bold text-surface-100 tabular-nums">{stats.totalTokens.toLocaleString()}</p>
+                  <p className="text-xs text-surface-500 mt-1">Tokens (7d)</p>
+                </div>
+                <div className="rounded-xl bg-surface-800/40 border border-surface-700/25 p-4">
+                  <p className="text-2xl font-bold text-emerald-400 tabular-nums">{stats.totalCost > 0 ? `$${stats.totalCost.toFixed(4)}` : '$0'}</p>
+                  <p className="text-xs text-surface-500 mt-1">Spend (7d)</p>
                 </div>
               </div>
-            </div>
+            </section>
           )}
         </>
       )}
 
-      {/* ── Quick Actions ─────────────────────────────────────────── */}
+      {/* ── Quick Actions — everyone ──────────────────────────────── */}
       <div className="glass-panel p-6">
         <div className="flex items-center gap-2 mb-4">
           <h2 className="microlabel">Quick Actions</h2>
           <span className="h-px flex-1 bg-white/[0.06]" />
         </div>
-        <motion.div
-          className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3"
-          variants={staggerContainer}
-          initial="hidden"
-          animate="show"
-        >
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {QUICK_ACTIONS.map((action) => (
-            <motion.div key={action.label} variants={staggerItem}>
             <Link
+              key={action.label}
               to={action.path}
-              className="flex flex-col items-center gap-2 px-3 py-4 rounded-xl bg-surface-800/50 border border-surface-700/30 hover:bg-surface-800 hover:border-surface-600/50 transition-all duration-200 group"
+              className="flex flex-col items-center gap-2 px-3 py-4 rounded-xl bg-surface-800/50 border border-surface-700/30 hover:bg-surface-800 hover:border-surface-600/50 transition-all duration-200 group active:scale-[0.98]"
             >
-              <action.icon size={20} className={`${action.color} group-hover:scale-110 transition-transform duration-200`} />
+              <action.icon size={20} className={cn(action.color, 'group-hover:scale-110 transition-transform duration-200')} />
               <span className="text-xs text-surface-400 group-hover:text-surface-200 text-center leading-tight">{action.label}</span>
             </Link>
-            </motion.div>
           ))}
-        </motion.div>
+        </div>
       </div>
 
       {/* ── All Domains / Explore the platform ─────────────────────── */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="microlabel">
-            {isAuthenticated ? 'All Domains' : 'Explore the platform'}
-          </h2>
+          <h2 className="microlabel">{isAuthenticated ? 'All Domains' : 'Explore the platform'}</h2>
           <span className="h-px flex-1 mx-4 bg-white/[0.06]" />
         </div>
-        <motion.div
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
-          variants={staggerContainer}
-          initial="hidden"
-          animate="show"
-        >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {DOMAIN_LINKS.map((domain) => (
-            <motion.div key={domain.path} variants={staggerItem}>
             <Link
+              key={domain.path}
               to={domain.path}
               className="card flex items-start gap-4 group hover:border-primary-500/30 hover:-translate-y-0.5 hover:shadow-glass transition-all duration-200"
             >
               <div className="w-10 h-10 rounded-xl bg-surface-800/80 flex items-center justify-center flex-shrink-0 group-hover:bg-primary-500/10 group-hover:border group-hover:border-primary-500/25 transition-all duration-200">
-                <domain.icon className={`w-5 h-5 text-surface-400 group-hover:${domain.color} transition-colors duration-200`} />
+                <domain.icon className={cn('w-5 h-5 text-surface-400', `group-hover:${domain.color}`)} />
               </div>
               <div className="min-w-0">
-                <p className="font-medium text-sm group-hover:text-primary-400 transition-colors duration-200">
-                  {domain.label}
-                </p>
+                <p className="font-medium text-sm group-hover:text-primary-400 transition-colors duration-200">{domain.label}</p>
                 <p className="text-xs text-surface-500 mt-0.5">{domain.desc}</p>
               </div>
             </Link>
-            </motion.div>
           ))}
-        </motion.div>
+        </div>
       </div>
     </div>
   )

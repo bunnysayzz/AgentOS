@@ -43,7 +43,10 @@ function mockEmptyBackend() {
 
 describe('Dashboard — guest mode', () => {
   beforeEach(() => {
-    useAuthStore.setState({ accessToken: null, refreshToken: null, user: null, isAuthenticated: false })
+    useAuthStore.setState({
+      accessToken: null, refreshToken: null, user: null,
+      isAuthenticated: false, justSignedIn: false,
+    })
     queryClient.clear()
     vi.clearAllMocks()
     mockEmptyBackend()
@@ -88,11 +91,17 @@ describe('Dashboard — guest mode', () => {
 })
 
 describe('Dashboard — authenticated', () => {
-  beforeEach(() => {
+  // Fresh login: justSignedIn is true, so the one-time welcome hero shows.
+  function mockAuth(overrides: Record<string, unknown> = {}) {
     useAuthStore.setState({
       accessToken: 'tok', refreshToken: '', isAuthenticated: true,
       user: { id: 'u1', email: 'a@b.com', username: 'a', fullName: 'Ada Lovelace' },
+      ...overrides,
     })
+  }
+
+  beforeEach(() => {
+    mockAuth({ justSignedIn: true })
     queryClient.clear()
     vi.clearAllMocks()
     mockEmptyBackend()
@@ -142,5 +151,40 @@ describe('Dashboard — authenticated', () => {
       expect(screen.queryByText('Getting Started')).not.toBeInTheDocument()
     })
     expect(screen.queryByText('Sign in to save your work')).not.toBeInTheDocument()
+  })
+
+  it('skips the welcome hero after a refresh (justSignedIn cleared) and shows data first', async () => {
+    // Return visit after refresh: the ephemeral flag did not survive.
+    mockAuth({ justSignedIn: false })
+    ;(api.get as any).mockImplementation((url: string) => {
+      if (url === '/dashboard/stats') {
+        return Promise.resolve({
+          data: {
+            workspaces: [{ id: 'ws-1', name: 'Prod' }], workspace_count: 1,
+            model_count: 3, call_count: 42, total_tokens: 12000, total_cost_usd: 0.0042,
+            key_count: 2, configured_providers: 2, first_ws: 'ws-1',
+            workspace: {
+              agent_count: 2, workflow_count: 1, prompt_count: 4, tool_count: 3,
+              secret_count: 2, artifact_count: 5, telemetry_events: 120, telemetry_errors: 3,
+            },
+          },
+        })
+      }
+      return Promise.resolve({ data: [] })
+    })
+
+    renderDashboard()
+
+    // No welcome hero — straight to the premium data dashboard.
+    expect(screen.queryByText(/Welcome back/i)).not.toBeInTheDocument()
+    expect(await screen.findByText('Overview')).toBeInTheDocument()
+    expect(await screen.findByText('Resources')).toBeInTheDocument()
+    expect(screen.getByText('Platform Metrics')).toBeInTheDocument()
+
+    // Detailed data renders instead of onboarding copy
+    expect(screen.getByText('42')).toBeInTheDocument()
+    expect(screen.getByText('LLM Calls')).toBeInTheDocument()
+    expect(screen.getByText('Activity pulse')).toBeInTheDocument()
+    expect(screen.queryByText('Getting Started')).not.toBeInTheDocument()
   })
 })
