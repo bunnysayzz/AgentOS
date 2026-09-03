@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ActivityIcon, ArchiveIcon, ArrowLeftIcon, BotIcon, BrainIcon, FileTextIcon, KeyIcon, PlusIcon, SettingsIcon, UserCogIcon, UserMinusIcon, UsersIcon, WorkflowIcon, WrenchIcon } from '@/components/Icons'
+import { ActivityIcon, ArchiveIcon, ArrowLeftIcon, BotIcon, BrainIcon, CheckIcon, EditIcon, FileTextIcon, KeyIcon, PlusIcon, SettingsIcon, Trash2Icon, UserCogIcon, UserMinusIcon, UsersIcon, WorkflowIcon, WrenchIcon, XIcon } from '@/components/Icons'
 import api from '@/services/api'
 import { confirm } from '@/components/ConfirmDialog'
 import { toast } from '@/components/Toast'
@@ -23,9 +23,13 @@ const tabs = [
 
 export default function WorkspaceDetail() {
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const { workspaceId } = useParams<{ workspaceId: string }>()
   const setSelectedWorkspace = useWorkspaceStore((s) => s.setSelectedWorkspace)
+  const clearSelectedWorkspace = useWorkspaceStore((s) => s.clearSelectedWorkspace)
   const [showAddMember, setShowAddMember] = useState(false)
+  const [editingName, setEditingName] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
   const [newMemberUserId, setNewMemberUserId] = useState('')
   const [newMemberRole, setNewMemberRole] = useState('member')
   const [addError, setAddError] = useState('')
@@ -92,6 +96,53 @@ export default function WorkspaceDetail() {
     },
   })
 
+  // Rename: keep every consumer in sync — workspace list, this page's data,
+  // dashboard tiles, and the persisted sidebar selection.
+  const { mutate: renameWorkspace, isPending: renaming } = useMutation({
+    mutationFn: (name: string) => api.patch(`/workspaces/${workspaceId}`, { name }).then((r) => r.data),
+    onSuccess: (data: any) => {
+      const newName = data?.name || renameValue
+      qc.invalidateQueries({ queryKey: ['workspaces'] })
+      qc.invalidateQueries({ queryKey: ['workspace', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['dashboard-stats'] })
+      setSelectedWorkspace(workspaceId!, newName)
+      setEditingName(false)
+      toast.success('Workspace renamed', `Now called "${newName}".`)
+    },
+    onError: (err: any) => {
+      toast.error('Rename failed', err?.response?.data?.detail || 'Could not rename the workspace.')
+    },
+  })
+
+  // Delete: owner-only, destructive — clear the selection, drop caches, and
+  // land on the list so Layout auto-selects the next workspace.
+  const { mutate: deleteWorkspace, isPending: deleting } = useMutation({
+    mutationFn: () => api.delete(`/workspaces/${workspaceId}`),
+    onSuccess: () => {
+      clearSelectedWorkspace()
+      qc.invalidateQueries({ queryKey: ['workspaces'] })
+      qc.invalidateQueries({ queryKey: ['workspace', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['dashboard-stats'] })
+      toast.success('Workspace deleted', 'It has been removed along with its data.')
+      navigate('/workspaces')
+    },
+    onError: (err: any) => {
+      toast.error('Delete failed', err?.response?.data?.detail || 'Could not delete the workspace.')
+    },
+  })
+
+  const startRename = () => {
+    setRenameValue(workspace?.name ?? '')
+    setEditingName(true)
+  }
+  const handleDelete = () => {
+    confirm.danger(
+      'Delete Workspace?',
+      `Permanently delete "${workspace?.name}" and everything inside it? This cannot be undone.`,
+      async () => deleteWorkspace(),
+    )
+  }
+
   /**
    * Add a member. The field accepts either a raw user UUID (advanced) or an
    * email address, which is resolved via the API first — no guessing IDs.
@@ -151,6 +202,9 @@ export default function WorkspaceDetail() {
   }
 
   const memberList = Array.isArray(members) ? members : []
+  const myRole = workspace.role || 'member'
+  const canManage = myRole === 'owner' || myRole === 'admin'
+  const isOwner = myRole === 'owner'
 
   return (
     <div className="space-y-6">
@@ -163,15 +217,46 @@ export default function WorkspaceDetail() {
           <ArrowLeftIcon size={14} />
           Back to workspaces
         </Link>
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">{workspace.name}</h1>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            {editingName ? (
+              <form
+                className="flex items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  if (renameValue.trim() && !renaming) renameWorkspace(renameValue.trim())
+                }}
+              >
+                <input
+                  autoFocus
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  aria-label="Workspace name"
+                  className="input-field max-w-xs"
+                />
+                <button type="submit" disabled={renaming || !renameValue.trim()} className="icon-btn" title="Save name">
+                  <CheckIcon size={14} />
+                </button>
+                <button type="button" onClick={() => setEditingName(false)} className="icon-btn" title="Cancel">
+                  <XIcon size={14} />
+                </button>
+              </form>
+            ) : (
+              <h1 className="text-2xl font-bold flex items-center gap-2 break-words">
+                {workspace.name}
+                {canManage && (
+                  <button onClick={startRename} className="icon-btn" title="Rename workspace">
+                    <EditIcon size={14} />
+                  </button>
+                )}
+              </h1>
+            )}
             {workspace.description && (
               <p className="text-surface-400 text-sm mt-1">{workspace.description}</p>
             )}
           </div>
-          <span className="chip">
-            {workspace.role ? workspace.role.charAt(0).toUpperCase() + workspace.role.slice(1) : 'Member'}
+          <span className="chip flex-shrink-0">
+            {myRole.charAt(0).toUpperCase() + myRole.slice(1)}
           </span>
         </div>
       </div>
@@ -281,6 +366,33 @@ export default function WorkspaceDetail() {
           )}
         </div>
       </div>
+
+      {/* Danger Zone — owner only */}
+      {isOwner && (
+        <div className="rounded-2xl border border-red-500/20 bg-red-500/[0.03] p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="min-w-0">
+            <h3 className="font-medium text-red-300 flex items-center gap-2">
+              <Trash2Icon size={15} />
+              Delete workspace
+            </h3>
+            <p className="text-sm text-surface-500 mt-0.5">
+              Permanently removes “{workspace.name}” with its agents, workflows, prompts, tools and data. Only the owner can do this.
+            </p>
+          </div>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 hover:border-red-500/50 disabled:opacity-50 transition-all flex-shrink-0"
+          >
+            {deleting ? (
+              <div className="w-4 h-4 border-2 border-red-400/30 border-t-red-400 rounded-full animate-spin" />
+            ) : (
+              <Trash2Icon size={14} />
+            )}
+            {deleting ? 'Deleting…' : 'Delete workspace'}
+          </button>
+        </div>
+      )}
 
       {/* Add Member Modal */}
       {showAddMember && (

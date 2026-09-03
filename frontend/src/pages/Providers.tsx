@@ -151,6 +151,7 @@ export default function Providers() {
 
       // Success!
       qc.invalidateQueries({ queryKey: ['provider-configs'] })
+      qc.invalidateQueries({ queryKey: ['dashboard-stats'] })
       setAddStatus('done')
       setAddResult({
         label: detected.label,
@@ -181,6 +182,7 @@ export default function Providers() {
     mutationFn: (provider: string) => api.delete(`/mcp/providers/${provider}`),
     onSuccess: (_, provider) => {
       qc.invalidateQueries({ queryKey: ['provider-configs'] })
+      qc.invalidateQueries({ queryKey: ['dashboard-stats'] })
       toast.success(`Removed ${getLabel(provider)}`)
       setEditProvider(null)
     },

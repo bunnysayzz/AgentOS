@@ -34,7 +34,7 @@ export default function Artifacts() {
 
   const { mutate: create, isPending: creating } = useMutation({
     mutationFn: (d: typeof form) => api.post(`/workspaces/${wsId}/artifacts/`, { name: d.name, content_type: d.content_type, metadata: d.metadata ? JSON.parse(d.metadata) : undefined }).then((r) => r.data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['artifacts', wsId] }); setShowCreate(false); setForm({ name: '', content_type: 'application/octet-stream', metadata: '' }) },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['artifacts', wsId] }); qc.invalidateQueries({ queryKey: ['dashboard-stats'] }); setShowCreate(false); setForm({ name: '', content_type: 'application/octet-stream', metadata: '' }) },
   })
 
   const list: Artifact[] = Array.isArray(artifacts) ? artifacts : []

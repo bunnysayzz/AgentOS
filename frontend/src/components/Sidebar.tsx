@@ -7,7 +7,7 @@ import { useUIStore } from '@/stores/uiStore'
 import { firebaseAuth, firebaseSignOut } from '@/services/firebase'
 import { CommandPaletteTrigger } from '@/components/CommandPalette'
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '@/services/api'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 
@@ -132,6 +132,7 @@ export default function Sidebar() {
   const clearAuth = useAuthStore((s) => s.clearAuth)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const clearSelectedWorkspace = useWorkspaceStore((s) => s.clearSelectedWorkspace)
+  const queryClient = useQueryClient()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -139,6 +140,9 @@ export default function Sidebar() {
     try { await firebaseSignOut(firebaseAuth) } catch { /* ignore */ }
     clearAuth()
     clearSelectedWorkspace()
+    // Drop every cached server response so the next account can't see the
+    // previous user's data flash on screen before refetching.
+    queryClient.clear()
     localStorage.removeItem('agentos-auth')
     localStorage.removeItem('agentos-workspace')
     navigate('/')

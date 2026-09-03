@@ -42,7 +42,7 @@ export default function Prompts() {
 
   const { mutate: create, isPending: creating } = useMutation({
     mutationFn: (d: typeof form) => api.post(`/workspaces/${wsId}/prompts`, d).then((r) => r.data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['prompts', wsId] }); setShowCreate(false); setForm({ name: '', slug: '', description: '', initial_content: '' }) },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['prompts', wsId] }); qc.invalidateQueries({ queryKey: ['dashboard-stats'] }); setShowCreate(false); setForm({ name: '', slug: '', description: '', initial_content: '' }) },
   })
 
   const { mutate: createVersion } = useMutation({

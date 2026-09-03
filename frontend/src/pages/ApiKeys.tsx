@@ -41,6 +41,7 @@ export default function ApiKeys() {
       setCreatedKey(res.data)
       toast.success('API key created', 'Copy your key now. It won\'t be shown again.')
       qc.invalidateQueries({ queryKey: ['api-keys'] })
+      qc.invalidateQueries({ queryKey: ['dashboard-stats'] })
       setKeyName('')
       setShowCreate(false)
     },
@@ -54,6 +55,7 @@ export default function ApiKeys() {
     onSuccess: () => {
       toast.success('API key revoked', 'The key has been deactivated.')
       qc.invalidateQueries({ queryKey: ['api-keys'] })
+      qc.invalidateQueries({ queryKey: ['dashboard-stats'] })
     },
     onError: (err: any) => {
       toast.error('Failed to revoke key', err?.response?.data?.detail)

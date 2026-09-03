@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Dashboard from './Dashboard'
 import { useAuthStore } from '@/stores/authStore'
+import { useWorkspaceStore } from '@/stores/workspaceStore'
 
 vi.mock('@/services/api', () => ({
   default: { get: vi.fn() },
@@ -47,6 +48,7 @@ describe('Dashboard — guest mode', () => {
       accessToken: null, refreshToken: null, user: null,
       isAuthenticated: false, justSignedIn: false,
     })
+    useWorkspaceStore.setState({ selectedWorkspaceId: null, selectedWorkspaceName: null })
     queryClient.clear()
     vi.clearAllMocks()
     mockEmptyBackend()
@@ -102,6 +104,7 @@ describe('Dashboard — authenticated', () => {
 
   beforeEach(() => {
     mockAuth({ justSignedIn: true })
+    useWorkspaceStore.setState({ selectedWorkspaceId: null, selectedWorkspaceName: null })
     queryClient.clear()
     vi.clearAllMocks()
     mockEmptyBackend()
@@ -186,5 +189,47 @@ describe('Dashboard — authenticated', () => {
     expect(screen.getByText('LLM Calls')).toBeInTheDocument()
     expect(screen.getByText('Activity pulse')).toBeInTheDocument()
     expect(screen.queryByText('Getting Started')).not.toBeInTheDocument()
+  })
+
+  it('switching the workspace chip updates the shared store and refetches stats', async () => {
+    // Two workspaces -> the header workspace selector appears.
+    ;(api.get as any).mockImplementation((url: string) => {
+      if (url === '/dashboard/stats') {
+        return Promise.resolve({
+          data: {
+            workspaces: [
+              { id: 'ws-1', name: 'Prod' },
+              { id: 'ws-2', name: 'Staging' },
+            ],
+            workspace_count: 2, model_count: 1, call_count: 5, total_tokens: 100,
+            total_cost_usd: 0.001, key_count: 1, configured_providers: 1,
+            first_ws: 'ws-1',
+            workspace: {
+              agent_count: 0, workflow_count: 0, prompt_count: 0, tool_count: 0,
+              secret_count: 0, artifact_count: 0, telemetry_events: 0, telemetry_errors: 0,
+            },
+          },
+        })
+      }
+      return Promise.resolve({ data: [] })
+    })
+    // Returning user (no welcome hero) so the Overview header with the
+    // workspace selector chips is on screen.
+    mockAuth({ justSignedIn: false })
+
+    renderDashboard()
+
+    // Established view -> selector chips for both workspaces.
+    const staging = await screen.findByRole('button', { name: 'Staging' })
+    fireEvent.click(staging)
+
+    // Dashboard now drives the shared, persisted store.
+    expect(useWorkspaceStore.getState().selectedWorkspaceId).toBe('ws-2')
+    expect(useWorkspaceStore.getState().selectedWorkspaceName).toBe('Staging')
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith('/dashboard/stats', {
+        params: { workspace_id: 'ws-2', days: 7 },
+      })
+    })
   })
 })

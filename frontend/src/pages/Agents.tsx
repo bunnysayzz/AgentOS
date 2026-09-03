@@ -91,7 +91,7 @@ export default function Agents() {
 
   const { mutate: create, isPending: creating } = useMutation({
     mutationFn: (d: typeof form) => api.post(`/workspaces/${wsId}/agents/`, d).then((r) => r.data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['agents', wsId] }); setShowCreate(false); setForm({ name: '', description: '', system_prompt: '', model_name: 'gpt-4o' }) },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['agents', wsId] }); qc.invalidateQueries({ queryKey: ['dashboard-stats'] }); setShowCreate(false); setForm({ name: '', description: '', system_prompt: '', model_name: 'gpt-4o' }) },
   })
 
   // ── Curated templates: one-click creation ──

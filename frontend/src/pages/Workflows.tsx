@@ -107,7 +107,7 @@ export default function Workflows() {
 
   const { mutate: create, isPending: creating } = useMutation({
     mutationFn: (d: typeof form) => api.post(`/workspaces/${wsId}/workflows/`, d).then((r) => r.data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['workflows', wsId] }); setShowCreate(false); setForm({ name: '', description: '', trigger_type: 'manual', schedule_cron: '' }) },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['workflows', wsId] }); qc.invalidateQueries({ queryKey: ['dashboard-stats'] }); setShowCreate(false); setForm({ name: '', description: '', trigger_type: 'manual', schedule_cron: '' }) },
   })
 
   const { mutate: execute } = useMutation({

@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, within, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import WorkspaceDetail from './WorkspaceDetail'
+import { useWorkspaceStore } from '@/stores/workspaceStore'
+import { useConfirmStore } from '@/components/ConfirmDialog'
 
 vi.mock('@/services/api', () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
@@ -141,5 +143,75 @@ describe('WorkspaceDetail — members', () => {
 
     expect(await within(modal).findByText(/no account found with that email/i)).toBeInTheDocument()
     expect(api.post).not.toHaveBeenCalled()
+  })
+})
+
+describe('WorkspaceDetail — rename & delete sync', () => {
+  beforeEach(() => {
+    queryClient.clear()
+    vi.clearAllMocks()
+    // Start selected so we can prove rename keeps it in sync.
+    useWorkspaceStore.setState({ selectedWorkspaceId: 'ws-1', selectedWorkspaceName: 'My Workspace' })
+
+    let currentName = 'My Workspace'
+    ;(api.get as any).mockImplementation((url: string) => {
+      if (url === '/workspaces/ws-1') {
+        return Promise.resolve({ data: { id: 'ws-1', name: currentName, description: null, role: 'owner' } })
+      }
+      if (url === '/workspaces/ws-1/members') {
+        return Promise.resolve({ data: [] })
+      }
+      return Promise.resolve({ data: [] })
+    })
+    ;(api.patch as any).mockImplementation((url: string, body: any) => {
+      if (url === '/workspaces/ws-1') {
+        currentName = body.name
+        return Promise.resolve({ data: { id: 'ws-1', name: body.name, description: null, role: 'owner' } })
+      }
+      return Promise.resolve({ data: {} })
+    })
+    ;(api.delete as any).mockResolvedValue({})
+    ;(api.post as any).mockResolvedValue({ data: {} })
+  })
+
+  it('renames inline and keeps the shared store in sync', async () => {
+    const user = userEvent.setup()
+    renderDetail()
+
+    expect(await screen.findByText('My Workspace', { selector: 'h1' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /rename workspace/i }))
+    const input = screen.getByLabelText('Workspace name')
+    await user.clear(input)
+    await user.type(input, 'Renamed Workspace')
+    await user.click(screen.getByRole('button', { name: /save name/i }))
+
+    await waitFor(() => {
+      expect(api.patch).toHaveBeenCalledWith('/workspaces/ws-1', { name: 'Renamed Workspace' })
+    })
+    // Store name follows, so the sidebar switcher shows the new name.
+    await waitFor(() => {
+      expect(useWorkspaceStore.getState().selectedWorkspaceName).toBe('Renamed Workspace')
+    })
+    expect(await screen.findByText('Renamed Workspace', { selector: 'h1' })).toBeInTheDocument()
+  })
+
+  it('deletes after confirm, clearing the stored selection', async () => {
+    const user = userEvent.setup()
+    renderDetail()
+
+    await user.click(await screen.findByRole('button', { name: /delete workspace/i }))
+
+    const { options } = useConfirmStore.getState()
+    expect(options?.title).toMatch(/Delete Workspace/i)
+
+    await act(async () => {
+      await options?.onConfirm()
+    })
+
+    await waitFor(() => {
+      expect(api.delete).toHaveBeenCalledWith('/workspaces/ws-1')
+    })
+    expect(useWorkspaceStore.getState().selectedWorkspaceId).toBeNull()
   })
 })

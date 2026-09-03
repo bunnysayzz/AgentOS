@@ -68,8 +68,10 @@ export default function Dashboard() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  // Single source of truth for the active workspace is the persisted store
+  // shared with the Sidebar — never a second local copy.
+  const selectedWorkspaceId = useWorkspaceStore((s) => s.selectedWorkspaceId)
   const setSelectedWorkspace = useWorkspaceStore((s) => s.setSelectedWorkspace)
-  const [selectedWsId, setSelectedWsId] = useState<string | null>(null)
 
   // One-time welcome: snapshot the flag at mount (fresh login), then clear it
   // so navigating away and back — or a refresh — shows the data-first view.
@@ -97,10 +99,10 @@ export default function Dashboard() {
 
   // ─── Dashboard stats — ONE aggregate endpoint ─────────────────────
   const globalStatsQuery = useQuery({
-    queryKey: ['dashboard-stats', selectedWsId],
+    queryKey: ['dashboard-stats', selectedWorkspaceId],
     queryFn: async () => {
       const { data } = await api.get('/dashboard/stats', {
-        params: selectedWsId ? { workspace_id: selectedWsId, days: 7 } : { days: 7 },
+        params: selectedWorkspaceId ? { workspace_id: selectedWorkspaceId, days: 7 } : { days: 7 },
       })
       const d = data || {}
       const workspaces: { id: string; name: string }[] = Array.isArray(d.workspaces) ? d.workspaces : []
@@ -138,13 +140,22 @@ export default function Dashboard() {
 
   const stats = globalStatsQuery.data
 
+  // If nothing is selected yet (fresh login, direct deep link) but the user
+  // has workspaces, adopt the first one so dashboard + sidebar agree.
+  useEffect(() => {
+    if (isAuthenticated && !selectedWorkspaceId && stats?.workspaceCount && stats.workspaces?.length) {
+      const first = stats.workspaces[0]
+      setSelectedWorkspace(first.id, first.name)
+    }
+  }, [stats, isAuthenticated, selectedWorkspaceId, setSelectedWorkspace])
+
   // One layout while loading — no swap, no flash.
   if (!stats) {
     return <DashboardSkeleton />
   }
 
   const wsStats = stats.ws
-  const wsId = selectedWsId || stats.firstWs || ''
+  const wsId = selectedWorkspaceId || stats.firstWs || ''
   const isLoading = globalStatsQuery.isLoading
 
   // ─── Onboarding state ─────────────────────────────────────────────
@@ -388,10 +399,10 @@ export default function Dashboard() {
                 {stats.workspaces.map((ws: { id: string; name: string }) => (
                   <button
                     key={ws.id}
-                    onClick={() => setSelectedWsId(ws.id)}
+                    onClick={() => setSelectedWorkspace(ws.id, ws.name)}
                     className={cn(
                       'px-3 py-1.5 rounded-lg text-sm transition-all',
-                      (selectedWsId || stats.firstWs) === ws.id
+                      (selectedWorkspaceId || stats.firstWs) === ws.id
                         ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30'
                         : 'bg-surface-800/50 text-surface-400 hover:text-surface-200 border border-surface-700/30',
                     )}

@@ -26,12 +26,12 @@ export default function Secrets() {
 
   const { mutate: create, isPending: creating } = useMutation({
     mutationFn: (d: typeof form) => api.post(`/workspaces/${wsId}/secrets/`, d).then((r) => r.data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['secrets', wsId] }); setShowCreate(false); setForm({ name: '', slug: '', description: '', value: '', environment: '', provider: 'generic' }) },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['secrets', wsId] }); qc.invalidateQueries({ queryKey: ['dashboard-stats'] }); setShowCreate(false); setForm({ name: '', slug: '', description: '', value: '', environment: '', provider: 'generic' }) },
   })
 
   const { mutate: remove } = useMutation({
     mutationFn: (id: string) => api.delete(`/workspaces/${wsId}/secrets/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['secrets', wsId] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['secrets', wsId] }); qc.invalidateQueries({ queryKey: ['dashboard-stats'] }) },
   })
 
   const list: Secret[] = Array.isArray(secrets) ? secrets : []

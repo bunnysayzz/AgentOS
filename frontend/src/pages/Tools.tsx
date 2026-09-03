@@ -51,12 +51,12 @@ export default function Tools() {
 
   const { mutate: create, isPending: creating } = useMutation({
     mutationFn: (d: typeof form) => api.post(`/workspaces/${wsId}/tools`, d).then((r) => r.data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tools', wsId] }); setShowCreate(false); setForm({ name: '', slug: '', description: '', tool_type: 'custom', source: '' }) },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tools', wsId] }); qc.invalidateQueries({ queryKey: ['dashboard-stats'] }); setShowCreate(false); setForm({ name: '', slug: '', description: '', tool_type: 'custom', source: '' }) },
   })
 
   const { mutate: removeTool } = useMutation({
     mutationFn: (toolId: string) => api.delete(`/workspaces/${wsId}/tools/${toolId}`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tools', wsId] }); toast.success('Tool deleted', 'The tool has been removed.') },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tools', wsId] }); qc.invalidateQueries({ queryKey: ['dashboard-stats'] }); toast.success('Tool deleted', 'The tool has been removed.') },
   })
 
   const allTools: Tool[] = tab === 'workspace'
