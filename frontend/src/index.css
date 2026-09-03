@@ -3,19 +3,19 @@
 @tailwind utilities;
 
 @layer base {
-  /* ─── Light theme ──────────────────────────────────── */
+  /* ─── Light theme — neutral slate ramp ─────────────── */
   :root.light {
-    --surface-50: 48 32% 98%;
-    --surface-100: 45 26% 94%;
-    --surface-200: 45 14% 88%;
-    --surface-300: 248 7% 78%;
-    --surface-400: 248 5% 58%;
-    --surface-500: 250 6% 46%;
-    --surface-600: 250 7% 34%;
-    --surface-700: 250 8% 24%;
-    --surface-800: 250 9% 16%;
-    --surface-900: 250 10% 11%;
-    --surface-950: 250 12% 8%;
+    --surface-50: 210 40% 98%;
+    --surface-100: 214 32% 95%;
+    --surface-200: 213 27% 89%;
+    --surface-300: 215 20% 78%;
+    --surface-400: 215 14% 58%;
+    --surface-500: 216 12% 46%;
+    --surface-600: 217 12% 34%;
+    --surface-700: 218 13% 24%;
+    --surface-800: 219 14% 16%;
+    --surface-900: 220 15% 11%;
+    --surface-950: 222 16% 8%;
 
     --primary-50: 250 90% 97%;
     --primary-100: 249 85% 92%;
@@ -34,20 +34,20 @@
     --stage-bull: 0.07;
   }
 
-  /* ─── Dark theme (default) — AgentOS stage ─────────── */
+  /* ─── Dark theme (default) — neutral slate ramp ────── */
   :root.dark,
   :root {
-    --surface-50: 243 20% 96%;
-    --surface-100: 243 18% 91%;
-    --surface-200: 243 12% 84%;
-    --surface-300: 243 10% 66%;
-    --surface-400: 243 9% 47%;
-    --surface-500: 243 8% 33%;
-    --surface-600: 243 9% 24%;
-    --surface-700: 243 10% 17%;
-    --surface-800: 243 12% 10%;
-    --surface-900: 243 14% 7%;
-    --surface-950: 243 22% 4.5%;
+    --surface-50: 210 22% 96%;
+    --surface-100: 212 18% 91%;
+    --surface-200: 213 14% 84%;
+    --surface-300: 214 11% 67%;
+    --surface-400: 215 10% 48%;
+    --surface-500: 216 10% 34%;
+    --surface-600: 217 10% 25%;
+    --surface-700: 218 11% 18%;
+    --surface-800: 219 12% 11%;
+    --surface-900: 220 13% 7.5%;
+    --surface-950: 222 16% 4.5%;
 
     --primary-50: 250 90% 97%;
     --primary-100: 249 85% 92%;
@@ -95,6 +95,14 @@
   ::selection {
     background: rgba(139, 92, 246, 0.32);
     color: #fff;
+  }
+
+  /* Single, consistent keyboard focus treatment across the whole app:
+     a crisp accent ring that respects prefers-reduced-motion. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--primary-500));
+    outline-offset: 2px;
+    border-radius: 6px;
   }
 
   /* Custom scrollbar */
@@ -234,6 +242,11 @@
     box-shadow: 0 4px 20px -4px rgba(139, 92, 246, 0.35);
   }
 
+  .btn-primary:focus-visible {
+    outline: 2px solid hsl(var(--primary-400));
+    outline-offset: 2px;
+  }
+
   .btn-secondary {
     @apply px-4 py-2 rounded-xl bg-surface-800 hover:bg-surface-700
            text-surface-200 font-medium text-sm transition-all duration-200
@@ -265,11 +278,43 @@
     transform: scale(0.97);
   }
 
+  .btn-secondary:focus-visible {
+    outline: 2px solid hsl(var(--primary-400));
+    outline-offset: 2px;
+  }
+
   .input-field {
     @apply w-full px-4 py-2.5 rounded-xl bg-surface-900 border border-surface-700
            text-surface-100 placeholder-surface-500
            focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500/50
            transition-all duration-200 text-sm;
+  }
+
+  /* Native-style select — matches .input-field so dropdowns and text inputs
+     share one visual language. */
+  .select-field {
+    @apply w-full px-4 py-2.5 rounded-xl bg-surface-900 border border-surface-700
+           text-surface-100
+           focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500/50
+           transition-all duration-200 text-sm appearance-none cursor-pointer
+           bg-no-repeat;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-position: right 0.9rem center;
+    padding-right: 2.5rem;
+  }
+
+  /* Ghost icon button — the app-wide treatment for toolbar actions
+     (copy, delete, collapse, theme toggle…). */
+  .icon-btn {
+    @apply inline-flex items-center justify-center w-8 h-8 rounded-lg text-surface-500
+           hover:text-surface-200 hover:bg-surface-800/80
+           transition-all duration-150 active:scale-90
+           disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100;
+  }
+
+  .icon-btn:focus-visible {
+    outline: 2px solid hsl(var(--primary-400));
+    outline-offset: 1px;
   }
 
   .chip {

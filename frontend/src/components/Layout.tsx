@@ -85,19 +85,21 @@ export default function Layout() {
       </button>
 
       <main className={cn(
-        'min-h-screen transition-all duration-300 ease-in-out',
+        'min-h-screen transition-[margin] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
         'md:ml-60',
         collapsed && 'md:ml-16',
         'pt-14 md:pt-0',
       )}>
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+        {/* Ultra-wide friendly: content caps at 1600px and stays centered,
+            so large monitors get a calm reading column instead of stretched UI. */}
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
           {/* Page transitions — fade + subtle rise on every route change */}
           <AnimatePresence initial={false}>
             <motion.div
               key={location.pathname}
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             >
               <Suspense fallback={<PageSkeleton />}>
                 <Outlet />

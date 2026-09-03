@@ -170,14 +170,15 @@ export default function Sidebar() {
         className={cn(
           'fixed left-0 top-0 h-full z-40 flex flex-col',
           'bg-surface-900/95 backdrop-blur-xl border-r border-surface-700/30',
-          'transition-all duration-300 ease-in-out',
+          // Native-app feel: a spring-like curve instead of linear ease
+          'transition-[width,transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
           'md:translate-x-0',
           mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full',
           collapsed ? 'w-60 md:w-16' : 'w-60',
         )}
       >
         {/* Logo */}
-        <div className={cn('flex items-center h-16 border-b border-white/[0.06] flex-shrink-0', collapsed ? 'justify-center' : 'px-5')}>
+        <div className={cn('flex items-center h-16 border-b border-white/[0.05] flex-shrink-0', collapsed ? 'justify-center' : 'px-5')}>
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#15132a] to-[#0a0818] border border-primary-500/40 flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20">
               <LogoIcon size={17} />
@@ -223,8 +224,8 @@ export default function Sidebar() {
                       cn(
                         'group relative flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium transition-all duration-200',
                         isActive
-                          ? 'bg-primary-500/10 text-primary-300'
-                          : 'text-surface-400 hover:text-surface-100 hover:bg-surface-800/60',
+                          ? 'bg-gradient-to-r from-primary-500/15 to-primary-500/[0.03] text-primary-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]'
+                          : 'text-surface-400 hover:text-surface-100 hover:bg-surface-800/60 active:scale-[0.98]',
                         collapsed && 'justify-center px-2',
                       )
                     }
@@ -233,7 +234,7 @@ export default function Sidebar() {
                       <>
                         {/* Active accent bar */}
                         {isActive && !collapsed && (
-                          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-gradient-to-b from-primary-400 to-primary-600" />
+                          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-gradient-to-b from-primary-400 to-primary-600 shadow-[0_0_8px_rgba(139,92,246,0.6)]" />
                         )}
                         <item.icon
                           className={cn(
@@ -310,7 +311,7 @@ export default function Sidebar() {
 
           <button
             onClick={toggleSidebar}
-            className="hidden md:flex w-full items-center justify-center gap-2 px-3 py-2 rounded-xl text-surface-500 hover:text-surface-300 hover:bg-surface-800/50 transition-all duration-200 text-[13px]"
+            className="hidden md:flex w-full items-center justify-center gap-2 px-3 py-2 rounded-xl text-surface-500 hover:text-surface-300 hover:bg-surface-800/50 transition-all duration-200 text-[13px] active:scale-[0.97]"
           >
             {collapsed ? <ChevronRightIcon size={16} /> : <><ChevronLeftIcon size={16} /> Collapse</>}
           </button>

@@ -305,7 +305,7 @@ export default function ChatInterface({
             )}
           </div>
         </div>
-        <button onClick={clearChat} className="p-2 rounded-xl text-surface-500 hover:text-surface-300 hover:bg-surface-700/40 transition-all duration-150" title="Clear chat">
+        <button onClick={clearChat} className="icon-btn" title="Clear chat">
           <Trash2Icon size={14} />
         </button>
       </div>
@@ -339,7 +339,7 @@ export default function ChatInterface({
               {msg.role === 'assistant' && !msg.is_error && msg.content && msg.id !== 'welcome' && (
                 <button
                   onClick={() => handleCopy(msg.id, msg.content)}
-                  className="absolute top-2 right-2 opacity-0 group-hover/msg:opacity-100 p-1.5 rounded-lg text-surface-500 hover:text-surface-300 hover:bg-surface-700/50 transition-all"
+                  className="absolute top-2 right-2 opacity-0 group-hover/msg:opacity-100 icon-btn !w-7 !h-7"
                   title="Copy message"
                 >
                   {copiedId === msg.id ? <CheckIcon size={13} className="text-emerald-400" /> : <CopyIcon size={13} />}
@@ -383,6 +383,7 @@ export default function ChatInterface({
                   value={selectedProvider}
                   onChange={(e) => handleProviderChange(e.target.value)}
                   className="w-full appearance-none bg-surface-800/50 border border-surface-700/30 rounded-xl text-xs py-2.5 pl-3 pr-8 text-surface-200 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all cursor-pointer truncate hover:border-surface-600/50"
+                  aria-label="Provider"
                 >
                   {providerList.map((p) => (
                     <option key={p.provider} value={p.provider}>{getProviderLabel(p.provider)}</option>
@@ -399,6 +400,7 @@ export default function ChatInterface({
                     value={selectedModel}
                     onChange={(e) => setSelectedModel(e.target.value)}
                     className="w-full appearance-none bg-surface-800/50 border border-surface-700/30 rounded-xl text-xs py-2.5 pl-3 pr-8 text-surface-200 font-mono focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all cursor-pointer truncate hover:border-surface-600/50"
+                    aria-label="Model"
                   >
                     {availableModels.map((m) => (
                       <option key={m} value={m}>{m}</option>
