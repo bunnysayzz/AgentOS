@@ -65,6 +65,24 @@ export default function Layout() {
     window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
   }, [location.pathname])
 
+  // Per-route document titles so tabs and history stay meaningful.
+  useEffect(() => {
+    const TITLES: Record<string, string> = {
+      dashboard: 'Dashboard', workspaces: 'Workspaces', agents: 'Agents',
+      gallery: 'Gallery', workflows: 'Workflows', tools: 'Tools',
+      prompts: 'Prompts', secrets: 'Secrets', artifacts: 'Artifacts',
+      memory: 'Memory', telemetry: 'Telemetry', graphs: 'Execution Graphs',
+      mcp: 'MCP Gateway', providers: 'Providers', 'api-keys': 'API Keys',
+      budget: 'Budget', 'webhook-debugger': 'Webhook Debugger',
+      evaluations: 'Evaluations', 'ab-testing': 'A/B Testing', iac: 'Infrastructure',
+      profile: 'Profile', login: 'Sign in', register: 'Create account',
+    }
+    const segments = location.pathname.split('/').filter(Boolean)
+    let label = ''
+    for (const seg of segments) if (TITLES[seg]) label = TITLES[seg]
+    document.title = label ? `${label} · AgentOS` : 'AgentOS Studio'
+  }, [location.pathname])
+
   return (
     <ErrorBoundary>
     <div className="min-h-screen text-surface-100">

@@ -126,10 +126,21 @@ function App() {
         <Route
           path="*"
           element={
-            <div className="min-h-screen flex flex-col items-center justify-center bg-surface-950 gap-4">
-              <h1 className="text-5xl font-bold text-surface-700">404</h1>
-              <p className="text-surface-500 text-lg">Page not found</p>
-              <a href="/" className="btn-primary mt-2">Go home</a>
+            <div className="relative min-h-screen flex flex-col items-center justify-center gap-5 overflow-hidden">
+              <div className="stage" aria-hidden />
+              <div className="text-center space-y-3">
+                <p className="text-[13px] font-mono uppercase tracking-[0.35em] text-primary-400">Error 404</p>
+                <h1 className="text-6xl sm:text-7xl font-bold tracking-tight bg-gradient-to-b from-surface-100 to-surface-500 bg-clip-text text-transparent">
+                  Page not found
+                </h1>
+                <p className="text-surface-500 text-base max-w-md mx-auto">
+                  The page you're looking for doesn't exist or was moved. Check the sidebar for a live section.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <a href="/" className="btn-primary">Go to dashboard</a>
+                <button onClick={() => window.history.back()} className="btn-secondary">Go back</button>
+              </div>
             </div>
           }
         />
