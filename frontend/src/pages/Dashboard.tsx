@@ -34,6 +34,28 @@ const DOMAIN_LINKS = [
   { label: 'Memory', icon: BrainIcon, path: '/memory', desc: 'Conversation & session memory', color: 'text-pink-400' },
 ]
 
+// Neutral loading skeleton — one stable layout while stats load, so the
+// dashboard never flashes a half-built stats grid that then swaps to the
+// getting-started checklist.
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-8" aria-busy="true">
+      <div className="h-32 sm:h-40 rounded-3xl bg-surface-800/40 border border-surface-700/20 animate-pulse" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="h-28 rounded-2xl bg-surface-800/40 border border-surface-700/20 animate-pulse" />
+        ))}
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="h-24 rounded-2xl bg-surface-800/40 border border-surface-700/20 animate-pulse" />
+        ))}
+      </div>
+      <div className="h-40 rounded-2xl bg-surface-800/40 border border-surface-700/20 animate-pulse" />
+    </div>
+  )
+}
+
 // How-it-works pipeline shown to guests in the hero
 const PIPELINE = [
   { label: 'Prompt', icon: FileTextIcon, color: 'text-amber-400' },
@@ -100,6 +122,15 @@ export default function Dashboard() {
   })
 
   const stats = globalStatsQuery.data
+
+  // While the first stats load is in flight, show ONE stable skeleton. The
+  // new-user decision (checklist vs stats) can only be made once data
+  // arrives — rendering the stats grid here and swapping to the checklist
+  // later is exactly the "two dashboards" flash. Return early so exactly
+  // one layout ever mounts.
+  if (!stats) {
+    return <DashboardSkeleton />
+  }
 
   // Workspace-specific stats ride along in the same aggregate response — no
   // second round of fetches when the user switches workspaces.
@@ -477,11 +508,7 @@ export default function Dashboard() {
                     <ArrowRightIcon className="w-4 h-4 text-surface-500 group-hover:text-primary-400 group-hover:translate-x-1 transition-all duration-200" />
                   </div>
                   <p className="text-2xl font-semibold tracking-tight">
-                    {isLoading ? (
-                      <span className="inline-block w-10 h-7 bg-surface-800 rounded animate-pulse" />
-                    ) : (
-                      <span>{typeof card.value === 'number' ? card.value.toLocaleString() : card.value}</span>
-                    )}
+                    <span>{typeof card.value === 'number' ? card.value.toLocaleString() : card.value}</span>
                   </p>
                   <p className="text-sm text-surface-400 mt-0.5">{card.label}</p>
                 </Link>
@@ -499,7 +526,7 @@ export default function Dashboard() {
               {secondaryStatCards.map((card) => (
                 <div key={card.label} className="rounded-2xl bg-gradient-to-b from-surface-800/60 to-surface-800/30 border border-surface-700/25 p-5 hover:border-surface-600/40 hover:-translate-y-0.5 transition-all duration-200">
                   <card.icon size={18} className={`${card.color} mb-2`} />
-                  <p className="text-2xl font-semibold tracking-tight">{isLoading ? <span className="inline-block w-10 h-7 bg-surface-800 rounded animate-pulse" /> : card.value}</p>
+                  <p className="text-2xl font-semibold tracking-tight">{card.value}</p>
                   <p className="text-xs text-surface-500 mt-0.5">{card.sub}</p>
                 </div>
               ))}
@@ -593,14 +620,6 @@ export default function Dashboard() {
           ))}
         </motion.div>
       </div>
-
-      {/* Global loading overlay */}
-      {globalStatsQuery.isLoading && (
-        <div className="fixed bottom-4 right-4 flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-800 border border-surface-700/50 shadow-lg">
-          <div className="w-3 h-3 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
-          <span className="text-xs text-surface-400">Loading dashboard...</span>
-        </div>
-      )}
     </div>
   )
 }
