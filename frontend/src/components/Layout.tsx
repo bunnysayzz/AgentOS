@@ -93,12 +93,16 @@ export default function Layout() {
         {/* Ultra-wide friendly: content caps at 1600px and stays centered,
             so large monitors get a calm reading column instead of stretched UI. */}
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
-          {/* Page transitions — fade + subtle rise on every route change */}
-          <AnimatePresence initial={false}>
+          {/* Page transitions — true cross-fade on every route change.
+              popLayout pops the leaving page out of document flow, so the
+              incoming page fades in exactly where it will sit — no stacking,
+              no height jump, no scroll bounce. */}
+          <AnimatePresence initial={false} mode="popLayout">
             <motion.div
               key={location.pathname}
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4, transition: { duration: 0.12, ease: 'easeOut' } }}
               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             >
               <Suspense fallback={<PageSkeleton />}>

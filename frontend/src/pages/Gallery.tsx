@@ -99,7 +99,7 @@ export default function Gallery() {
             placeholder="Search agents..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-surface-800/50 border border-surface-700/30 rounded-xl text-sm px-4 py-2.5 pl-10 text-surface-100 placeholder:text-surface-500 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
+            className="input-field pl-10"
           />
           <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <circle cx="11" cy="11" r="8" />

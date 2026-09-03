@@ -11,6 +11,7 @@ import { useWorkspaceStore } from '@/stores/workspaceStore'
 import WorkspaceSelector from '@/components/WorkspaceSelector'
 import WorkspaceRequired from '@/components/WorkspaceRequired'
 import ChatInterface from '@/components/ChatInterface'
+import TabBar, { type TabItem } from '@/components/TabBar'
 import { toast } from '@/components/Toast'
 import { cn } from '@/utils/cn'
 
@@ -24,6 +25,12 @@ interface Agent {
 interface Tool {
   id: string; name: string; slug: string; tool_type: string; description?: string
 }
+
+const AGENT_DETAIL_TABS: TabItem<'chat' | 'executions' | 'tools'>[] = [
+  { id: 'chat', label: 'Chat', icon: MessageSquareIcon },
+  { id: 'executions', label: 'Executions', icon: ActivityIcon },
+  { id: 'tools', label: 'Tools', icon: WrenchIcon },
+]
 
 export default function Agents() {
   const qc = useQueryClient()
@@ -192,20 +199,11 @@ export default function Agents() {
         </div>
 
         {/* Tab switcher */}
-        <div className="flex gap-1 p-1 rounded-xl bg-surface-800/50 w-fit flex-wrap">
-          {(['chat', 'executions', 'tools'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setAgentDetailTab(tab)}
-              className={cn('px-4 py-2 rounded-lg text-sm font-medium capitalize transition-all', agentDetailTab === tab ? 'bg-surface-700 text-white' : 'text-surface-400 hover:text-surface-200')}
-            >
-              {tab === 'chat' && <MessageSquareIcon size={14} className="inline mr-1.5" />}
-              {tab === 'executions' && <ActivityIcon size={14} className="inline mr-1.5" />}
-              {tab === 'tools' && <WrenchIcon size={14} className="inline mr-1.5" />}
-              {tab}
-            </button>
-          ))}
-        </div>
+        <TabBar
+          tabs={AGENT_DETAIL_TABS}
+          active={agentDetailTab}
+          onChange={setAgentDetailTab}
+        />
 
         {/* ── Chat Tab ── */}
         {agentDetailTab === 'chat' && (

@@ -7,6 +7,7 @@ import { useWorkspaceStore } from '@/stores/workspaceStore'
 import WorkspaceSelector from '@/components/WorkspaceSelector'
 import WorkspaceRequired from '@/components/WorkspaceRequired'
 import EmptyState from '@/components/EmptyState'
+import TabBar, { type TabItem } from '@/components/TabBar'
 import { cn } from '@/utils/cn'
 
 // ─── Shared table primitives ─────────────────────────────────────────
@@ -39,6 +40,12 @@ const actionBadge = (a: string) => cn(
 
 interface Event { id: string; event_name: string; event_type: string; severity: string; duration_ms?: number; cost_usd?: number; created_at: string }
 interface AuditLog { id: string; action: string; resource_type: string; resource_id?: string; created_at: string }
+
+const TELEMETRY_TABS: TabItem<'stats' | 'events' | 'audit'>[] = [
+  { id: 'stats', label: 'Stats', icon: BarChart3Icon },
+  { id: 'events', label: 'Events', icon: ActivityIcon },
+  { id: 'audit', label: 'Audit Log', icon: ListOrderedIcon },
+]
 
 export default function Telemetry() {
   const qc = useQueryClient()
@@ -90,16 +97,11 @@ export default function Telemetry() {
         <WorkspaceSelector />
       </div>
 
-      <div className="flex gap-1 p-1 rounded-2xl bg-surface-800/40 border border-surface-700/20 w-fit flex-wrap">
-        {(['stats', 'events', 'audit'] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={cn('px-4 py-2 rounded-xl text-sm font-medium capitalize transition-all duration-150', tab === t ? 'bg-gradient-to-b from-surface-700/80 to-surface-700/60 text-white shadow-sm border border-surface-600/30' : 'text-surface-400 hover:text-surface-200 hover:bg-surface-700/30')}>
-            {t === 'stats' && <BarChart3Icon size={14} className="inline mr-1.5" />}
-            {t === 'events' && <ActivityIcon size={14} className="inline mr-1.5" />}
-            {t === 'audit' && <ListOrderedIcon size={14} className="inline mr-1.5" />}
-            {t}
-          </button>
-        ))}
-      </div>
+      <TabBar
+        tabs={TELEMETRY_TABS}
+        active={tab}
+        onChange={setTab}
+      />
 
       {tab === 'stats' && (
         <div>

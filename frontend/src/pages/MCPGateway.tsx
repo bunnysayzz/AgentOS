@@ -10,6 +10,7 @@ import api from '@/services/api'
 import ChatInterface from '@/components/ChatInterface'
 import PageHeader from '@/components/PageHeader'
 import EmptyState from '@/components/EmptyState'
+import TabBar, { type TabItem } from '@/components/TabBar'
 import { toast } from '@/components/Toast'
 import { cn } from '@/utils/cn'
 
@@ -22,7 +23,7 @@ interface MarketplaceServer {
 
 type TabId = 'chat' | 'models' | 'calls' | 'costs' | 'servers'
 
-const TABS: { id: TabId; label: string; icon: React.FC<{ size?: number; className?: string }> }[] = [
+const TABS: TabItem<TabId>[] = [
   { id: 'chat', label: 'Chat', icon: MessageSquareIcon },
   { id: 'models', label: 'Models', icon: CpuIcon },
   { id: 'calls', label: 'Calls', icon: PhoneIcon },
@@ -196,31 +197,8 @@ export default function MCPGateway() {
         icon={<CpuIcon size={19} className="text-primary-400" />}
       />
 
-      {/* Tabs — animated pill follows the active tab */}
-      <div className="flex gap-1 p-1 rounded-2xl bg-surface-800/40 border border-surface-700/20 w-fit flex-wrap">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={cn(
-              'relative px-4 py-2 rounded-xl text-sm font-medium transition-colors duration-150',
-              tab === t.id ? 'text-white' : 'text-surface-400 hover:text-surface-200',
-            )}
-          >
-            {tab === t.id && (
-              <motion.span
-                layoutId="mcp-tab-pill"
-                className="absolute inset-0 rounded-xl bg-gradient-to-b from-primary-500/90 to-primary-600/80 shadow-lg shadow-primary-500/25"
-                transition={{ type: 'spring', stiffness: 400, damping: 32 }}
-              />
-            )}
-            <span className="relative z-10 flex items-center gap-1.5">
-              <t.icon size={14} />
-              {t.label}
-            </span>
-          </button>
-        ))}
-      </div>
+      {/* Tabs — shared animated pill treatment */}
+      <TabBar tabs={TABS} active={tab} onChange={setTab} />
 
       {/* ── CHAT ── */}
       {tab === 'chat' && (

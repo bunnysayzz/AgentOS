@@ -6,11 +6,16 @@ import api from '@/services/api'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import WorkspaceSelector from '@/components/WorkspaceSelector'
 import WorkspaceRequired from '@/components/WorkspaceRequired'
+import TabBar, { type TabItem } from '@/components/TabBar'
 import { confirm } from '@/components/ConfirmDialog'
 import { toast } from '@/components/Toast'
-import { cn } from '@/utils/cn'
 
 interface Tool { id: string; name: string; slug: string; description?: string; tool_type: string; source?: string; config?: any; created_at: string }
+
+const TOOL_TABS: TabItem<'workspace' | 'public'>[] = [
+  { id: 'workspace', label: 'Workspace' },
+  { id: 'public', label: 'Public', icon: GlobeIcon },
+]
 
 function toolTypeIcon(type: string, size = 18) {
   switch (type) {
@@ -119,10 +124,11 @@ export default function Tools() {
 
       {/* Tabs + Search */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex gap-1 p-1 rounded-xl bg-surface-800/50 w-fit">
-          <button onClick={() => setTab('workspace')} className={cn('px-4 py-2 rounded-lg text-sm font-medium transition-all', tab === 'workspace' ? 'bg-surface-700 text-white' : 'text-surface-400 hover:text-surface-200')}>Workspace</button>
-          <button onClick={() => setTab('public')} className={cn('px-4 py-2 rounded-lg text-sm font-medium transition-all', tab === 'public' ? 'bg-surface-700 text-white' : 'text-surface-400 hover:text-surface-200')}><GlobeIcon size={14} className="inline mr-1" />Public</button>
-        </div>
+        <TabBar
+          tabs={TOOL_TABS}
+          active={tab}
+          onChange={setTab}
+        />
         <div className="relative flex-1 max-w-xs">
           <SearchIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-500" />
           <input
