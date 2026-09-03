@@ -5,6 +5,7 @@ import { GlobeIcon, PlusIcon, SearchIcon, Trash2Icon, WrenchIcon, ChevronRightIc
 import api from '@/services/api'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import WorkspaceSelector from '@/components/WorkspaceSelector'
+import WorkspaceRequired from '@/components/WorkspaceRequired'
 import { confirm } from '@/components/ConfirmDialog'
 import { toast } from '@/components/Toast'
 import { cn } from '@/utils/cn'
@@ -64,7 +65,7 @@ export default function Tools() {
   )
   const isLoading = tab === 'workspace' ? wsLoading : pubLoading
 
-  if (!wsId) return <div className="space-y-4"><h1 className="text-2xl font-bold">Tools</h1><WorkspaceSelector /><p className="text-surface-400 text-sm mt-2">Select a workspace to view tools</p></div>
+  if (!wsId) return <WorkspaceRequired title="Tools" description="Select a workspace to view tools" />
 
   // ── Detail View ──
   if (detailId) {

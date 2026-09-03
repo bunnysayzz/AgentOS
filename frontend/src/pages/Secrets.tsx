@@ -5,6 +5,7 @@ import { KeyIcon, PlusIcon, Trash2Icon } from '@/components/Icons'
 import api from '@/services/api'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import WorkspaceSelector from '@/components/WorkspaceSelector'
+import WorkspaceRequired from '@/components/WorkspaceRequired'
 import { confirm } from '@/components/ConfirmDialog'
 
 interface Secret { id: string; name: string; slug: string; description?: string; environment?: string; provider?: string; created_at: string }
@@ -35,7 +36,7 @@ export default function Secrets() {
 
   const list: Secret[] = Array.isArray(secrets) ? secrets : []
 
-  if (!wsId) return <div className="space-y-4"><h1 className="text-2xl font-bold">Secrets</h1><WorkspaceSelector /><p className="text-surface-400 text-sm mt-2">Select a workspace to view secrets</p></div>
+  if (!wsId) return <WorkspaceRequired title="Secrets" description="Select a workspace to view secrets" />
 
   return (
     <div className="space-y-6">

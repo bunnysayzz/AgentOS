@@ -6,6 +6,7 @@ import { ActivityIcon, ClockIcon, DollarSignIcon, GitBranchIcon } from '@/compon
 import api from '@/services/api'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import WorkspaceSelector from '@/components/WorkspaceSelector'
+import WorkspaceRequired from '@/components/WorkspaceRequired'
 import EmptyState from '@/components/EmptyState'
 import { cn } from '@/utils/cn'
 
@@ -55,7 +56,7 @@ export default function ExecutionGraphs() {
     show: { opacity: 1, x: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] as const } },
   }
 
-  if (!wsId) return <div className="space-y-4"><h1 className="text-2xl font-bold">Execution Graphs</h1><WorkspaceSelector /><p className="text-surface-400 text-sm mt-2">Select a workspace to view graphs</p></div>
+  if (!wsId) return <WorkspaceRequired title="Execution Graphs" description="Select a workspace to view graphs" />
 
   return (
     <div className="space-y-6">

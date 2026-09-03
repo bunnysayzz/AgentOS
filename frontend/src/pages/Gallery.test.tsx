@@ -38,7 +38,7 @@ function renderGallery(initialEntries = ['/gallery']) {
         <Routes>
           <Route path="/gallery" element={<Gallery />} />
           <Route path="/login" element={<div>login-marker</div>} />
-          <Route path="/workspaces" element={<div>workspaces-marker</div>} />
+          <Route path="/agents" element={<div>agents-marker</div>} />
         </Routes>
       </QueryClientProvider>
     </MemoryRouter>,
@@ -106,7 +106,7 @@ describe('Gallery', () => {
     await user.click(await screen.findByRole('button', { name: /use this agent/i }))
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/gallery/agent-1/clone'))
-    expect(await screen.findByText('workspaces-marker')).toBeInTheDocument()
+    expect(await screen.findByText('agents-marker')).toBeInTheDocument()
   })
 
   it('shows an empty state when nothing is published yet', async () => {

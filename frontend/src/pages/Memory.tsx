@@ -5,6 +5,7 @@ import { LayersIcon, MessageSquareIcon, SearchIcon, Trash2Icon } from '@/compone
 import api from '@/services/api'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import WorkspaceSelector from '@/components/WorkspaceSelector'
+import WorkspaceRequired from '@/components/WorkspaceRequired'
 import { confirm } from '@/components/ConfirmDialog'
 import { toast } from '@/components/Toast'
 import { cn } from '@/utils/cn'
@@ -54,12 +55,12 @@ export default function Memory() {
   const entryList: Entry[] = Array.isArray(entries) ? entries : []
   const searchList: Entry[] = Array.isArray(searchResults) ? searchResults : []
 
-  if (!wsId) return <div className="space-y-4"><h1 className="text-2xl font-bold">Memory</h1><WorkspaceSelector /><p className="text-surface-400 text-sm mt-2">Select a workspace to browse memory</p></div>
+  if (!wsId) return <WorkspaceRequired title="Memory" description="Select a workspace to browse memory" />
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div><h1 className="text-2xl font-bold">Memory</h1></div>
+        <div><h1 className="text-2xl font-bold">Memory</h1><p className="text-surface-400 text-sm mt-1">Conversation & session memory</p></div>
         <WorkspaceSelector />
       </div>
 

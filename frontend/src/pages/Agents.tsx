@@ -9,6 +9,7 @@ import {
 import api from '@/services/api'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import WorkspaceSelector from '@/components/WorkspaceSelector'
+import WorkspaceRequired from '@/components/WorkspaceRequired'
 import ChatInterface from '@/components/ChatInterface'
 import { toast } from '@/components/Toast'
 import { cn } from '@/utils/cn'
@@ -159,7 +160,7 @@ export default function Agents() {
   const toolsList: Tool[] = Array.isArray(availableTools) ? availableTools : []
   const secretsList: any[] = Array.isArray(availableSecrets) ? availableSecrets : []
 
-  if (!wsId) return <div className="space-y-4"><h1 className="text-2xl font-bold">Agents</h1><WorkspaceSelector /><p className="text-surface-400 text-sm mt-2">Select a workspace to view agents</p></div>
+  if (!wsId) return <WorkspaceRequired title="Agents" description="Select a workspace to view agents" />
 
   // ── Agent Detail View ──
   if (detailId) {

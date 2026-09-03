@@ -5,6 +5,7 @@ import { ArchiveIcon, ArrowLeftIcon, ChevronRightIcon, CodeIcon, FileIcon, Image
 import api from '@/services/api'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import WorkspaceSelector from '@/components/WorkspaceSelector'
+import WorkspaceRequired from '@/components/WorkspaceRequired'
 import { cn } from '@/utils/cn'
 
 interface Artifact { id: string; name: string; content_type: string; size_bytes: number; version: number; checksum?: string; created_at: string }
@@ -38,7 +39,7 @@ export default function Artifacts() {
 
   const list: Artifact[] = Array.isArray(artifacts) ? artifacts : []
 
-  if (!wsId) return <div className="space-y-4"><h1 className="text-2xl font-bold">Artifacts</h1><WorkspaceSelector /><p className="text-surface-400 text-sm mt-2">Select a workspace to view artifacts</p></div>
+  if (!wsId) return <WorkspaceRequired title="Artifacts" description="Select a workspace to view artifacts" />
 
   if (detailId) {
     const a = list.find((x) => x.id === detailId)

@@ -8,6 +8,7 @@ import {
 import api from '@/services/api'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import WorkspaceSelector from '@/components/WorkspaceSelector'
+import WorkspaceRequired from '@/components/WorkspaceRequired'
 import { toast } from '@/components/Toast'
 import { cn } from '@/utils/cn'
 
@@ -135,7 +136,7 @@ export default function Workflows() {
   const execList: any[] = Array.isArray(execs) ? execs : []
   const graphNodes: ExecNode[] = execGraph?.nodes || []
 
-  if (!wsId) return <div className="space-y-4"><h1 className="text-2xl font-bold">Workflows</h1><WorkspaceSelector /><p className="text-surface-400 text-sm mt-2">Select a workspace to view workflows</p></div>
+  if (!wsId) return <WorkspaceRequired title="Workflows" description="Select a workspace to view workflows" />
 
   // ── Execution Detail View (with DAG) ──
   if (detailId && selectedExecId) {

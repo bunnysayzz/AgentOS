@@ -8,6 +8,7 @@ import {
 import api from '@/services/api'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import WorkspaceSelector from '@/components/WorkspaceSelector'
+import WorkspaceRequired from '@/components/WorkspaceRequired'
 import { toast } from '@/components/Toast'
 import { cn } from '@/utils/cn'
 
@@ -137,15 +138,7 @@ export default function ABTesting() {
     onError: (err: any) => toast.error('Failed to stop test', err?.response?.data?.detail),
   })
 
-  if (!wsId) {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-bold">A/B Testing</h1>
-        <WorkspaceSelector />
-        <p className="text-surface-400 text-sm mt-2">Select a workspace to run prompt experiments</p>
-      </div>
-    )
-  }
+  if (!wsId) return <WorkspaceRequired title="A/B Testing" description="Select a workspace to run prompt experiments" />
 
   const variantStats: VariantStats[] = results
     ? Object.values(results.variants).filter((v) => v.variant)

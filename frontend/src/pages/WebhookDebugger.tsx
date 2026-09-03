@@ -8,6 +8,7 @@ import {
 import api from '@/services/api'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import WorkspaceSelector from '@/components/WorkspaceSelector'
+import WorkspaceRequired from '@/components/WorkspaceRequired'
 import { toast } from '@/components/Toast'
 import { cn } from '@/utils/cn'
 
@@ -90,7 +91,7 @@ export default function WebhookDebugger() {
     }
   }
 
-  if (!wsId) return <div className="space-y-4"><h1 className="text-2xl font-bold">Webhook Debugger</h1><WorkspaceSelector /><p className="text-surface-400 text-sm mt-2">Select a workspace</p></div>
+  if (!wsId) return <WorkspaceRequired title="Webhook Debugger" description="Select a workspace to debug webhooks" />
 
   return (
     <div className="space-y-6">

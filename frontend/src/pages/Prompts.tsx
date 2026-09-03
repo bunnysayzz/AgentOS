@@ -5,6 +5,7 @@ import { ArrowLeftIcon, ChevronRightIcon, CodeIcon, EyeIcon, FileTextIcon, Histo
 import api from '@/services/api'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import WorkspaceSelector from '@/components/WorkspaceSelector'
+import WorkspaceRequired from '@/components/WorkspaceRequired'
 import { confirm } from '@/components/ConfirmDialog'
 import { cn } from '@/utils/cn'
 
@@ -65,7 +66,7 @@ export default function Prompts() {
   const list: Prompt[] = Array.isArray(prompts) ? prompts : []
   const vers: Version[] = Array.isArray(versions) ? versions : []
 
-  if (!wsId) return <div className="space-y-4"><h1 className="text-2xl font-bold">Prompts</h1><WorkspaceSelector /><p className="text-surface-400 text-sm mt-2">Select a workspace to view prompts</p></div>
+  if (!wsId) return <WorkspaceRequired title="Prompts" description="Select a workspace to view prompts" />
 
   if (detailId) {
     const p = list.find((x) => x.id === detailId)

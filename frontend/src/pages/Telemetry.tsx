@@ -5,6 +5,7 @@ import { ActivityIcon, AlertTriangleIcon, BarChart3Icon, ClockIcon, DollarSignIc
 import api from '@/services/api'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import WorkspaceSelector from '@/components/WorkspaceSelector'
+import WorkspaceRequired from '@/components/WorkspaceRequired'
 import EmptyState from '@/components/EmptyState'
 import { cn } from '@/utils/cn'
 
@@ -80,12 +81,12 @@ export default function Telemetry() {
   const eventList: Event[] = Array.isArray(events) ? events : []
   const auditList: AuditLog[] = Array.isArray(auditLogs) ? auditLogs : []
 
-  if (!wsId) return <div className="space-y-4"><h1 className="text-2xl font-bold">Telemetry</h1><WorkspaceSelector /><p className="text-surface-400 text-sm mt-2">Select a workspace to view telemetry</p></div>
+  if (!wsId) return <WorkspaceRequired title="Telemetry" description="Select a workspace to view telemetry" />
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div><h1 className="text-2xl font-bold">Telemetry & Observability</h1></div>
+        <div><h1 className="text-2xl font-bold">Telemetry & Observability</h1><p className="text-surface-400 text-sm mt-1">Events, audit logs & platform stats</p></div>
         <WorkspaceSelector />
       </div>
 

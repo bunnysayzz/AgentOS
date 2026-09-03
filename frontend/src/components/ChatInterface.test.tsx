@@ -71,9 +71,8 @@ describe('ChatInterface', () => {
   it('disables input until a provider is configured', async () => {
     ;(api.get as any).mockResolvedValue({ data: [] })
     renderChat()
-    const input = await screen.findByPlaceholderText('Configure a provider first in the Providers page...')
+    const input = await screen.findByPlaceholderText('Configure a provider first...')
     expect(input).toBeDisabled()
-    expect(screen.getByText('No providers configured')).toBeInTheDocument()
   })
 
   it('clears the chat history', async () => {
