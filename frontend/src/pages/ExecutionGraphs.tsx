@@ -35,7 +35,7 @@ export default function ExecutionGraphs() {
       setLoadedExec(fromUrl)
       setExecutionId(fromUrl)
     }
-  }, [searchParams])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searchParams, loadedExec])
 
   const loadExec = (id: string) => {
     if (!id.trim()) return
