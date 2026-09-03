@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ActivityIcon, ArrowLeftIcon, BotIcon, GlobeIcon, MessageSquareIcon,
@@ -41,6 +41,16 @@ export default function Agents() {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [form, setForm] = useState({ name: '', description: '', system_prompt: '', model_name: 'gpt-4o' })
   const [agentDetailTab, setAgentDetailTab] = useState<'chat' | 'executions' | 'tools'>('chat')
+  const [searchParams] = useSearchParams()
+
+  // Deep links: /agents?open=<id> (from Gallery clone) opens that agent.
+  useEffect(() => {
+    const openId = searchParams.get('open')
+    if (openId) {
+      setAgentDetailTab('chat')
+      setDetailId(openId)
+    }
+  }, [searchParams])
 
   const { data: agents, isLoading } = useQuery({
     queryKey: ['agents', wsId],
@@ -91,7 +101,19 @@ export default function Agents() {
 
   const { mutate: create, isPending: creating } = useMutation({
     mutationFn: (d: typeof form) => api.post(`/workspaces/${wsId}/agents/`, d).then((r) => r.data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['agents', wsId] }); qc.invalidateQueries({ queryKey: ['dashboard-stats'] }); setShowCreate(false); setForm({ name: '', description: '', system_prompt: '', model_name: 'gpt-4o' }) },
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ['agents', wsId] })
+      qc.invalidateQueries({ queryKey: ['dashboard-stats'] })
+      setShowCreate(false)
+      setForm({ name: '', description: '', system_prompt: '', model_name: 'gpt-4o' })
+      // Continue the story: land on the new agent's detail view, ready to chat.
+      const newId = data?.id || data?.agent?.id
+      if (newId) {
+        setAgentDetailTab('chat')
+        setDetailId(newId)
+      }
+      toast.success('Agent created', `"${data?.name || form.name}" is ready. Configure it or start chatting.`)
+    },
   })
 
   // ── Curated templates: one-click creation ──
@@ -105,10 +127,15 @@ export default function Agents() {
   const { mutate: createFromTemplate, isPending: creatingFromTemplate } = useMutation({
     mutationFn: (templateId: string) =>
       api.post(`/workspaces/${wsId}/agents/from-template`, { template_id: templateId }).then((r) => r.data),
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ['agents', wsId] })
       qc.invalidateQueries({ queryKey: ['dashboard-stats'] })
       setShowCreate(false)
+      const newId = data?.id || data?.agent?.id
+      if (newId) {
+        setAgentDetailTab('chat')
+        setDetailId(newId)
+      }
       toast.success('Agent created', 'Template agent added to your workspace.')
     },
     onError: (err: any) =>

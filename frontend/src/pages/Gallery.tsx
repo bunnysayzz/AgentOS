@@ -47,8 +47,10 @@ export default function Gallery() {
     mutationFn: (id: string) => api.post(`/gallery/${id}/clone`).then((r) => r.data),
     onSuccess: (agent: any) => {
       qc.invalidateQueries({ queryKey: ['agents'] })
+      qc.invalidateQueries({ queryKey: ['dashboard-stats'] })
       toast.success('Agent cloned', `"${agent.name}" was added to your workspace as a draft.`)
-      navigate('/agents')
+      // Land inside the freshly cloned agent, ready to run or edit.
+      navigate(`/agents?open=${encodeURIComponent(agent.id)}`)
     },
     onError: (err: any) => {
       setCloneError(err?.response?.data?.detail || 'Failed to clone this agent.')
